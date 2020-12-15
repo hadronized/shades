@@ -29,11 +29,14 @@ enum ErasedExpr {
   Not(Box<Self>),
   BitOr(Box<Self>, Box<Self>),
   BitAnd(Box<Self>, Box<Self>),
+  BitXor(Box<Self>, Box<Self>),
   Neg(Box<Self>),
   Add(Box<Self>, Box<Self>),
   Sub(Box<Self>, Box<Self>),
   Mul(Box<Self>, Box<Self>),
   Div(Box<Self>, Box<Self>),
+  Shl(Box<Self>, Box<Self>),
+  Shr(Box<Self>, Box<Self>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -140,6 +143,15 @@ impl_binop_Expr!(BitAnd, bitand, [bool; 3], bool);
 impl_binop_Expr!(BitAnd, bitand, [bool; 4], [bool; 4]);
 impl_binop_Expr!(BitAnd, bitand, [bool; 4], bool);
 
+// xor
+impl_binop_Expr!(BitXor, bitxor, bool, bool);
+impl_binop_Expr!(BitXor, bitxor, [bool; 2], [bool; 2]);
+impl_binop_Expr!(BitXor, bitxor, [bool; 2], bool);
+impl_binop_Expr!(BitXor, bitxor, [bool; 3], [bool; 3]);
+impl_binop_Expr!(BitXor, bitxor, [bool; 3], bool);
+impl_binop_Expr!(BitXor, bitxor, [bool; 4], [bool; 4]);
+impl_binop_Expr!(BitXor, bitxor, [bool; 4], bool);
+
 /// Run a macro on all supported types to generate the impl for them
 ///
 /// The macro has to have to take two `ty` as argument and yield a `std::ops` trait implementor.
@@ -175,6 +187,52 @@ impl_binarith_Expr!(Add, add);
 impl_binarith_Expr!(Sub, sub);
 impl_binarith_Expr!(Mul, mul);
 impl_binarith_Expr!(Div, div);
+
+macro_rules! impl_binshift_Expr {
+  ($op:ident, $meth_name:ident, $ty:ty) => {
+    // expr OP expr
+    impl ops::$op<Expr<u32>> for Expr<$ty> {
+      type Output = Self;
+
+      fn $meth_name(self, rhs: Expr<u32>) -> Self::Output {
+        Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
+      }
+    }
+
+    // expr OP bits
+    impl ops::$op<u32> for Expr<$ty> {
+      type Output = Self;
+
+      fn $meth_name(self, rhs: u32) -> Self::Output {
+        let rhs = Expr::from(rhs);
+        Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
+      }
+    }
+  };
+}
+
+/// Binary shift generating macro.
+macro_rules! impl_binshifts_Expr {
+  ($op:ident, $meth_name:ident) => {
+    impl_binshift_Expr!($op, $meth_name, i32);
+    impl_binshift_Expr!($op, $meth_name, [i32; 2]);
+    impl_binshift_Expr!($op, $meth_name, [i32; 3]);
+    impl_binshift_Expr!($op, $meth_name, [i32; 4]);
+
+    impl_binshift_Expr!($op, $meth_name, u32);
+    impl_binshift_Expr!($op, $meth_name, [u32; 2]);
+    impl_binshift_Expr!($op, $meth_name, [u32; 3]);
+    impl_binshift_Expr!($op, $meth_name, [u32; 4]);
+
+    impl_binshift_Expr!($op, $meth_name, f32);
+    impl_binshift_Expr!($op, $meth_name, [f32; 2]);
+    impl_binshift_Expr!($op, $meth_name, [f32; 3]);
+    impl_binshift_Expr!($op, $meth_name, [f32; 4]);
+  };
+}
+
+impl_binshifts_Expr!(Shl, shl);
+impl_binshifts_Expr!(Shr, shr);
 
 macro_rules! impl_From_Expr_scalar {
   ($t:ty, $q:ident) => {
