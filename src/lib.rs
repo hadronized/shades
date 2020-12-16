@@ -46,6 +46,8 @@ enum ErasedExpr {
   Lte(Box<Self>, Box<Self>),
   Gt(Box<Self>, Box<Self>),
   Gte(Box<Self>, Box<Self>),
+  // function call
+  FunCall(FunHandle, Vec<Self>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -61,28 +63,12 @@ impl<T> Expr<T> {
       _phantom: PhantomData,
     }
   }
+}
 
-  pub fn and(&self, rhs: &Self) -> Self {
-    Self::new(ErasedExpr::And(
-      Box::new(self.erased.clone()),
-      Box::new(rhs.erased.clone()),
-    ))
-  }
-
-  pub fn or(&self, rhs: &Self) -> Self {
-    Self::new(ErasedExpr::Or(
-      Box::new(self.erased.clone()),
-      Box::new(rhs.erased.clone()),
-    ))
-  }
-
-  pub fn xor(&self, rhs: &Self) -> Self {
-    Self::new(ErasedExpr::Xor(
-      Box::new(self.erased.clone()),
-      Box::new(rhs.erased.clone()),
-    ))
-  }
-
+impl<T> Expr<T>
+where
+  T: PartialEq,
+{
   pub fn eq(&self, rhs: &Self) -> Self {
     Self::new(ErasedExpr::Eq(
       Box::new(self.erased.clone()),
@@ -96,7 +82,12 @@ impl<T> Expr<T> {
       Box::new(rhs.erased.clone()),
     ))
   }
+}
 
+impl<T> Expr<T>
+where
+  T: PartialOrd,
+{
   pub fn lt(&self, rhs: &Self) -> Self {
     Self::new(ErasedExpr::Lt(
       Box::new(self.erased.clone()),
@@ -125,6 +116,78 @@ impl<T> Expr<T> {
     ))
   }
 }
+
+impl Expr<bool> {
+  pub fn and(&self, rhs: &Self) -> Self {
+    Self::new(ErasedExpr::And(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
+    ))
+  }
+
+  pub fn or(&self, rhs: &Self) -> Self {
+    Self::new(ErasedExpr::Or(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
+    ))
+  }
+
+  pub fn xor(&self, rhs: &Self) -> Self {
+    Self::new(ErasedExpr::Xor(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
+    ))
+  }
+}
+
+trait Bounded: Sized {
+  fn min(&self, rhs: &Self) -> Self;
+  fn max(&self, rhs: &Self) -> Self;
+
+  fn clamp(&self, min_value: &Self, max_value: &Self) -> Self {
+    self.min(max_value).max(min_value)
+  }
+}
+
+macro_rules! impl_Bounded {
+  ($t:ty) => {
+    impl Bounded for Expr<$t> {
+      fn min(&self, rhs: &Self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          FunHandle::Min,
+          vec![self.erased.clone(), rhs.erased.clone()],
+        ))
+      }
+
+      fn max(&self, rhs: &Self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          FunHandle::Max,
+          vec![self.erased.clone(), rhs.erased.clone()],
+        ))
+      }
+    }
+  };
+}
+
+impl_Bounded!(i32);
+impl_Bounded!([i32; 2]);
+impl_Bounded!([i32; 3]);
+impl_Bounded!([i32; 4]);
+
+impl_Bounded!(u32);
+impl_Bounded!([u32; 2]);
+impl_Bounded!([u32; 3]);
+impl_Bounded!([u32; 4]);
+
+impl_Bounded!(f32);
+impl_Bounded!([f32; 2]);
+impl_Bounded!([f32; 3]);
+impl_Bounded!([f32; 4]);
+
+impl_Bounded!(bool);
+impl_Bounded!([bool; 2]);
+impl_Bounded!([bool; 3]);
+impl_Bounded!([bool; 4]);
 
 // not
 macro_rules! impl_Not_Expr {
@@ -532,7 +595,7 @@ where
 }
 
 pub trait ToFn<F, R, A> {
-  fn build_fn(self, f: F) -> Fun<R, A>;
+  fn build_fn(self, f: F) -> FunDef<R, A>;
 }
 
 impl<F, R> ToFn<F, R, ()> for Shader
@@ -540,13 +603,13 @@ where
   F: Fn(&mut ErasedFn) -> R,
   R: ToReturn,
 {
-  fn build_fn(self, f: F) -> Fun<R, ()> {
+  fn build_fn(self, f: F) -> FunDef<R, ()> {
     let ret_ty = R::RET_TYPE;
     let mut erased = ErasedFn::new("f", ret_ty, vec![]);
 
     f(&mut erased);
 
-    Fun::new(erased)
+    FunDef::new(erased)
   }
 }
 
@@ -558,7 +621,7 @@ macro_rules! impl_ToFn_args {
       R: ToReturn,
       $($arg: ToType),*
     {
-      fn build_fn(self, f: F) -> Fun<R, ($($arg),*)> {
+      fn build_fn(self, f: F) -> FunDef<R, ($($arg),*)> {
         $( let $arg_ident = Arg::new($arg_name); )*
         let args = vec![$( $arg_ident.clone().erased ),*];
         let ret_ty = R::RET_TYPE;
@@ -566,7 +629,7 @@ macro_rules! impl_ToFn_args {
 
         f(&mut erased, $($arg_ident),*);
 
-        Fun::new(erased)
+        FunDef::new(erased)
       }
     }
   }
@@ -608,24 +671,37 @@ where
   R: ToReturn,
   A: ToType,
 {
-  fn build_fn(self, f: F) -> Fun<R, A> {
+  fn build_fn(self, f: F) -> FunDef<R, A> {
     let arg = Arg::new("fn_a");
     let ret_ty = R::RET_TYPE;
     let mut erased = ErasedFn::new("f", ret_ty, vec![arg.clone().erased]);
 
     f(&mut erased, arg);
 
-    Fun::new(erased)
+    FunDef::new(erased)
   }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Fun<R, A> {
+pub enum FunHandle {
+  Min,
+  Max,
+  UserDefined(u16),
+}
+
+#[derive(Debug)]
+pub struct FunExpr<R, A> {
+  handle: FunHandle,
+  _phantom: PhantomData<(R, A)>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunDef<R, A> {
   erased: ErasedFn,
   _phantom: PhantomData<(R, A)>,
 }
 
-impl<R, A> Fun<R, A> {
+impl<R, A> FunDef<R, A> {
   fn new(erased: ErasedFn) -> Self {
     Self {
       erased,
@@ -912,6 +988,43 @@ mod tests {
   }
 
   #[test]
+  fn min_max_clamp() {
+    let a = lit!(1);
+    let b = lit!(2);
+    let c = lit!(3);
+
+    assert_eq!(
+      a.min(&b),
+      Expr::new(ErasedExpr::FunCall(
+        FunHandle::Min,
+        vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)]
+      ))
+    );
+
+    assert_eq!(
+      a.max(&b),
+      Expr::new(ErasedExpr::FunCall(
+        FunHandle::Max,
+        vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)]
+      ))
+    );
+
+    assert_eq!(
+      a.clamp(&b, &c),
+      Expr::new(ErasedExpr::FunCall(
+        FunHandle::Max,
+        vec![
+          ErasedExpr::FunCall(
+            FunHandle::Min,
+            vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(3)]
+          ),
+          ErasedExpr::LitInt(2),
+        ]
+      ))
+    );
+  }
+
+  #[test]
   fn erased_fn0() {
     let shader = Shader;
     let fun = shader.build_fn(|f: &mut ErasedFn| {
@@ -938,7 +1051,7 @@ mod tests {
   #[test]
   fn erased_fn1() {
     let shader = Shader;
-    let fun: Fun<(), i32> = shader.build_fn(|f: &mut ErasedFn, _arg| {
+    let fun: FunDef<(), i32> = shader.build_fn(|f: &mut ErasedFn, _arg| {
       let _x = f.var(3);
     });
 
