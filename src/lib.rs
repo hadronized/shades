@@ -27,6 +27,9 @@ enum ErasedExpr {
   Var(String),
   // built-in functions and operators
   Not(Box<Self>),
+  And(Box<Self>, Box<Self>),
+  Or(Box<Self>, Box<Self>),
+  Xor(Box<Self>, Box<Self>),
   BitOr(Box<Self>, Box<Self>),
   BitAnd(Box<Self>, Box<Self>),
   BitXor(Box<Self>, Box<Self>),
@@ -57,6 +60,27 @@ impl<T> Expr<T> {
       erased,
       _phantom: PhantomData,
     }
+  }
+
+  pub fn and(&self, rhs: &Self) -> Self {
+    Self::new(ErasedExpr::And(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
+    ))
+  }
+
+  pub fn or(&self, rhs: &Self) -> Self {
+    Self::new(ErasedExpr::Or(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
+    ))
+  }
+
+  pub fn xor(&self, rhs: &Self) -> Self {
+    Self::new(ErasedExpr::Xor(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
+    ))
   }
 
   pub fn eq(&self, rhs: &Self) -> Self {
@@ -112,6 +136,14 @@ macro_rules! impl_Not_Expr {
         Expr::new(ErasedExpr::Not(Box::new(self.erased)))
       }
     }
+
+    impl<'a> ops::Not for &'a Expr<$t> {
+      type Output = Expr<$t>;
+
+      fn not(self) -> Self::Output {
+        Expr::new(ErasedExpr::Not(Box::new(self.erased.clone())))
+      }
+    }
   };
 }
 
@@ -128,6 +160,14 @@ macro_rules! impl_Neg_Expr {
 
       fn neg(self) -> Self::Output {
         Expr::new(ErasedExpr::Neg(Box::new(self.erased)))
+      }
+    }
+
+    impl<'a> ops::Neg for &'a Expr<$t> {
+      type Output = Expr<$t>;
+
+      fn neg(self) -> Self::Output {
+        Expr::new(ErasedExpr::Neg(Box::new(self.erased.clone())))
       }
     }
   };
@@ -292,6 +332,39 @@ macro_rules! impl_binshift_Expr {
       }
     }
 
+    impl<'a> ops::$op<Expr<u32>> for &'a Expr<$ty> {
+      type Output = Expr<$ty>;
+
+      fn $meth_name(self, rhs: Expr<u32>) -> Self::Output {
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.erased.clone()),
+          Box::new(rhs.erased),
+        ))
+      }
+    }
+
+    impl<'a> ops::$op<&'a Expr<u32>> for Expr<$ty> {
+      type Output = Self;
+
+      fn $meth_name(self, rhs: &'a Expr<u32>) -> Self::Output {
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.erased),
+          Box::new(rhs.erased.clone()),
+        ))
+      }
+    }
+
+    impl<'a> ops::$op<&'a Expr<u32>> for &'a Expr<$ty> {
+      type Output = Expr<$ty>;
+
+      fn $meth_name(self, rhs: &'a Expr<u32>) -> Self::Output {
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.erased.clone()),
+          Box::new(rhs.erased.clone()),
+        ))
+      }
+    }
+
     // expr OP bits
     impl ops::$op<u32> for Expr<$ty> {
       type Output = Self;
@@ -299,6 +372,18 @@ macro_rules! impl_binshift_Expr {
       fn $meth_name(self, rhs: u32) -> Self::Output {
         let rhs = Expr::from(rhs);
         Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
+      }
+    }
+
+    impl<'a> ops::$op<u32> for &'a Expr<$ty> {
+      type Output = Expr<$ty>;
+
+      fn $meth_name(self, rhs: u32) -> Self::Output {
+        let rhs = Expr::from(rhs);
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.erased.clone()),
+          Box::new(rhs.erased),
+        ))
       }
     }
   };
@@ -372,6 +457,18 @@ impl_From_Expr_array!([bool; 4], LitBool4);
 macro_rules! lit {
   ($e:expr) => {
     Expr::from($e)
+  };
+
+  ($a:expr, $b:expr) => {
+    Expr::from([$a, $b])
+  };
+
+  ($a:expr, $b:expr, $c:expr) => {
+    Expr::from([$a, $b, $c])
+  };
+
+  ($a:expr, $b:expr, $c:expr, $d:expr) => {
+    Expr::from([$a, $b, $c, $d])
   };
 }
 
