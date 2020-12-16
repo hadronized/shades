@@ -748,9 +748,8 @@ mod tests {
 
   #[test]
   fn expr_lit() {
-    let expr = lit!(true);
-
-    assert_eq!(expr.erased, ErasedExpr::LitBool(true));
+    assert_eq!(lit!(true).erased, ErasedExpr::LitBool(true));
+    assert_eq!(lit![1, 2].erased, ErasedExpr::LitInt2([1, 2]));
   }
 
   #[test]
