@@ -37,6 +37,12 @@ enum ErasedExpr {
   Div(Box<Self>, Box<Self>),
   Shl(Box<Self>, Box<Self>),
   Shr(Box<Self>, Box<Self>),
+  Eq(Box<Self>, Box<Self>),
+  Neq(Box<Self>, Box<Self>),
+  Lt(Box<Self>, Box<Self>),
+  Lte(Box<Self>, Box<Self>),
+  Gt(Box<Self>, Box<Self>),
+  Gte(Box<Self>, Box<Self>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -51,6 +57,48 @@ impl<T> Expr<T> {
       erased,
       _phantom: PhantomData,
     }
+  }
+
+  pub fn eq(&self, rhs: &Self) -> Self {
+    Self::new(ErasedExpr::Eq(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
+    ))
+  }
+
+  pub fn neq(&self, rhs: &Self) -> Self {
+    Self::new(ErasedExpr::Neq(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
+    ))
+  }
+
+  pub fn lt(&self, rhs: &Self) -> Self {
+    Self::new(ErasedExpr::Lt(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
+    ))
+  }
+
+  pub fn lte(&self, rhs: &Self) -> Self {
+    Self::new(ErasedExpr::Lte(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
+    ))
+  }
+
+  pub fn gt(&self, rhs: &Self) -> Self {
+    Self::new(ErasedExpr::Gt(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
+    ))
+  }
+
+  pub fn gte(&self, rhs: &Self) -> Self {
+    Self::new(ErasedExpr::Gte(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
+    ))
   }
 }
 
@@ -105,21 +153,66 @@ impl_Neg_Expr!([f32; 4]);
 macro_rules! impl_binop_Expr {
   ($op:ident, $meth_name:ident, $a:ty, $b:ty) => {
     // expr OP expr
-    impl ops::$op<Expr<$b>> for Expr<$a> {
-      type Output = Self;
+    impl<'a> ops::$op<Expr<$b>> for Expr<$a> {
+      type Output = Expr<$a>;
 
       fn $meth_name(self, rhs: Expr<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
       }
     }
 
+    impl<'a> ops::$op<&'a Expr<$b>> for Expr<$a> {
+      type Output = Expr<$a>;
+
+      fn $meth_name(self, rhs: &'a Expr<$b>) -> Self::Output {
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.erased),
+          Box::new(rhs.erased.clone()),
+        ))
+      }
+    }
+
+    impl<'a> ops::$op<Expr<$b>> for &'a Expr<$a> {
+      type Output = Expr<$a>;
+
+      fn $meth_name(self, rhs: Expr<$b>) -> Self::Output {
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.erased.clone()),
+          Box::new(rhs.erased),
+        ))
+      }
+    }
+
+    impl<'a> ops::$op<&'a Expr<$b>> for &'a Expr<$a> {
+      type Output = Expr<$a>;
+
+      fn $meth_name(self, rhs: &'a Expr<$b>) -> Self::Output {
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.erased.clone()),
+          Box::new(rhs.erased.clone()),
+        ))
+      }
+    }
+
     // expr OP t, where t is automatically lifted
-    impl ops::$op<$b> for Expr<$a> {
-      type Output = Self;
+    impl<'a> ops::$op<$b> for Expr<$a> {
+      type Output = Expr<$a>;
 
       fn $meth_name(self, rhs: $b) -> Self::Output {
         let rhs = Expr::from(rhs);
         Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
+      }
+    }
+
+    impl<'a> ops::$op<$b> for &'a Expr<$a> {
+      type Output = Expr<$a>;
+
+      fn $meth_name(self, rhs: $b) -> Self::Output {
+        let rhs = Expr::from(rhs);
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.erased.clone()),
+          Box::new(rhs.erased),
+        ))
       }
     }
   };
@@ -273,6 +366,8 @@ impl_From_Expr_array!([f32; 4], LitFloat4);
 impl_From_Expr_array!([bool; 4], LitBool4);
 
 /// Easily create literal expressions.
+///
+/// TODO
 #[macro_export]
 macro_rules! lit {
   ($e:expr) => {
@@ -662,6 +757,15 @@ mod tests {
         Box::new(ErasedExpr::LitInt(2))
       ))
     );
+  }
+
+  #[test]
+  fn expr_ref_inference() {
+    let a = lit!(1);
+    let b = a.clone() + 1;
+    let c = a + 1;
+
+    assert_eq!(b, c);
   }
 
   #[test]
