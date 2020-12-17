@@ -1,7 +1,38 @@
 use std::{collections::HashSet, marker::PhantomData, ops};
 
 #[derive(Debug)]
-pub struct Shader;
+pub struct Shader {
+  decls: Vec<ShaderDecl>,
+}
+
+impl Shader {
+  pub fn new() -> Self {
+    Self { decls: Vec::new() }
+  }
+
+  pub fn fun<F, R, A>(&mut self, f: F) -> FunHandle<R, A>
+  where
+    F: ToFun<R, A>,
+  {
+    let fundef = f.build_fn();
+    let handle = self.decls.len();
+
+    self.decls.push(ShaderDecl::FunDef(fundef.erased));
+
+    FunHandle {
+      erased: ErasedFunHandle::UserDefined(handle as _),
+      _phantom: PhantomData,
+    }
+  }
+}
+
+#[derive(Debug)]
+enum ShaderDecl {
+  FunDef(ErasedFun),
+  Const(ErasedExpr),
+  In(Type, String),
+  Out(Type, String),
+}
 
 #[derive(Clone, Debug, PartialEq)]
 enum ErasedExpr {
@@ -47,7 +78,7 @@ enum ErasedExpr {
   Gt(Box<Self>, Box<Self>),
   Gte(Box<Self>, Box<Self>),
   // function call
-  FunCall(FunHandle, Vec<Self>),
+  FunCall(ErasedFunHandle, Vec<Self>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -154,14 +185,14 @@ macro_rules! impl_Bounded {
     impl Bounded for Expr<$t> {
       fn min(&self, rhs: &Self) -> Self {
         Expr::new(ErasedExpr::FunCall(
-          FunHandle::Min,
+          ErasedFunHandle::Min,
           vec![self.erased.clone(), rhs.erased.clone()],
         ))
       }
 
       fn max(&self, rhs: &Self) -> Self {
         Expr::new(ErasedExpr::FunCall(
-          FunHandle::Max,
+          ErasedFunHandle::Max,
           vec![self.erased.clone(), rhs.erased.clone()],
         ))
       }
@@ -594,40 +625,40 @@ where
   }
 }
 
-pub trait ToFn<F, R, A> {
-  fn build_fn(self, f: F) -> FunDef<R, A>;
+pub trait ToFun<R, A> {
+  fn build_fn(self) -> FunDef<R, A>;
 }
 
-impl<F, R> ToFn<F, R, ()> for Shader
+impl<F, R> ToFun<R, ()> for F
 where
-  F: Fn(&mut ErasedFn) -> R,
+  Self: Fn(&mut ErasedFun) -> R,
   R: ToReturn,
 {
-  fn build_fn(self, f: F) -> FunDef<R, ()> {
+  fn build_fn(self) -> FunDef<R, ()> {
     let ret_ty = R::RET_TYPE;
-    let mut erased = ErasedFn::new("f", ret_ty, vec![]);
+    let mut erased = ErasedFun::new("f", ret_ty, vec![]);
 
-    f(&mut erased);
+    self(&mut erased);
 
     FunDef::new(erased)
   }
 }
 
-macro_rules! impl_ToFn_args {
+macro_rules! impl_ToFun_args {
   ($($arg:ident / $arg_ident:ident / $arg_name:expr),*) => {
-    impl<F, R, $($arg),*> ToFn<F, R, ($($arg),*)> for Shader
+    impl<F, R, $($arg),*> ToFun<R, ($($arg),*)> for F
     where
-      F: Fn(&mut ErasedFn, $(Arg<$arg>),*) -> R,
+      Self: Fn(&mut ErasedFun, $(Arg<$arg>),*) -> R,
       R: ToReturn,
       $($arg: ToType),*
     {
-      fn build_fn(self, f: F) -> FunDef<R, ($($arg),*)> {
+      fn build_fn(self) -> FunDef<R, ($($arg),*)> {
         $( let $arg_ident = Arg::new($arg_name); )*
         let args = vec![$( $arg_ident.clone().erased ),*];
         let ret_ty = R::RET_TYPE;
-        let mut erased = ErasedFn::new("f", ret_ty, args);
+        let mut erased = ErasedFun::new("f", ret_ty, args);
 
-        f(&mut erased, $($arg_ident),*);
+        self(&mut erased, $($arg_ident),*);
 
         FunDef::new(erased)
       }
@@ -635,18 +666,18 @@ macro_rules! impl_ToFn_args {
   }
 }
 
-macro_rules! impl_ToFn_args_rec {
+macro_rules! impl_ToFun_args_rec {
   ($arg:ident / $arg_ident:ident / $arg_name:expr) => {
     // hey this one is already implemented as a special case, thank you have a good day
   };
 
   ($arg:ident / $arg_ident:ident / $arg_name:expr, $($r:tt)*) => {
-    impl_ToFn_args!($arg / $arg_ident / $arg_name, $($r)*);
-    impl_ToFn_args_rec!($($r)*);
+    impl_ToFun_args!($arg / $arg_ident / $arg_name, $($r)*);
+    impl_ToFun_args_rec!($($r)*);
   };
 }
 
-impl_ToFn_args_rec!(
+impl_ToFun_args_rec!(
   A0 / a / "fn_a",
   A1 / b / "fn_b",
   A2 / c / "fn_c",
@@ -665,25 +696,31 @@ impl_ToFn_args_rec!(
   A15 / p / "fn_p"
 );
 
-impl<F, R, A> ToFn<F, R, A> for Shader
+impl<F, R, A> ToFun<R, A> for F
 where
-  F: Fn(&mut ErasedFn, Arg<A>) -> R,
+  Self: Fn(&mut ErasedFun, Arg<A>) -> R,
   R: ToReturn,
   A: ToType,
 {
-  fn build_fn(self, f: F) -> FunDef<R, A> {
+  fn build_fn(self) -> FunDef<R, A> {
     let arg = Arg::new("fn_a");
     let ret_ty = R::RET_TYPE;
-    let mut erased = ErasedFn::new("f", ret_ty, vec![arg.clone().erased]);
+    let mut erased = ErasedFun::new("f", ret_ty, vec![arg.clone().erased]);
 
-    f(&mut erased, arg);
+    self(&mut erased, arg);
 
     FunDef::new(erased)
   }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum FunHandle {
+pub struct FunHandle<R, A> {
+  erased: ErasedFunHandle,
+  _phantom: PhantomData<(R, A)>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ErasedFunHandle {
   Min,
   Max,
   UserDefined(u16),
@@ -691,18 +728,18 @@ pub enum FunHandle {
 
 #[derive(Debug)]
 pub struct FunExpr<R, A> {
-  handle: FunHandle,
+  handle: ErasedFunHandle,
   _phantom: PhantomData<(R, A)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunDef<R, A> {
-  erased: ErasedFn,
+  erased: ErasedFun,
   _phantom: PhantomData<(R, A)>,
 }
 
 impl<R, A> FunDef<R, A> {
-  fn new(erased: ErasedFn) -> Self {
+  fn new(erased: ErasedFun) -> Self {
     Self {
       erased,
       _phantom: PhantomData,
@@ -711,15 +748,15 @@ impl<R, A> FunDef<R, A> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ErasedFn {
+pub struct ErasedFun {
   scope: String,
   ret_ty: RetType,
   args: Vec<ErasedArg>,
-  instructions: Vec<FnInstr>,
+  instructions: Vec<FunInstr>,
   vars: HashSet<String>,
 }
 
-impl ErasedFn {
+impl ErasedFun {
   pub fn new(scope: impl Into<String>, ret_ty: RetType, args: Vec<ErasedArg>) -> Self {
     Self {
       scope: scope.into(),
@@ -731,7 +768,7 @@ impl ErasedFn {
   }
 }
 
-impl ErasedFn {
+impl ErasedFun {
   pub fn var<T>(&mut self, init_value: impl Into<Expr<T>>) -> Expr<T>
   where
     T: ToType,
@@ -739,7 +776,7 @@ impl ErasedFn {
     let name = format!("{}_v{}", self.scope, self.vars.len());
     self.vars.insert(name.clone());
 
-    self.instructions.push(FnInstr::VarDecl {
+    self.instructions.push(FunInstr::VarDecl {
       ty: T::TYPE,
       name: name.clone(),
       init_value: init_value.into().erased,
@@ -750,7 +787,7 @@ impl ErasedFn {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum FnInstr {
+enum FunInstr {
   VarDecl {
     ty: Type,
     name: String,
@@ -830,7 +867,7 @@ mod tests {
 
   #[test]
   fn expr_unary() {
-    let mut fun = ErasedFn::new("test", RetType::Void, Vec::new());
+    let mut fun = ErasedFun::new("test", RetType::Void, Vec::new());
 
     let a = !lit!(true);
     let b = -lit!(3);
@@ -942,7 +979,7 @@ mod tests {
 
   #[test]
   fn expr_var() {
-    let mut fun = ErasedFn::new("test", RetType::Void, Vec::new());
+    let mut fun = ErasedFun::new("test", RetType::Void, Vec::new());
 
     let x = fun.var(0);
     let y = fun.var(1u32);
@@ -954,7 +991,7 @@ mod tests {
     assert_eq!(fun.instructions.len(), 3);
     assert_eq!(
       fun.instructions[0],
-      FnInstr::VarDecl {
+      FunInstr::VarDecl {
         ty: Type {
           prim_ty: PrimType::Int(Dim::Scalar),
           array_spec: None
@@ -965,7 +1002,7 @@ mod tests {
     );
     assert_eq!(
       fun.instructions[1],
-      FnInstr::VarDecl {
+      FunInstr::VarDecl {
         ty: Type {
           prim_ty: PrimType::UInt(Dim::Scalar),
           array_spec: None
@@ -976,7 +1013,7 @@ mod tests {
     );
     assert_eq!(
       fun.instructions[2],
-      FnInstr::VarDecl {
+      FunInstr::VarDecl {
         ty: Type {
           prim_ty: PrimType::Bool(Dim::D3),
           array_spec: None
@@ -996,7 +1033,7 @@ mod tests {
     assert_eq!(
       a.min(&b),
       Expr::new(ErasedExpr::FunCall(
-        FunHandle::Min,
+        ErasedFunHandle::Min,
         vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)]
       ))
     );
@@ -1004,7 +1041,7 @@ mod tests {
     assert_eq!(
       a.max(&b),
       Expr::new(ErasedExpr::FunCall(
-        FunHandle::Max,
+        ErasedFunHandle::Max,
         vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)]
       ))
     );
@@ -1012,10 +1049,10 @@ mod tests {
     assert_eq!(
       a.clamp(&b, &c),
       Expr::new(ErasedExpr::FunCall(
-        FunHandle::Max,
+        ErasedFunHandle::Max,
         vec![
           ErasedExpr::FunCall(
-            FunHandle::Min,
+            ErasedFunHandle::Min,
             vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(3)]
           ),
           ErasedExpr::LitInt(2),
@@ -1026,58 +1063,70 @@ mod tests {
 
   #[test]
   fn erased_fn0() {
-    let shader = Shader;
-    let fun = shader.build_fn(|f: &mut ErasedFn| {
+    let mut shader = Shader::new();
+    let fun = shader.fun(|f: &mut ErasedFun| {
       let _x = f.var(3);
     });
 
-    let fun = fun.erased;
-    assert_eq!(fun.ret_ty, RetType::Void);
-    assert_eq!(fun.args, vec![]);
-    assert_eq!(fun.instructions.len(), 1);
-    assert_eq!(
-      fun.instructions[0],
-      FnInstr::VarDecl {
-        ty: Type {
-          prim_ty: PrimType::Int(Dim::Scalar),
-          array_spec: None
-        },
-        name: "f_v0".into(),
-        init_value: ErasedExpr::LitInt(3)
+    assert_eq!(fun.erased, ErasedFunHandle::UserDefined(0));
+
+    match shader.decls[0] {
+      ShaderDecl::FunDef(ref fun) => {
+        assert_eq!(fun.ret_ty, RetType::Void);
+        assert_eq!(fun.args, vec![]);
+        assert_eq!(fun.instructions.len(), 1);
+        assert_eq!(
+          fun.instructions[0],
+          FunInstr::VarDecl {
+            ty: Type {
+              prim_ty: PrimType::Int(Dim::Scalar),
+              array_spec: None
+            },
+            name: "f_v0".into(),
+            init_value: ErasedExpr::LitInt(3)
+          }
+        )
       }
-    )
+      _ => panic!("wrong type"),
+    }
   }
 
   #[test]
   fn erased_fn1() {
-    let shader = Shader;
-    let fun: FunDef<(), i32> = shader.build_fn(|f: &mut ErasedFn, _arg| {
+    let mut shader = Shader::new();
+    let fun: FunHandle<(), i32> = shader.fun(|f: &mut ErasedFun, _arg| {
       let _x = f.var(3);
     });
 
-    let fun = fun.erased;
-    assert_eq!(fun.ret_ty, RetType::Void);
-    assert_eq!(
-      fun.args,
-      vec![ErasedArg {
-        name: "fn_a".into(),
-        ty: Type {
-          prim_ty: PrimType::Int(Dim::Scalar),
-          array_spec: None
-        }
-      }]
-    );
-    assert_eq!(fun.instructions.len(), 1);
-    assert_eq!(
-      fun.instructions[0],
-      FnInstr::VarDecl {
-        ty: Type {
-          prim_ty: PrimType::Int(Dim::Scalar),
-          array_spec: None
-        },
-        name: "f_v0".into(),
-        init_value: ErasedExpr::LitInt(3)
+    assert_eq!(fun.erased, ErasedFunHandle::UserDefined(0));
+
+    match shader.decls[0] {
+      ShaderDecl::FunDef(ref fun) => {
+        assert_eq!(fun.ret_ty, RetType::Void);
+        assert_eq!(
+          fun.args,
+          vec![ErasedArg {
+            name: "fn_a".into(),
+            ty: Type {
+              prim_ty: PrimType::Int(Dim::Scalar),
+              array_spec: None
+            }
+          }]
+        );
+        assert_eq!(fun.instructions.len(), 1);
+        assert_eq!(
+          fun.instructions[0],
+          FunInstr::VarDecl {
+            ty: Type {
+              prim_ty: PrimType::Int(Dim::Scalar),
+              array_spec: None
+            },
+            name: "f_v0".into(),
+            init_value: ErasedExpr::LitInt(3)
+          }
+        )
       }
-    )
+      _ => panic!("wrong type"),
+    }
   }
 }
