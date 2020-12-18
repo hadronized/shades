@@ -24,14 +24,44 @@ impl Shader {
       _phantom: PhantomData,
     }
   }
+
+  pub fn constant<T>(&mut self, expr: Expr<T>) -> Var<T>
+  where
+    T: ToType,
+  {
+    let n = self.decls.len() as u16;
+    self.decls.push(ShaderDecl::Const(expr.erased));
+
+    Var(Expr::new(ErasedExpr::Var(ScopedHandle::global(n))))
+  }
+
+  pub fn input<T>(&mut self) -> Var<T>
+  where
+    T: ToType,
+  {
+    let n = self.decls.len() as u16;
+    self.decls.push(ShaderDecl::In(T::TYPE, n));
+
+    Var(Expr::new(ErasedExpr::Var(ScopedHandle::global(n))))
+  }
+
+  pub fn output<T>(&mut self) -> Var<T>
+  where
+    T: ToType,
+  {
+    let n = self.decls.len() as u16;
+    self.decls.push(ShaderDecl::Out(T::TYPE, n));
+
+    Var(Expr::new(ErasedExpr::Var(ScopedHandle::global(n))))
+  }
 }
 
 #[derive(Debug)]
 enum ShaderDecl {
   FunDef(ErasedFun),
   Const(ErasedExpr),
-  In(Type, String),
-  Out(Type, String),
+  In(Type, u16),
+  Out(Type, u16),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -55,7 +85,7 @@ enum ErasedExpr {
   LitFloat4([f32; 4]),
   LitBool4([bool; 4]),
   // var
-  Var(String),
+  Var(ScopedHandle),
   // built-in functions and operators
   Not(Box<Self>),
   And(Box<Self>, Box<Self>),
@@ -587,44 +617,6 @@ where
   const RET_TYPE: RetType = RetType::Type(T::TYPE);
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct ErasedArg {
-  name: String,
-  ty: Type,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Arg<T> {
-  erased: ErasedArg,
-  _phantom: PhantomData<T>,
-}
-
-impl<T> Clone for Arg<T> {
-  fn clone(&self) -> Self {
-    Self {
-      erased: self.erased.clone(),
-      _phantom: PhantomData,
-    }
-  }
-}
-
-impl<T> Arg<T>
-where
-  T: ToType,
-{
-  fn new(name: impl Into<String>) -> Self {
-    let erased = ErasedArg {
-      name: name.into(),
-      ty: T::TYPE,
-    };
-
-    Self {
-      erased,
-      _phantom: PhantomData,
-    }
-  }
-}
-
 pub trait ToFun<R, A> {
   fn build_fn(self) -> FunDef<R, A>;
 }
@@ -636,7 +628,7 @@ where
 {
   fn build_fn(self) -> FunDef<R, ()> {
     let ret_ty = R::RET_TYPE;
-    let mut erased = ErasedFun::new("f", ret_ty, vec![]);
+    let mut erased = ErasedFun::new(ret_ty, vec![]);
 
     self(&mut erased);
 
@@ -645,18 +637,18 @@ where
 }
 
 macro_rules! impl_ToFun_args {
-  ($($arg:ident / $arg_ident:ident / $arg_name:expr),*) => {
+  ($($arg:ident , $arg_ident:ident , $arg_rank:expr),*) => {
     impl<F, R, $($arg),*> ToFun<R, ($($arg),*)> for F
     where
-      Self: Fn(&mut ErasedFun, $(Arg<$arg>),*) -> R,
+      Self: Fn(&mut ErasedFun, $(Expr<$arg>),*) -> R,
       R: ToReturn,
       $($arg: ToType),*
     {
       fn build_fn(self) -> FunDef<R, ($($arg),*)> {
-        $( let $arg_ident = Arg::new($arg_name); )*
-        let args = vec![$( $arg_ident.clone().erased ),*];
+        $( let $arg_ident = Expr::new(ErasedExpr::Var(ScopedHandle::fun_arg($arg_rank))); )*
+        let args = vec![$( $arg::TYPE ),*];
         let ret_ty = R::RET_TYPE;
-        let mut erased = ErasedFun::new("f", ret_ty, args);
+        let mut erased = ErasedFun::new(ret_ty, args);
 
         self(&mut erased, $($arg_ident),*);
 
@@ -666,52 +658,68 @@ macro_rules! impl_ToFun_args {
   }
 }
 
-macro_rules! impl_ToFun_args_rec {
-  ($arg:ident / $arg_ident:ident / $arg_name:expr) => {
-    // hey this one is already implemented as a special case, thank you have a good day
-  };
-
-  ($arg:ident / $arg_ident:ident / $arg_name:expr, $($r:tt)*) => {
-    impl_ToFun_args!($arg / $arg_ident / $arg_name, $($r)*);
-    impl_ToFun_args_rec!($($r)*);
-  };
-}
-
-impl_ToFun_args_rec!(
-  A0 / a / "fn_a",
-  A1 / b / "fn_b",
-  A2 / c / "fn_c",
-  A3 / d / "fn_d",
-  A4 / e / "fn_e",
-  A5 / f / "fn_f",
-  A6 / g / "fn_g",
-  A7 / h / "fn_h",
-  A8 / i / "fn_i",
-  A9 / j / "fn_j",
-  A10 / k / "fn_k",
-  A11 / l / "fn_l",
-  A12 / m / "fn_m",
-  A13 / n / "fn_n",
-  A14 / o / "fn_o",
-  A15 / p / "fn_p"
-);
-
 impl<F, R, A> ToFun<R, A> for F
 where
-  Self: Fn(&mut ErasedFun, Arg<A>) -> R,
+  Self: Fn(&mut ErasedFun, Expr<A>) -> R,
   R: ToReturn,
   A: ToType,
 {
   fn build_fn(self) -> FunDef<R, A> {
-    let arg = Arg::new("fn_a");
+    let arg = Expr::new(ErasedExpr::Var(ScopedHandle::fun_arg(0)));
     let ret_ty = R::RET_TYPE;
-    let mut erased = ErasedFun::new("f", ret_ty, vec![arg.clone().erased]);
+    let mut erased = ErasedFun::new(ret_ty, vec![A::TYPE]);
 
     self(&mut erased, arg);
 
     FunDef::new(erased)
   }
 }
+
+impl_ToFun_args!(A0, a0, 0, A1, a1, 1);
+impl_ToFun_args!(A0, a0, 0, A1, a1, 1, A2, a2, 2);
+impl_ToFun_args!(A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3);
+impl_ToFun_args!(A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4);
+impl_ToFun_args!(A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5);
+impl_ToFun_args!(A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6);
+impl_ToFun_args!(
+  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7
+);
+impl_ToFun_args!(
+  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8, 8
+);
+impl_ToFun_args!(
+  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8,
+  8, A9, a9, 9
+);
+impl_ToFun_args!(
+  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8,
+  8, A9, a9, 9, A10, a10, 10
+);
+impl_ToFun_args!(
+  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8,
+  8, A9, a9, 9, A10, a10, 10, A11, a11, 11
+);
+impl_ToFun_args!(
+  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8,
+  8, A9, a9, 9, A10, a10, 10, A11, a11, 11, A12, a12, 12
+);
+impl_ToFun_args!(
+  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8,
+  8, A9, a9, 9, A10, a10, 10, A11, a11, 11, A12, a12, 12, A13, a13, 13
+);
+impl_ToFun_args!(
+  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8,
+  8, A9, a9, 9, A10, a10, 10, A11, a11, 11, A12, a12, 12, A13, a13, 13, A14, a14, 14
+);
+impl_ToFun_args!(
+  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8,
+  8, A9, a9, 9, A10, a10, 10, A11, a11, 11, A12, a12, 12, A13, a13, 13, A14, a14, 14, A15, a15, 15
+);
+impl_ToFun_args!(
+  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8,
+  8, A9, a9, 9, A10, a10, 10, A11, a11, 11, A12, a12, 12, A13, a13, 13, A14, a14, 14, A15, a15, 15,
+  A16, a16, 16
+);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunHandle<R, A> {
@@ -749,40 +757,64 @@ impl<R, A> FunDef<R, A> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ErasedFun {
-  scope: String,
   ret_ty: RetType,
-  args: Vec<ErasedArg>,
+  args: Vec<Type>,
   instructions: Vec<FunInstr>,
-  vars: HashSet<String>,
+  next_var: u16,
 }
 
 impl ErasedFun {
-  pub fn new(scope: impl Into<String>, ret_ty: RetType, args: Vec<ErasedArg>) -> Self {
+  fn new(ret_ty: RetType, args: Vec<Type>) -> Self {
     Self {
-      scope: scope.into(),
       ret_ty,
       args,
       instructions: Vec::new(),
-      vars: HashSet::new(),
+      next_var: 0,
     }
   }
 }
 
 impl ErasedFun {
-  pub fn var<T>(&mut self, init_value: impl Into<Expr<T>>) -> Expr<T>
+  pub fn var<T>(&mut self, init_value: impl Into<Expr<T>>) -> Var<T>
   where
     T: ToType,
   {
-    let name = format!("{}_v{}", self.scope, self.vars.len());
-    self.vars.insert(name.clone());
+    let n = self.next_var;
+    let handle = ScopedHandle::fun_var(0, n);
+
+    self.next_var += 1;
 
     self.instructions.push(FunInstr::VarDecl {
       ty: T::TYPE,
-      name: name.clone(),
+      handle,
       init_value: init_value.into().erased,
     });
 
-    Expr::new(ErasedExpr::Var(name))
+    Var(Expr::new(ErasedExpr::Var(handle)))
+  }
+}
+
+#[derive(Debug)]
+pub struct Var<T>(pub Expr<T>);
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+enum ScopedHandle {
+  Global(u16),
+  FunArg(u16),
+  FunVar { subscope: u16, handle: u16 },
+}
+
+impl ScopedHandle {
+  fn global(handle: u16) -> Self {
+    Self::Global(handle)
+  }
+
+  fn fun_arg(handle: u16) -> Self {
+    Self::FunArg(handle)
+  }
+
+  fn fun_var(subscope: u16, handle: u16) -> Self {
+    Self::FunVar { subscope, handle }
   }
 }
 
@@ -790,7 +822,7 @@ impl ErasedFun {
 enum FunInstr {
   VarDecl {
     ty: Type,
-    name: String,
+    handle: ScopedHandle,
     init_value: ErasedExpr,
   },
 }
@@ -867,11 +899,11 @@ mod tests {
 
   #[test]
   fn expr_unary() {
-    let mut fun = ErasedFun::new("test", RetType::Void, Vec::new());
+    let mut fun = ErasedFun::new(RetType::Void, Vec::new());
 
     let a = !lit!(true);
     let b = -lit!(3);
-    let c = -fun.var(17);
+    let Var(c) = fun.var(17);
 
     assert_eq!(
       a,
@@ -884,7 +916,7 @@ mod tests {
     assert_eq!(
       c,
       Expr::new(ErasedExpr::Neg(Box::new(ErasedExpr::Var(
-        "test_v0".to_owned()
+        ScopedHandle::fun_var(0, 0)
       ))))
     );
   }
@@ -979,15 +1011,18 @@ mod tests {
 
   #[test]
   fn expr_var() {
-    let mut fun = ErasedFun::new("test", RetType::Void, Vec::new());
+    let mut fun = ErasedFun::new(RetType::Void, Vec::new());
 
-    let x = fun.var(0);
-    let y = fun.var(1u32);
-    let z = fun.var([false, true, false]);
+    let Var(x) = fun.var(0);
+    let Var(y) = fun.var(1u32);
+    let Var(z) = fun.var([false, true, false]);
 
-    assert_eq!(x, Expr::new(ErasedExpr::Var("test_v0".into())));
-    assert_eq!(y, Expr::new(ErasedExpr::Var("test_v1".into())));
-    assert_eq!(z, Expr::new(ErasedExpr::Var("test_v2".into())));
+    assert_eq!(x, Expr::new(ErasedExpr::Var(ScopedHandle::fun_var(0, 0))));
+    assert_eq!(y, Expr::new(ErasedExpr::Var(ScopedHandle::fun_var(0, 1))));
+    assert_eq!(
+      z,
+      Expr::new(ErasedExpr::Var(ScopedHandle::fun_var(0, 2).into()))
+    );
     assert_eq!(fun.instructions.len(), 3);
     assert_eq!(
       fun.instructions[0],
@@ -996,7 +1031,7 @@ mod tests {
           prim_ty: PrimType::Int(Dim::Scalar),
           array_spec: None
         },
-        name: "test_v0".into(),
+        handle: ScopedHandle::fun_var(0, 1),
         init_value: ErasedExpr::LitInt(0)
       }
     );
@@ -1007,7 +1042,7 @@ mod tests {
           prim_ty: PrimType::UInt(Dim::Scalar),
           array_spec: None
         },
-        name: "test_v1".into(),
+        handle: ScopedHandle::fun_var(0, 1),
         init_value: ErasedExpr::LitUInt(1)
       }
     );
@@ -1018,7 +1053,7 @@ mod tests {
           prim_ty: PrimType::Bool(Dim::D3),
           array_spec: None
         },
-        name: "test_v2".into(),
+        handle: ScopedHandle::fun_var(0, 2),
         init_value: ErasedExpr::LitBool3([false, true, false])
       }
     );
@@ -1082,7 +1117,7 @@ mod tests {
               prim_ty: PrimType::Int(Dim::Scalar),
               array_spec: None
             },
-            name: "f_v0".into(),
+            handle: ScopedHandle::fun_var(0, 1),
             init_value: ErasedExpr::LitInt(3)
           }
         )
@@ -1105,12 +1140,9 @@ mod tests {
         assert_eq!(fun.ret_ty, RetType::Void);
         assert_eq!(
           fun.args,
-          vec![ErasedArg {
-            name: "fn_a".into(),
-            ty: Type {
-              prim_ty: PrimType::Int(Dim::Scalar),
-              array_spec: None
-            }
+          vec![Type {
+            prim_ty: PrimType::Int(Dim::Scalar),
+            array_spec: None
           }]
         );
         assert_eq!(fun.instructions.len(), 1);
@@ -1121,12 +1153,18 @@ mod tests {
               prim_ty: PrimType::Int(Dim::Scalar),
               array_spec: None
             },
-            name: "f_v0".into(),
+            handle: ScopedHandle::fun_var(0, 0),
             init_value: ErasedExpr::LitInt(3)
           }
         )
       }
       _ => panic!("wrong type"),
     }
+  }
+
+  #[test]
+  fn simple_shader() {
+    let mut shader = Shader::new();
+    let fun_a = shader.fun(|f: &mut ErasedFun, a, b| a + b);
   }
 }
