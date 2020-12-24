@@ -625,14 +625,14 @@ pub trait ToFun<R, A> {
 
 impl<F, R> ToFun<R, ()> for F
 where
-  Self: Fn(&mut ErasedFun) -> R,
+  Self: Fn(&mut Scope) -> R,
   R: ToReturn,
 {
   fn build_fn(self) -> FunDef<R, ()> {
     let ret_ty = R::RET_TYPE;
     let mut erased = ErasedFun::new(ret_ty, vec![]);
 
-    self(&mut erased);
+    self(&mut erased.scope);
 
     FunDef::new(erased)
   }
@@ -642,7 +642,7 @@ macro_rules! impl_ToFun_args {
   ($($arg:ident , $arg_ident:ident , $arg_rank:expr),*) => {
     impl<F, R, $($arg),*> ToFun<R, ($($arg),*)> for F
       where
-          Self: Fn(&mut ErasedFun, $(Expr<$arg>),*) -> R,
+          Self: Fn(&mut Scope, $(Expr<$arg>),*) -> R,
           R: ToReturn,
           $($arg: ToType),*
           {
@@ -652,7 +652,7 @@ macro_rules! impl_ToFun_args {
               let ret_ty = R::RET_TYPE;
               let mut erased = ErasedFun::new(ret_ty, args);
 
-              self(&mut erased, $($arg_ident),*);
+              self(&mut erased.scope, $($arg_ident),*);
 
               FunDef::new(erased)
             }
@@ -662,7 +662,7 @@ macro_rules! impl_ToFun_args {
 
 impl<F, R, A> ToFun<R, A> for F
 where
-  Self: Fn(&mut ErasedFun, Expr<A>) -> R,
+  Self: Fn(&mut Scope, Expr<A>) -> R,
   R: ToReturn,
   A: ToType,
 {
@@ -671,7 +671,7 @@ where
     let ret_ty = R::RET_TYPE;
     let mut erased = ErasedFun::new(ret_ty, vec![A::TYPE]);
 
-    self(&mut erased, arg);
+    self(&mut erased.scope, arg);
 
     FunDef::new(erased)
   }
@@ -761,8 +761,7 @@ impl<R, A> FunDef<R, A> {
 pub struct ErasedFun {
   ret_ty: RetType,
   args: Vec<Type>,
-  instructions: Vec<FunInstr>,
-  next_var: u16,
+  scope: Scope,
 }
 
 impl ErasedFun {
@@ -770,13 +769,25 @@ impl ErasedFun {
     Self {
       ret_ty,
       args,
-      instructions: Vec::new(),
-      next_var: 0,
+      scope: Scope::new(),
     }
   }
 }
 
-impl ErasedFun {
+#[derive(Clone, Debug, PartialEq)]
+pub struct Scope {
+  instructions: Vec<ScopeInstr>,
+  next_var: u16,
+}
+
+impl Scope {
+  fn new() -> Self {
+    Self {
+      instructions: Vec::new(),
+      next_var: 0,
+    }
+  }
+
   pub fn var<T>(&mut self, init_value: impl Into<Expr<T>>) -> Var<T>
   where
     T: ToType,
@@ -786,7 +797,7 @@ impl ErasedFun {
 
     self.next_var += 1;
 
-    self.instructions.push(FunInstr::VarDecl {
+    self.instructions.push(ScopeInstr::VarDecl {
       ty: T::TYPE,
       handle,
       init_value: init_value.into().erased,
@@ -821,7 +832,7 @@ impl ScopedHandle {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum FunInstr {
+enum ScopeInstr {
   VarDecl {
     ty: Type,
     handle: ScopedHandle,
@@ -830,7 +841,7 @@ enum FunInstr {
 
   If {
     cond: Expr<bool>,
-    statements: Vec<FunInstr>,
+    statements: Vec<ScopeInstr>,
   },
 }
 
@@ -1074,11 +1085,11 @@ mod tests {
 
   #[test]
   fn expr_unary() {
-    let mut fun = ErasedFun::new(RetType::Void, Vec::new());
+    let mut scope = Scope::new();
 
     let a = !lit!(true);
     let b = -lit!(3);
-    let Var(c) = fun.var(17);
+    let Var(c) = scope.var(17);
 
     assert_eq!(
       a,
@@ -1181,11 +1192,11 @@ mod tests {
 
   #[test]
   fn expr_var() {
-    let mut fun = ErasedFun::new(RetType::Void, Vec::new());
+    let mut scope = Scope::new();
 
-    let Var(x) = fun.var(0);
-    let Var(y) = fun.var(1u32);
-    let Var(z) = fun.var([false, true, false]);
+    let Var(x) = scope.var(0);
+    let Var(y) = scope.var(1u32);
+    let Var(z) = scope.var([false, true, false]);
 
     assert_eq!(x, Expr::new(ErasedExpr::Var(ScopedHandle::fun_var(0, 0))));
     assert_eq!(y, Expr::new(ErasedExpr::Var(ScopedHandle::fun_var(0, 1))));
@@ -1193,10 +1204,10 @@ mod tests {
       z,
       Expr::new(ErasedExpr::Var(ScopedHandle::fun_var(0, 2).into()))
     );
-    assert_eq!(fun.instructions.len(), 3);
+    assert_eq!(scope.instructions.len(), 3);
     assert_eq!(
-      fun.instructions[0],
-      FunInstr::VarDecl {
+      scope.instructions[0],
+      ScopeInstr::VarDecl {
         ty: Type {
           prim_ty: PrimType::Int(Dim::Scalar),
           array_spec: None
@@ -1206,8 +1217,8 @@ mod tests {
       }
     );
     assert_eq!(
-      fun.instructions[1],
-      FunInstr::VarDecl {
+      scope.instructions[1],
+      ScopeInstr::VarDecl {
         ty: Type {
           prim_ty: PrimType::UInt(Dim::Scalar),
           array_spec: None
@@ -1217,8 +1228,8 @@ mod tests {
       }
     );
     assert_eq!(
-      fun.instructions[2],
-      FunInstr::VarDecl {
+      scope.instructions[2],
+      ScopeInstr::VarDecl {
         ty: Type {
           prim_ty: PrimType::Bool(Dim::D3),
           array_spec: None
@@ -1269,8 +1280,8 @@ mod tests {
   #[test]
   fn erased_fn0() {
     let mut shader = Shader::new();
-    let fun = shader.fun(|f: &mut ErasedFun| {
-      let _x = f.var(3);
+    let fun = shader.fun(|s: &mut Scope| {
+      let _x = s.var(3);
     });
 
     assert_eq!(fun.erased, ErasedFunHandle::UserDefined(0));
@@ -1279,10 +1290,10 @@ mod tests {
       ShaderDecl::FunDef(ref fun) => {
         assert_eq!(fun.ret_ty, RetType::Void);
         assert_eq!(fun.args, vec![]);
-        assert_eq!(fun.instructions.len(), 1);
+        assert_eq!(fun.scope.instructions.len(), 1);
         assert_eq!(
-          fun.instructions[0],
-          FunInstr::VarDecl {
+          fun.scope.instructions[0],
+          ScopeInstr::VarDecl {
             ty: Type {
               prim_ty: PrimType::Int(Dim::Scalar),
               array_spec: None
@@ -1299,7 +1310,7 @@ mod tests {
   #[test]
   fn erased_fn1() {
     let mut shader = Shader::new();
-    let fun: FunHandle<(), i32> = shader.fun(|f: &mut ErasedFun, _arg| {
+    let fun: FunHandle<(), i32> = shader.fun(|f: &mut Scope, _arg| {
       let _x = f.var(3);
     });
 
@@ -1315,10 +1326,10 @@ mod tests {
             array_spec: None
           }]
         );
-        assert_eq!(fun.instructions.len(), 1);
+        assert_eq!(fun.scope.instructions.len(), 1);
         assert_eq!(
-          fun.instructions[0],
-          FunInstr::VarDecl {
+          fun.scope.instructions[0],
+          ScopeInstr::VarDecl {
             ty: Type {
               prim_ty: PrimType::Int(Dim::Scalar),
               array_spec: None
@@ -1334,8 +1345,8 @@ mod tests {
 
   #[test]
   fn swizzling() {
-    let mut f = ErasedFun::new(RetType::Void, Vec::new());
-    let Var(foo) = f.var([1, 2]);
+    let mut scope = Scope::new();
+    let Var(foo) = scope.var([1, 2]);
     let foo_xy = sw!(foo, .x.y);
     let foo_xx = sw!(foo, .x.x);
 
