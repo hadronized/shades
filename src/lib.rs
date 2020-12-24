@@ -769,20 +769,22 @@ impl ErasedFun {
     Self {
       ret_ty,
       args,
-      scope: Scope::new(),
+      scope: Scope::new(0),
     }
   }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Scope {
+  id: u16,
   instructions: Vec<ScopeInstr>,
   next_var: u16,
 }
 
 impl Scope {
-  fn new() -> Self {
+  fn new(id: u16) -> Self {
     Self {
+      id,
       instructions: Vec::new(),
       next_var: 0,
     }
@@ -793,7 +795,7 @@ impl Scope {
     T: ToType,
   {
     let n = self.next_var;
-    let handle = ScopedHandle::fun_var(0, n);
+    let handle = ScopedHandle::fun_var(self.id, n);
 
     self.next_var += 1;
 
@@ -804,6 +806,30 @@ impl Scope {
     });
 
     Var(Expr::new(ErasedExpr::Var(handle)))
+  }
+
+  pub fn when<B>(
+    &mut self,
+    condition: impl Into<Expr<bool>>,
+    body: impl FnOnce(&mut Scope) -> Expr<B>,
+  ) -> Expr<B> {
+    let mut scope = Scope::new(self.id + 1);
+    let ret = body(&mut scope);
+
+    self.instructions.push(ScopeInstr::If {
+      condition: condition.into(),
+      scope,
+    });
+
+    ret
+  }
+
+  pub fn unless<B>(
+    &mut self,
+    condition: impl Into<Expr<bool>>,
+    body: impl FnOnce(&mut Scope) -> Expr<B>,
+  ) -> Expr<B> {
+    self.when(!condition.into(), body)
   }
 }
 
@@ -840,8 +866,8 @@ enum ScopeInstr {
   },
 
   If {
-    cond: Expr<bool>,
-    statements: Vec<ScopeInstr>,
+    condition: Expr<bool>,
+    scope: Scope,
   },
 }
 
@@ -1085,7 +1111,7 @@ mod tests {
 
   #[test]
   fn expr_unary() {
-    let mut scope = Scope::new();
+    let mut scope = Scope::new(0);
 
     let a = !lit!(true);
     let b = -lit!(3);
@@ -1192,7 +1218,7 @@ mod tests {
 
   #[test]
   fn expr_var() {
-    let mut scope = Scope::new();
+    let mut scope = Scope::new(0);
 
     let Var(x) = scope.var(0);
     let Var(y) = scope.var(1u32);
@@ -1345,7 +1371,7 @@ mod tests {
 
   #[test]
   fn swizzling() {
-    let mut scope = Scope::new();
+    let mut scope = Scope::new(0);
     let Var(foo) = scope.var([1, 2]);
     let foo_xy = sw!(foo, .x.y);
     let foo_xx = sw!(foo, .x.x);
