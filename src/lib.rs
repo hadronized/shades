@@ -12,7 +12,7 @@ impl Shader {
 
   pub fn fun<F, R, A>(&mut self, f: F) -> FunHandle<R, A>
   where
-      F: ToFun<R, A>,
+    F: ToFun<R, A>,
   {
     let fundef = f.build_fn();
     let handle = self.decls.len();
@@ -27,7 +27,7 @@ impl Shader {
 
   pub fn constant<T>(&mut self, expr: Expr<T>) -> Var<T>
   where
-      T: ToType,
+    T: ToType,
   {
     let n = self.decls.len() as u16;
     self.decls.push(ShaderDecl::Const(expr.erased));
@@ -37,7 +37,7 @@ impl Shader {
 
   pub fn input<T>(&mut self) -> Var<T>
   where
-      T: ToType,
+    T: ToType,
   {
     let n = self.decls.len() as u16;
     self.decls.push(ShaderDecl::In(T::TYPE, n));
@@ -47,7 +47,7 @@ impl Shader {
 
   pub fn output<T>(&mut self) -> Var<T>
   where
-      T: ToType,
+    T: ToType,
   {
     let n = self.decls.len() as u16;
     self.decls.push(ShaderDecl::Out(T::TYPE, n));
@@ -113,7 +113,7 @@ enum ErasedExpr {
   Swizzle(Box<Self>, Swizzle),
 }
 
-  #[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Expr<T> {
   erased: ErasedExpr,
   _phantom: PhantomData<T>,
@@ -130,52 +130,52 @@ impl<T> Expr<T> {
 
 impl<T> Expr<T>
 where
-    T: PartialEq,
+  T: PartialEq,
 {
   pub fn eq(&self, rhs: &Self) -> Self {
     Self::new(ErasedExpr::Eq(
-        Box::new(self.erased.clone()),
-        Box::new(rhs.erased.clone()),
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
     ))
   }
 
   pub fn neq(&self, rhs: &Self) -> Self {
     Self::new(ErasedExpr::Neq(
-        Box::new(self.erased.clone()),
-        Box::new(rhs.erased.clone()),
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
     ))
   }
 }
 
 impl<T> Expr<T>
 where
-    T: PartialOrd,
+  T: PartialOrd,
 {
   pub fn lt(&self, rhs: &Self) -> Self {
     Self::new(ErasedExpr::Lt(
-        Box::new(self.erased.clone()),
-        Box::new(rhs.erased.clone()),
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
     ))
   }
 
   pub fn lte(&self, rhs: &Self) -> Self {
     Self::new(ErasedExpr::Lte(
-        Box::new(self.erased.clone()),
-        Box::new(rhs.erased.clone()),
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
     ))
   }
 
   pub fn gt(&self, rhs: &Self) -> Self {
     Self::new(ErasedExpr::Gt(
-        Box::new(self.erased.clone()),
-        Box::new(rhs.erased.clone()),
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
     ))
   }
 
   pub fn gte(&self, rhs: &Self) -> Self {
     Self::new(ErasedExpr::Gte(
-        Box::new(self.erased.clone()),
-        Box::new(rhs.erased.clone()),
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
     ))
   }
 }
@@ -183,22 +183,22 @@ where
 impl Expr<bool> {
   pub fn and(&self, rhs: &Self) -> Self {
     Self::new(ErasedExpr::And(
-        Box::new(self.erased.clone()),
-        Box::new(rhs.erased.clone()),
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
     ))
   }
 
   pub fn or(&self, rhs: &Self) -> Self {
     Self::new(ErasedExpr::Or(
-        Box::new(self.erased.clone()),
-        Box::new(rhs.erased.clone()),
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
     ))
   }
 
   pub fn xor(&self, rhs: &Self) -> Self {
     Self::new(ErasedExpr::Xor(
-        Box::new(self.erased.clone()),
-        Box::new(rhs.erased.clone()),
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased.clone()),
     ))
   }
 }
@@ -217,15 +217,15 @@ macro_rules! impl_Bounded {
     impl Bounded for Expr<$t> {
       fn min(&self, rhs: &Self) -> Self {
         Expr::new(ErasedExpr::FunCall(
-            ErasedFunHandle::Min,
-            vec![self.erased.clone(), rhs.erased.clone()],
+          ErasedFunHandle::Min,
+          vec![self.erased.clone(), rhs.erased.clone()],
         ))
       }
 
       fn max(&self, rhs: &Self) -> Self {
         Expr::new(ErasedExpr::FunCall(
-            ErasedFunHandle::Max,
-            vec![self.erased.clone(), rhs.erased.clone()],
+          ErasedFunHandle::Max,
+          vec![self.erased.clone(), rhs.erased.clone()],
         ))
       }
     }
@@ -332,8 +332,8 @@ macro_rules! impl_binop_Expr {
 
       fn $meth_name(self, rhs: &'a Expr<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
-            Box::new(self.erased),
-            Box::new(rhs.erased.clone()),
+          Box::new(self.erased),
+          Box::new(rhs.erased.clone()),
         ))
       }
     }
@@ -343,8 +343,8 @@ macro_rules! impl_binop_Expr {
 
       fn $meth_name(self, rhs: Expr<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
-            Box::new(self.erased.clone()),
-            Box::new(rhs.erased),
+          Box::new(self.erased.clone()),
+          Box::new(rhs.erased),
         ))
       }
     }
@@ -354,8 +354,8 @@ macro_rules! impl_binop_Expr {
 
       fn $meth_name(self, rhs: &'a Expr<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
-            Box::new(self.erased.clone()),
-            Box::new(rhs.erased.clone()),
+          Box::new(self.erased.clone()),
+          Box::new(rhs.erased.clone()),
         ))
       }
     }
@@ -376,8 +376,8 @@ macro_rules! impl_binop_Expr {
       fn $meth_name(self, rhs: $b) -> Self::Output {
         let rhs = Expr::from(rhs);
         Expr::new(ErasedExpr::$op(
-            Box::new(self.erased.clone()),
-            Box::new(rhs.erased),
+          Box::new(self.erased.clone()),
+          Box::new(rhs.erased),
         ))
       }
     }
@@ -463,8 +463,8 @@ macro_rules! impl_binshift_Expr {
 
       fn $meth_name(self, rhs: Expr<u32>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
-            Box::new(self.erased.clone()),
-            Box::new(rhs.erased),
+          Box::new(self.erased.clone()),
+          Box::new(rhs.erased),
         ))
       }
     }
@@ -474,8 +474,8 @@ macro_rules! impl_binshift_Expr {
 
       fn $meth_name(self, rhs: &'a Expr<u32>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
-            Box::new(self.erased),
-            Box::new(rhs.erased.clone()),
+          Box::new(self.erased),
+          Box::new(rhs.erased.clone()),
         ))
       }
     }
@@ -485,8 +485,8 @@ macro_rules! impl_binshift_Expr {
 
       fn $meth_name(self, rhs: &'a Expr<u32>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
-            Box::new(self.erased.clone()),
-            Box::new(rhs.erased.clone()),
+          Box::new(self.erased.clone()),
+          Box::new(rhs.erased.clone()),
         ))
       }
     }
@@ -507,8 +507,8 @@ macro_rules! impl_binshift_Expr {
       fn $meth_name(self, rhs: u32) -> Self::Output {
         let rhs = Expr::from(rhs);
         Expr::new(ErasedExpr::$op(
-            Box::new(self.erased.clone()),
-            Box::new(rhs.erased),
+          Box::new(self.erased.clone()),
+          Box::new(rhs.erased),
         ))
       }
     }
@@ -614,7 +614,7 @@ impl ToReturn for () {
 
 impl<T> ToReturn for Expr<T>
 where
-    T: ToType,
+  T: ToType,
 {
   const RET_TYPE: RetType = RetType::Type(T::TYPE);
 }
@@ -625,8 +625,8 @@ pub trait ToFun<R, A> {
 
 impl<F, R> ToFun<R, ()> for F
 where
-    Self: Fn(&mut ErasedFun) -> R,
-    R: ToReturn,
+  Self: Fn(&mut ErasedFun) -> R,
+  R: ToReturn,
 {
   fn build_fn(self) -> FunDef<R, ()> {
     let ret_ty = R::RET_TYPE;
@@ -662,9 +662,9 @@ macro_rules! impl_ToFun_args {
 
 impl<F, R, A> ToFun<R, A> for F
 where
-    Self: Fn(&mut ErasedFun, Expr<A>) -> R,
-    R: ToReturn,
-    A: ToType,
+  Self: Fn(&mut ErasedFun, Expr<A>) -> R,
+  R: ToReturn,
+  A: ToType,
 {
   fn build_fn(self) -> FunDef<R, A> {
     let arg = Expr::new(ErasedExpr::Var(ScopedHandle::fun_arg(0)));
@@ -687,8 +687,7 @@ impl_ToFun_args!(
   A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7
 );
 impl_ToFun_args!(
-  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8,
-  8
+  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8, 8
 );
 impl_ToFun_args!(
   A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8,
@@ -716,13 +715,12 @@ impl_ToFun_args!(
 );
 impl_ToFun_args!(
   A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8,
-  8, A9, a9, 9, A10, a10, 10, A11, a11, 11, A12, a12, 12, A13, a13, 13, A14, a14, 14, A15, a15,
-  15
+  8, A9, a9, 9, A10, a10, 10, A11, a11, 11, A12, a12, 12, A13, a13, 13, A14, a14, 14, A15, a15, 15
 );
 impl_ToFun_args!(
   A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8,
-  8, A9, a9, 9, A10, a10, 10, A11, a11, 11, A12, a12, 12, A13, a13, 13, A14, a14, 14, A15, a15,
-  15, A16, a16, 16
+  8, A9, a9, 9, A10, a10, 10, A11, a11, 11, A12, a12, 12, A13, a13, 13, A14, a14, 14, A15, a15, 15,
+  A16, a16, 16
 );
 
 #[derive(Clone, Debug, PartialEq)]
@@ -781,7 +779,7 @@ impl ErasedFun {
 impl ErasedFun {
   pub fn var<T>(&mut self, init_value: impl Into<Expr<T>>) -> Var<T>
   where
-      T: ToType,
+    T: ToType,
   {
     let n = self.next_var;
     let handle = ScopedHandle::fun_var(0, n);
@@ -828,6 +826,11 @@ enum FunInstr {
     ty: Type,
     handle: ScopedHandle,
     init_value: ErasedExpr,
+  },
+
+  If {
+    cond: Expr<bool>,
+    statements: Vec<FunInstr>,
   },
 }
 
@@ -920,8 +923,8 @@ pub trait Swizzlable<S> {
 impl<T> Swizzlable<SwizzleSelector> for Expr<[T; 2]> {
   fn swizzle(&self, x: SwizzleSelector) -> Self {
     Expr::new(ErasedExpr::Swizzle(
-        Box::new(self.erased.clone()),
-        Swizzle::D1(x),
+      Box::new(self.erased.clone()),
+      Swizzle::D1(x),
     ))
   }
 }
@@ -929,8 +932,8 @@ impl<T> Swizzlable<SwizzleSelector> for Expr<[T; 2]> {
 impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<[T; 2]> {
   fn swizzle(&self, [x, y]: [SwizzleSelector; 2]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
-        Box::new(self.erased.clone()),
-        Swizzle::D2(x, y),
+      Box::new(self.erased.clone()),
+      Swizzle::D2(x, y),
     ))
   }
 }
@@ -939,8 +942,8 @@ impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<[T; 2]> {
 impl<T> Swizzlable<SwizzleSelector> for Expr<[T; 3]> {
   fn swizzle(&self, x: SwizzleSelector) -> Self {
     Expr::new(ErasedExpr::Swizzle(
-        Box::new(self.erased.clone()),
-        Swizzle::D1(x),
+      Box::new(self.erased.clone()),
+      Swizzle::D1(x),
     ))
   }
 }
@@ -948,8 +951,8 @@ impl<T> Swizzlable<SwizzleSelector> for Expr<[T; 3]> {
 impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<[T; 3]> {
   fn swizzle(&self, [x, y]: [SwizzleSelector; 2]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
-        Box::new(self.erased.clone()),
-        Swizzle::D2(x, y),
+      Box::new(self.erased.clone()),
+      Swizzle::D2(x, y),
     ))
   }
 }
@@ -957,8 +960,8 @@ impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<[T; 3]> {
 impl<T> Swizzlable<[SwizzleSelector; 3]> for Expr<[T; 3]> {
   fn swizzle(&self, [x, y, z]: [SwizzleSelector; 3]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
-        Box::new(self.erased.clone()),
-        Swizzle::D3(x, y, z),
+      Box::new(self.erased.clone()),
+      Swizzle::D3(x, y, z),
     ))
   }
 }
@@ -967,8 +970,8 @@ impl<T> Swizzlable<[SwizzleSelector; 3]> for Expr<[T; 3]> {
 impl<T> Swizzlable<SwizzleSelector> for Expr<[T; 4]> {
   fn swizzle(&self, x: SwizzleSelector) -> Self {
     Expr::new(ErasedExpr::Swizzle(
-        Box::new(self.erased.clone()),
-        Swizzle::D1(x),
+      Box::new(self.erased.clone()),
+      Swizzle::D1(x),
     ))
   }
 }
@@ -976,8 +979,8 @@ impl<T> Swizzlable<SwizzleSelector> for Expr<[T; 4]> {
 impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<[T; 4]> {
   fn swizzle(&self, [x, y]: [SwizzleSelector; 2]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
-        Box::new(self.erased.clone()),
-        Swizzle::D2(x, y),
+      Box::new(self.erased.clone()),
+      Swizzle::D2(x, y),
     ))
   }
 }
@@ -985,8 +988,8 @@ impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<[T; 4]> {
 impl<T> Swizzlable<[SwizzleSelector; 3]> for Expr<[T; 4]> {
   fn swizzle(&self, [x, y, z]: [SwizzleSelector; 3]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
-        Box::new(self.erased.clone()),
-        Swizzle::D3(x, y, z),
+      Box::new(self.erased.clone()),
+      Swizzle::D3(x, y, z),
     ))
   }
 }
@@ -994,8 +997,8 @@ impl<T> Swizzlable<[SwizzleSelector; 3]> for Expr<[T; 4]> {
 impl<T> Swizzlable<[SwizzleSelector; 4]> for Expr<[T; 4]> {
   fn swizzle(&self, [x, y, z, w]: [SwizzleSelector; 4]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
-        Box::new(self.erased.clone()),
-        Swizzle::D4(x, y, z, w),
+      Box::new(self.erased.clone()),
+      Swizzle::D4(x, y, z, w),
     ))
   }
 }
@@ -1097,15 +1100,15 @@ mod tests {
     assert_eq!(
       a,
       Expr::new(ErasedExpr::Add(
-          Box::new(ErasedExpr::LitInt(1)),
-          Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(1)),
+        Box::new(ErasedExpr::LitInt(2))
       ))
     );
     assert_eq!(
       b,
       Expr::new(ErasedExpr::Add(
-          Box::new(ErasedExpr::LitInt(1)),
-          Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(1)),
+        Box::new(ErasedExpr::LitInt(2))
       ))
     );
 
@@ -1116,15 +1119,15 @@ mod tests {
     assert_eq!(
       a,
       Expr::new(ErasedExpr::Sub(
-          Box::new(ErasedExpr::LitInt(1)),
-          Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(1)),
+        Box::new(ErasedExpr::LitInt(2))
       ))
     );
     assert_eq!(
       b,
       Expr::new(ErasedExpr::Sub(
-          Box::new(ErasedExpr::LitInt(1)),
-          Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(1)),
+        Box::new(ErasedExpr::LitInt(2))
       ))
     );
 
@@ -1135,15 +1138,15 @@ mod tests {
     assert_eq!(
       a,
       Expr::new(ErasedExpr::Mul(
-          Box::new(ErasedExpr::LitInt(1)),
-          Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(1)),
+        Box::new(ErasedExpr::LitInt(2))
       ))
     );
     assert_eq!(
       b,
       Expr::new(ErasedExpr::Mul(
-          Box::new(ErasedExpr::LitInt(1)),
-          Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(1)),
+        Box::new(ErasedExpr::LitInt(2))
       ))
     );
 
@@ -1154,15 +1157,15 @@ mod tests {
     assert_eq!(
       a,
       Expr::new(ErasedExpr::Div(
-          Box::new(ErasedExpr::LitInt(1)),
-          Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(1)),
+        Box::new(ErasedExpr::LitInt(2))
       ))
     );
     assert_eq!(
       b,
       Expr::new(ErasedExpr::Div(
-          Box::new(ErasedExpr::LitInt(1)),
-          Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(1)),
+        Box::new(ErasedExpr::LitInt(2))
       ))
     );
   }
@@ -1235,30 +1238,30 @@ mod tests {
     assert_eq!(
       a.min(&b),
       Expr::new(ErasedExpr::FunCall(
-          ErasedFunHandle::Min,
-          vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)]
+        ErasedFunHandle::Min,
+        vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)]
       ))
     );
 
     assert_eq!(
       a.max(&b),
       Expr::new(ErasedExpr::FunCall(
-          ErasedFunHandle::Max,
-          vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)]
+        ErasedFunHandle::Max,
+        vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)]
       ))
     );
 
     assert_eq!(
       a.clamp(&b, &c),
       Expr::new(ErasedExpr::FunCall(
-          ErasedFunHandle::Max,
-          vec![
+        ErasedFunHandle::Max,
+        vec![
           ErasedExpr::FunCall(
             ErasedFunHandle::Min,
             vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(3)]
           ),
           ErasedExpr::LitInt(2),
-          ]
+        ]
       ))
     );
   }
