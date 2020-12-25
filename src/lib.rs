@@ -132,14 +132,14 @@ impl<T> Expr<T>
 where
   T: PartialEq,
 {
-  pub fn eq(&self, rhs: &Self) -> Self {
+  pub fn eq(&self, rhs: impl ops::Deref<Target = Self>) -> Self {
     Self::new(ErasedExpr::Eq(
       Box::new(self.erased.clone()),
       Box::new(rhs.erased.clone()),
     ))
   }
 
-  pub fn neq(&self, rhs: &Self) -> Self {
+  pub fn neq(&self, rhs: impl ops::Deref<Target = Self>) -> Self {
     Self::new(ErasedExpr::Neq(
       Box::new(self.erased.clone()),
       Box::new(rhs.erased.clone()),
@@ -203,30 +203,58 @@ impl Expr<bool> {
   }
 }
 
-trait Bounded: Sized {
-  fn min(&self, rhs: &Self) -> Self;
-  fn max(&self, rhs: &Self) -> Self;
+trait Bounded<RHS = Self>: Sized {
+  type Target;
 
-  fn clamp(&self, min_value: &Self, max_value: &Self) -> Self {
-    self.min(max_value).max(min_value)
-  }
+  fn min(&self, rhs: RHS) -> Self::Target;
+  fn max(&self, rhs: RHS) -> Self::Target;
+
+  fn clamp(&self, min_value: RHS, max_value: RHS) -> Self::Target;
 }
 
 macro_rules! impl_Bounded {
   ($t:ty) => {
     impl Bounded for Expr<$t> {
-      fn min(&self, rhs: &Self) -> Self {
+      type Target = Self;
+
+      fn min(&self, rhs: Self) -> Self::Target {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Min,
+          vec![self.erased.clone(), rhs.erased],
+        ))
+      }
+
+      fn max(&self, rhs: Self) -> Self::Target {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Max,
+          vec![self.erased.clone(), rhs.erased],
+        ))
+      }
+
+      fn clamp(&self, min_value: Self, max_value: Self) -> Self::Target {
+        self.min(max_value).max(min_value)
+      }
+    }
+
+    impl<'a> Bounded<&'a Self> for Expr<$t> {
+      type Target = Self;
+
+      fn min(&self, rhs: &'a Self) -> Self::Target {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Min,
           vec![self.erased.clone(), rhs.erased.clone()],
         ))
       }
 
-      fn max(&self, rhs: &Self) -> Self {
+      fn max(&self, rhs: &'a Self) -> Self::Target {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Max,
           vec![self.erased.clone(), rhs.erased.clone()],
         ))
+      }
+
+      fn clamp(&self, min_value: &'a Self, max_value: &'a Self) -> Self::Target {
+        self.min(max_value).max(min_value)
       }
     }
   };
@@ -1289,7 +1317,7 @@ mod tests {
     );
 
     assert_eq!(
-      a.clamp(&b, &c),
+      a.clamp(b, c),
       Expr::new(ErasedExpr::FunCall(
         ErasedFunHandle::Max,
         vec![
@@ -1304,7 +1332,7 @@ mod tests {
   }
 
   #[test]
-  fn erased_fn0() {
+  fn fun0() {
     let mut shader = Shader::new();
     let fun = shader.fun(|s: &mut Scope| {
       let _x = s.var(3);
@@ -1334,7 +1362,7 @@ mod tests {
   }
 
   #[test]
-  fn erased_fn1() {
+  fn fun1() {
     let mut shader = Shader::new();
     let fun: FunHandle<(), i32> = shader.fun(|f: &mut Scope, _arg| {
       let _x = f.var(3);
@@ -1392,4 +1420,16 @@ mod tests {
       )
     );
   }
+
+  // #[test]
+  // fn when() {
+  //   let mut s = Scope::new(0);
+
+  //   let Var(x) = s.var(1);
+  //   let ret = s.when(x.eq(&lit!(2)), |s| {
+  //     let Var(y) = s.var(lit![1., 2., 3., 4.]);
+
+  //   }
+
+  // }
 }
