@@ -65,7 +65,7 @@ enum ShaderDecl {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum ErasedExpr {
+pub enum ErasedExpr {
   // scalars
   LitInt(i32),
   LitUInt(u32),
@@ -113,7 +113,7 @@ enum ErasedExpr {
   Swizzle(Box<Self>, Swizzle),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Expr<T> {
   erased: ErasedExpr,
   _phantom: PhantomData<T>,
@@ -128,74 +128,167 @@ impl<T> Expr<T> {
   }
 }
 
-impl<T> Expr<T>
-where
-  T: PartialEq,
-{
-  pub fn eq(&self, rhs: impl ops::Deref<Target = Self>) -> Self {
-    Self::new(ErasedExpr::Eq(
+pub trait Eq<RHS> {
+  fn eq(&self, rhs: RHS) -> Expr<bool>;
+
+  fn neq(&self, rhs: RHS) -> Expr<bool>;
+}
+
+impl<T> Eq<Expr<T>> for Expr<T> {
+  fn eq(&self, rhs: Expr<T>) -> Expr<bool> {
+    Expr::new(ErasedExpr::Eq(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased),
+    ))
+  }
+
+  fn neq(&self, rhs: Expr<T>) -> Expr<bool> {
+    Expr::new(ErasedExpr::Neq(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased),
+    ))
+  }
+}
+
+impl<'a, T> Eq<&'a Expr<T>> for Expr<T> {
+  fn eq(&self, rhs: &'a Expr<T>) -> Expr<bool> {
+    Expr::new(ErasedExpr::Eq(
       Box::new(self.erased.clone()),
       Box::new(rhs.erased.clone()),
     ))
   }
 
-  pub fn neq(&self, rhs: impl ops::Deref<Target = Self>) -> Self {
-    Self::new(ErasedExpr::Neq(
+  fn neq(&self, rhs: &'a Expr<T>) -> Expr<bool> {
+    Expr::new(ErasedExpr::Neq(
       Box::new(self.erased.clone()),
       Box::new(rhs.erased.clone()),
     ))
   }
 }
 
-impl<T> Expr<T>
+pub trait Ord<RHS>: Eq<RHS> {
+  fn lt(&self, rhs: RHS) -> Expr<bool>;
+
+  fn lte(&self, rhs: RHS) -> Expr<bool>;
+
+  fn gt(&self, rhs: RHS) -> Expr<bool>;
+
+  fn gte(&self, rhs: RHS) -> Expr<bool>;
+}
+
+impl<T> Ord<Expr<T>> for Expr<T>
 where
   T: PartialOrd,
 {
-  pub fn lt(&self, rhs: &Self) -> Self {
-    Self::new(ErasedExpr::Lt(
+  fn lt(&self, rhs: Expr<T>) -> Expr<bool> {
+    Expr::new(ErasedExpr::Lt(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased),
+    ))
+  }
+
+  fn lte(&self, rhs: Expr<T>) -> Expr<bool> {
+    Expr::new(ErasedExpr::Lte(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased),
+    ))
+  }
+
+  fn gt(&self, rhs: Expr<T>) -> Expr<bool> {
+    Expr::new(ErasedExpr::Gt(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased),
+    ))
+  }
+
+  fn gte(&self, rhs: Expr<T>) -> Expr<bool> {
+    Expr::new(ErasedExpr::Gte(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased),
+    ))
+  }
+}
+
+impl<'a, T> Ord<&'a Expr<T>> for Expr<T>
+where
+  T: PartialOrd,
+{
+  fn lt(&self, rhs: &'a Expr<T>) -> Expr<bool> {
+    Expr::new(ErasedExpr::Lt(
       Box::new(self.erased.clone()),
       Box::new(rhs.erased.clone()),
     ))
   }
 
-  pub fn lte(&self, rhs: &Self) -> Self {
-    Self::new(ErasedExpr::Lte(
+  fn lte(&self, rhs: &'a Expr<T>) -> Expr<bool> {
+    Expr::new(ErasedExpr::Lte(
       Box::new(self.erased.clone()),
       Box::new(rhs.erased.clone()),
     ))
   }
 
-  pub fn gt(&self, rhs: &Self) -> Self {
-    Self::new(ErasedExpr::Gt(
+  fn gt(&self, rhs: &'a Expr<T>) -> Expr<bool> {
+    Expr::new(ErasedExpr::Gt(
       Box::new(self.erased.clone()),
       Box::new(rhs.erased.clone()),
     ))
   }
 
-  pub fn gte(&self, rhs: &Self) -> Self {
-    Self::new(ErasedExpr::Gte(
+  fn gte(&self, rhs: &'a Expr<T>) -> Expr<bool> {
+    Expr::new(ErasedExpr::Gte(
       Box::new(self.erased.clone()),
       Box::new(rhs.erased.clone()),
     ))
   }
 }
 
-impl Expr<bool> {
-  pub fn and(&self, rhs: &Self) -> Self {
+pub trait Boolean<RHS> {
+  fn and(&self, rhs: RHS) -> Self;
+
+  fn or(&self, rhs: RHS) -> Self;
+
+  fn xor(&self, rhs: RHS) -> Self;
+}
+
+impl Boolean<Expr<bool>> for Expr<bool> {
+  fn and(&self, rhs: Self) -> Self {
+    Self::new(ErasedExpr::And(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased),
+    ))
+  }
+
+  fn or(&self, rhs: Self) -> Self {
+    Self::new(ErasedExpr::Or(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased),
+    ))
+  }
+
+  fn xor(&self, rhs: Self) -> Self {
+    Self::new(ErasedExpr::Xor(
+      Box::new(self.erased.clone()),
+      Box::new(rhs.erased),
+    ))
+  }
+}
+
+impl<'a> Boolean<&'a Self> for Expr<bool> {
+  fn and(&self, rhs: &'a Self) -> Self {
     Self::new(ErasedExpr::And(
       Box::new(self.erased.clone()),
       Box::new(rhs.erased.clone()),
     ))
   }
 
-  pub fn or(&self, rhs: &Self) -> Self {
+  fn or(&self, rhs: &'a Self) -> Self {
     Self::new(ErasedExpr::Or(
       Box::new(self.erased.clone()),
       Box::new(rhs.erased.clone()),
     ))
   }
 
-  pub fn xor(&self, rhs: &Self) -> Self {
+  fn xor(&self, rhs: &'a Self) -> Self {
     Self::new(ErasedExpr::Xor(
       Box::new(self.erased.clone()),
       Box::new(rhs.erased.clone()),
@@ -627,24 +720,21 @@ macro_rules! lit {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum RetType {
+pub enum Return {
   Void,
-  Type(Type),
+  Expr(ErasedExpr),
 }
 
-pub trait ToReturn {
-  const RET_TYPE: RetType;
+impl From<()> for Return {
+  fn from(_: ()) -> Self {
+    Return::Void
+  }
 }
 
-impl ToReturn for () {
-  const RET_TYPE: RetType = RetType::Void;
-}
-
-impl<T> ToReturn for Expr<T>
-where
-  T: ToType,
-{
-  const RET_TYPE: RetType = RetType::Type(T::TYPE);
+impl<T> From<Expr<T>> for Return {
+  fn from(expr: Expr<T>) -> Self {
+    Self::Expr(expr.erased)
+  }
 }
 
 pub trait ToFun<R, A> {
@@ -653,14 +743,14 @@ pub trait ToFun<R, A> {
 
 impl<F, R> ToFun<R, ()> for F
 where
-  Self: Fn(&mut Scope) -> R,
-  R: ToReturn,
+  Self: Fn(&mut Scope<R>) -> R,
+  Return: From<R>,
 {
   fn build_fn(self) -> FunDef<R, ()> {
-    let ret_ty = R::RET_TYPE;
-    let mut erased = ErasedFun::new(ret_ty, vec![]);
+    let mut scope = Scope::new(0);
+    let ret = self(&mut scope);
 
-    self(&mut erased.scope);
+    let erased = ErasedFun::new(Vec::new(), scope.erased, ret.into());
 
     FunDef::new(erased)
   }
@@ -668,19 +758,20 @@ where
 
 macro_rules! impl_ToFun_args {
   ($($arg:ident , $arg_ident:ident , $arg_rank:expr),*) => {
-    impl<F, R, $($arg),*> ToFun<R, ($($arg),*)> for F
+    impl<F, R, $($arg),*> ToFun<R, ($(Expr<$arg>),*)> for F
       where
-          Self: Fn(&mut Scope, $(Expr<$arg>),*) -> R,
-          R: ToReturn,
+          Self: Fn(&mut Scope<R>, $(Expr<$arg>),*) -> R,
+          Return: From<R>,
           $($arg: ToType),*
           {
-            fn build_fn(self) -> FunDef<R, ($($arg),*)> {
+            fn build_fn(self) -> FunDef<R, ($(Expr<$arg>),*)> {
               $( let $arg_ident = Expr::new(ErasedExpr::Var(ScopedHandle::fun_arg($arg_rank))); )*
-                let args = vec![$( $arg::TYPE ),*];
-              let ret_ty = R::RET_TYPE;
-              let mut erased = ErasedFun::new(ret_ty, args);
+              let args = vec![$( $arg::TYPE ),*];
 
-              self(&mut erased.scope, $($arg_ident),*);
+              let mut scope = Scope::new(0);
+              let ret = self(&mut scope, $($arg_ident),*);
+
+              let erased = ErasedFun::new(args, scope.erased, ret.into());
 
               FunDef::new(erased)
             }
@@ -688,18 +779,19 @@ macro_rules! impl_ToFun_args {
   }
 }
 
-impl<F, R, A> ToFun<R, A> for F
+impl<F, R, A> ToFun<R, Expr<A>> for F
 where
-  Self: Fn(&mut Scope, Expr<A>) -> R,
-  R: ToReturn,
+  Self: Fn(&mut Scope<R>, Expr<A>) -> R,
+  Return: From<R>,
   A: ToType,
 {
-  fn build_fn(self) -> FunDef<R, A> {
+  fn build_fn(self) -> FunDef<R, Expr<A>> {
     let arg = Expr::new(ErasedExpr::Var(ScopedHandle::fun_arg(0)));
-    let ret_ty = R::RET_TYPE;
-    let mut erased = ErasedFun::new(ret_ty, vec![A::TYPE]);
 
-    self(&mut erased.scope, arg);
+    let mut scope = Scope::new(0);
+    let ret = self(&mut scope, arg);
+
+    let erased = ErasedFun::new(vec![A::TYPE], scope.erased, ret.into());
 
     FunDef::new(erased)
   }
@@ -770,7 +862,7 @@ pub struct FunExpr<R, A> {
   _phantom: PhantomData<(R, A)>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct FunDef<R, A> {
   erased: ErasedFun,
   _phantom: PhantomData<(R, A)>,
@@ -785,49 +877,57 @@ impl<R, A> FunDef<R, A> {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct ErasedFun {
-  ret_ty: RetType,
   args: Vec<Type>,
-  scope: Scope,
+  scope: ErasedScope,
+  ret: Return,
 }
 
 impl ErasedFun {
-  fn new(ret_ty: RetType, args: Vec<Type>) -> Self {
-    Self {
-      ret_ty,
-      args,
-      scope: Scope::new(0),
-    }
+  fn new(args: Vec<Type>, scope: ErasedScope, ret: Return) -> Self {
+    Self { args, scope, ret }
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Scope {
-  id: u16,
-  instructions: Vec<ScopeInstr>,
-  next_var: u16,
+#[derive(Clone, Debug)]
+pub struct Scope<R> {
+  erased: ErasedScope,
+  _phantom: PhantomData<R>,
 }
 
-impl Scope {
+impl<R> Scope<R>
+where
+  Return: From<R>,
+{
   fn new(id: u16) -> Self {
     Self {
-      id,
-      instructions: Vec::new(),
-      next_var: 0,
+      erased: ErasedScope::new(id),
+      _phantom: PhantomData,
     }
   }
+
+  fn deeper<Q>(&self) -> Scope<Q>
+  where
+    Return: From<Q>,
+  {
+    Scope::new(self.erased.id + 1)
+  }
+
+  // pub fn pure(&mut self, out: R) {
+  //   self.instructions.push(ScopeInstr::Return(out.into()))
+  // }
 
   pub fn var<T>(&mut self, init_value: impl Into<Expr<T>>) -> Var<T>
   where
     T: ToType,
   {
-    let n = self.next_var;
-    let handle = ScopedHandle::fun_var(self.id, n);
+    let n = self.erased.next_var;
+    let handle = ScopedHandle::fun_var(self.erased.id, n);
 
-    self.next_var += 1;
+    self.erased.next_var += 1;
 
-    self.instructions.push(ScopeInstr::VarDecl {
+    self.erased.instructions.push(ScopeInstr::VarDecl {
       ty: T::TYPE,
       handle,
       init_value: init_value.into().erased,
@@ -836,28 +936,47 @@ impl Scope {
     Var(Expr::new(ErasedExpr::Var(handle)))
   }
 
-  pub fn when<B>(
+  pub fn when<Q>(
     &mut self,
     condition: impl Into<Expr<bool>>,
-    body: impl FnOnce(&mut Scope) -> Expr<B>,
-  ) -> Expr<B> {
-    let mut scope = Scope::new(self.id + 1);
+    body: impl FnOnce(&mut Scope<Q>) -> Q,
+  ) -> Q
+  where
+    Return: From<Q>,
+  {
+    let mut scope = self.deeper();
     let ret = body(&mut scope);
 
-    self.instructions.push(ScopeInstr::If {
-      condition: condition.into(),
-      scope,
+    self.erased.instructions.push(ScopeInstr::If {
+      condition: condition.into().erased,
+      scope: scope.erased,
     });
 
     ret
   }
 
-  pub fn unless<B>(
-    &mut self,
-    condition: impl Into<Expr<bool>>,
-    body: impl FnOnce(&mut Scope) -> Expr<B>,
-  ) -> Expr<B> {
-    self.when(!condition.into(), body)
+  pub fn unless<Q>(&mut self, condition: Expr<bool>, body: impl FnOnce(&mut Scope<Q>) -> Q) -> Q
+  where
+    Return: From<Q>,
+  {
+    self.when(!condition, body)
+  }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct ErasedScope {
+  id: u16,
+  instructions: Vec<ScopeInstr>,
+  next_var: u16,
+}
+
+impl ErasedScope {
+  fn new(id: u16) -> Self {
+    Self {
+      id,
+      instructions: Vec::new(),
+      next_var: 0,
+    }
   }
 }
 
@@ -865,7 +984,7 @@ impl Scope {
 pub struct Var<T>(pub Expr<T>);
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-enum ScopedHandle {
+pub enum ScopedHandle {
   Global(u16),
   FunArg(u16),
   FunVar { subscope: u16, handle: u16 },
@@ -893,9 +1012,11 @@ enum ScopeInstr {
     init_value: ErasedExpr,
   },
 
+  Return(Return),
+
   If {
-    condition: Expr<bool>,
-    scope: Scope,
+    condition: ErasedExpr,
+    scope: ErasedScope,
   },
 }
 
@@ -1139,128 +1260,125 @@ mod tests {
 
   #[test]
   fn expr_unary() {
-    let mut scope = Scope::new(0);
+    let mut scope = Scope::<()>::new(0);
 
     let a = !lit!(true);
-    let b = -lit!(3);
+    let b = -lit!(3i32);
     let Var(c) = scope.var(17);
 
     assert_eq!(
-      a,
-      Expr::new(ErasedExpr::Not(Box::new(ErasedExpr::LitBool(true))))
+      a.erased,
+      ErasedExpr::Not(Box::new(ErasedExpr::LitBool(true)))
     );
-    assert_eq!(
-      b,
-      Expr::new(ErasedExpr::Neg(Box::new(ErasedExpr::LitInt(3))))
-    );
-    assert_eq!(c, Expr::new(ErasedExpr::Var(ScopedHandle::fun_var(0, 0))));
+    assert_eq!(b.erased, ErasedExpr::Neg(Box::new(ErasedExpr::LitInt(3))));
+    assert_eq!(c.erased, ErasedExpr::Var(ScopedHandle::fun_var(0, 0)));
   }
 
   #[test]
   fn expr_binary() {
-    let a = lit!(1) + lit!(2);
-    let b = lit!(1) + 2;
+    let a = lit!(1i32) + lit!(2);
+    let b = lit!(1i32) + 2;
 
-    assert_eq!(a, b);
+    assert_eq!(a.erased, b.erased);
     assert_eq!(
-      a,
-      Expr::new(ErasedExpr::Add(
+      a.erased,
+      ErasedExpr::Add(
         Box::new(ErasedExpr::LitInt(1)),
         Box::new(ErasedExpr::LitInt(2))
-      ))
+      )
     );
     assert_eq!(
-      b,
-      Expr::new(ErasedExpr::Add(
+      b.erased,
+      ErasedExpr::Add(
         Box::new(ErasedExpr::LitInt(1)),
         Box::new(ErasedExpr::LitInt(2))
-      ))
+      )
     );
 
-    let a = lit!(1) - lit!(2);
-    let b = lit!(1) - 2;
+    let a = lit!(1i32) - lit!(2);
+    let b = lit!(1i32) - 2;
 
-    assert_eq!(a, b);
+    assert_eq!(a.erased, b.erased);
     assert_eq!(
-      a,
-      Expr::new(ErasedExpr::Sub(
+      a.erased,
+      ErasedExpr::Sub(
         Box::new(ErasedExpr::LitInt(1)),
         Box::new(ErasedExpr::LitInt(2))
-      ))
+      )
     );
     assert_eq!(
-      b,
-      Expr::new(ErasedExpr::Sub(
+      b.erased,
+      ErasedExpr::Sub(
         Box::new(ErasedExpr::LitInt(1)),
         Box::new(ErasedExpr::LitInt(2))
-      ))
+      )
     );
 
-    let a = lit!(1) * lit!(2);
-    let b = lit!(1) * 2;
+    let a = lit!(1i32) * lit!(2);
+    let b = lit!(1i32) * 2;
 
-    assert_eq!(a, b);
+    assert_eq!(a.erased, b.erased);
     assert_eq!(
-      a,
-      Expr::new(ErasedExpr::Mul(
+      a.erased,
+      ErasedExpr::Mul(
         Box::new(ErasedExpr::LitInt(1)),
         Box::new(ErasedExpr::LitInt(2))
-      ))
+      )
     );
     assert_eq!(
-      b,
-      Expr::new(ErasedExpr::Mul(
+      b.erased,
+      ErasedExpr::Mul(
         Box::new(ErasedExpr::LitInt(1)),
         Box::new(ErasedExpr::LitInt(2))
-      ))
+      )
     );
 
-    let a = lit!(1) / lit!(2);
-    let b = lit!(1) / 2;
+    let a = lit!(1i32) / lit!(2);
+    let b = lit!(1i32) / 2;
 
-    assert_eq!(a, b);
+    assert_eq!(a.erased, b.erased);
     assert_eq!(
-      a,
-      Expr::new(ErasedExpr::Div(
+      a.erased,
+      ErasedExpr::Div(
         Box::new(ErasedExpr::LitInt(1)),
         Box::new(ErasedExpr::LitInt(2))
-      ))
+      )
     );
     assert_eq!(
-      b,
-      Expr::new(ErasedExpr::Div(
+      b.erased,
+      ErasedExpr::Div(
         Box::new(ErasedExpr::LitInt(1)),
         Box::new(ErasedExpr::LitInt(2))
-      ))
+      )
     );
   }
 
   #[test]
   fn expr_ref_inference() {
-    let a = lit!(1);
+    let a = lit!(1i32);
     let b = a.clone() + 1;
     let c = a + 1;
 
-    assert_eq!(b, c);
+    assert_eq!(b.erased, c.erased);
   }
 
   #[test]
   fn expr_var() {
-    let mut scope = Scope::new(0);
+    let mut scope = Scope::<()>::new(0);
 
     let Var(x) = scope.var(0);
     let Var(y) = scope.var(1u32);
     let Var(z) = scope.var([false, true, false]);
 
-    assert_eq!(x, Expr::new(ErasedExpr::Var(ScopedHandle::fun_var(0, 0))));
-    assert_eq!(y, Expr::new(ErasedExpr::Var(ScopedHandle::fun_var(0, 1))));
+    assert_eq!(x.erased, ErasedExpr::Var(ScopedHandle::fun_var(0, 0)));
+    assert_eq!(y.erased, ErasedExpr::Var(ScopedHandle::fun_var(0, 1)));
     assert_eq!(
-      z,
-      Expr::new(ErasedExpr::Var(ScopedHandle::fun_var(0, 2).into()))
+      z.erased,
+      ErasedExpr::Var(ScopedHandle::fun_var(0, 2).into())
     );
-    assert_eq!(scope.instructions.len(), 3);
+    assert_eq!(scope.erased.instructions.len(), 3);
     assert_eq!(
-      scope.instructions[0],
+      scope.erased.instructions[0],
       ScopeInstr::VarDecl {
         ty: Type {
           prim_ty: PrimType::Int(Dim::Scalar),
@@ -1271,7 +1389,7 @@ mod tests {
       }
     );
     assert_eq!(
-      scope.instructions[1],
+      scope.erased.instructions[1],
       ScopeInstr::VarDecl {
         ty: Type {
           prim_ty: PrimType::UInt(Dim::Scalar),
@@ -1282,7 +1400,7 @@ mod tests {
       }
     );
     assert_eq!(
-      scope.instructions[2],
+      scope.erased.instructions[2],
       ScopeInstr::VarDecl {
         ty: Type {
           prim_ty: PrimType::Bool(Dim::D3),
@@ -1296,29 +1414,29 @@ mod tests {
 
   #[test]
   fn min_max_clamp() {
-    let a = lit!(1);
+    let a = lit!(1i32);
     let b = lit!(2);
     let c = lit!(3);
 
     assert_eq!(
-      a.min(&b),
-      Expr::new(ErasedExpr::FunCall(
+      a.min(&b).erased,
+      ErasedExpr::FunCall(
         ErasedFunHandle::Min,
         vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)]
-      ))
+      )
     );
 
     assert_eq!(
-      a.max(&b),
-      Expr::new(ErasedExpr::FunCall(
+      a.max(&b).erased,
+      ErasedExpr::FunCall(
         ErasedFunHandle::Max,
         vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)]
-      ))
+      )
     );
 
     assert_eq!(
-      a.clamp(b, c),
-      Expr::new(ErasedExpr::FunCall(
+      a.clamp(b, c).erased,
+      ErasedExpr::FunCall(
         ErasedFunHandle::Max,
         vec![
           ErasedExpr::FunCall(
@@ -1327,14 +1445,14 @@ mod tests {
           ),
           ErasedExpr::LitInt(2),
         ]
-      ))
+      )
     );
   }
 
   #[test]
   fn fun0() {
     let mut shader = Shader::new();
-    let fun = shader.fun(|s: &mut Scope| {
+    let fun = shader.fun(|s: &mut Scope<()>| {
       let _x = s.var(3);
     });
 
@@ -1342,7 +1460,7 @@ mod tests {
 
     match shader.decls[0] {
       ShaderDecl::FunDef(ref fun) => {
-        assert_eq!(fun.ret_ty, RetType::Void);
+        assert_eq!(fun.ret, Return::Void);
         assert_eq!(fun.args, vec![]);
         assert_eq!(fun.scope.instructions.len(), 1);
         assert_eq!(
@@ -1364,15 +1482,15 @@ mod tests {
   #[test]
   fn fun1() {
     let mut shader = Shader::new();
-    let fun: FunHandle<(), i32> = shader.fun(|f: &mut Scope, _arg| {
-      let _x = f.var(3);
+    let fun = shader.fun(|f: &mut Scope<()>, _arg: Expr<i32>| {
+      let x = f.var(3);
     });
 
     assert_eq!(fun.erased, ErasedFunHandle::UserDefined(0));
 
     match shader.decls[0] {
       ShaderDecl::FunDef(ref fun) => {
-        assert_eq!(fun.ret_ty, RetType::Void);
+        assert_eq!(fun.ret, Return::Void);
         assert_eq!(
           fun.args,
           vec![Type {
@@ -1399,7 +1517,7 @@ mod tests {
 
   #[test]
   fn swizzling() {
-    let mut scope = Scope::new(0);
+    let mut scope = Scope::<()>::new(0);
     let Var(foo) = scope.var([1, 2]);
     let foo_xy = sw!(foo, .x.y);
     let foo_xx = sw!(foo, .x.x);
@@ -1421,15 +1539,13 @@ mod tests {
     );
   }
 
-  // #[test]
-  // fn when() {
-  //   let mut s = Scope::new(0);
+  #[test]
+  fn when() {
+    let mut s = Scope::<()>::new(0);
 
-  //   let Var(x) = s.var(1);
-  //   let ret = s.when(x.eq(&lit!(2)), |s| {
-  //     let Var(y) = s.var(lit![1., 2., 3., 4.]);
-
-  //   }
-
-  // }
+    let Var(x) = s.var(1);
+    let ret = s.when(x.eq(lit!(2)), |s| {
+      let Var(y) = s.var(lit![1., 2., 3., 4.]);
+    });
+  }
 }
