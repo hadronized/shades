@@ -1482,8 +1482,9 @@ mod tests {
   #[test]
   fn fun1() {
     let mut shader = Shader::new();
-    let fun = shader.fun(|f: &mut Scope<()>, _arg: Expr<i32>| {
-      let x = f.var(3);
+    let fun = shader.fun(|f: &mut Scope<Expr<i32>>, _arg: Expr<i32>| {
+      let Var(x) = f.var(3i32);
+      x
     });
 
     assert_eq!(fun.erased, ErasedFunHandle::UserDefined(0));
