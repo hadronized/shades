@@ -943,21 +943,24 @@ where
       .push(ScopeInstr::Return(ret.into()));
   }
 
+  pub fn abort(&mut self) {
+    self
+      .erased
+      .instructions
+      .push(ScopeInstr::Return(Return::Void));
+  }
+
   pub fn when<'a>(
     &'a mut self,
     condition: impl Into<Expr<bool>>,
-    body: impl FnOnce(&mut Scope<R>) -> R,
-  ) -> When<'a, R>
-  where
-    Return: From<R>,
-  {
+    body: impl FnOnce(&mut Scope<R>),
+  ) -> When<'a, R> {
     let mut scope = self.deeper();
-    let ret = body(&mut scope).into();
+    body(&mut scope);
 
     self.erased.instructions.push(ScopeInstr::If {
       condition: condition.into().erased,
       scope: scope.erased,
-      ret,
     });
 
     When { parent_scope: self }
