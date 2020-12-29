@@ -914,10 +914,6 @@ where
     Scope::new(self.erased.id + 1)
   }
 
-  // pub fn pure(&mut self, out: R) {
-  //   self.instructions.push(ScopeInstr::Return(out.into()))
-  // }
-
   pub fn var<T>(&mut self, init_value: impl Into<Expr<T>>) -> Var<T>
   where
     T: ToType,
@@ -943,21 +939,24 @@ where
       .push(ScopeInstr::Return(ret.into()));
   }
 
+  pub fn abort(&mut self) {
+    self
+      .erased
+      .instructions
+      .push(ScopeInstr::Return(Return::Void));
+  }
+
   pub fn when<'a>(
     &'a mut self,
     condition: impl Into<Expr<bool>>,
-    body: impl FnOnce(&mut Scope<R>) -> R,
-  ) -> When<'a, R>
-  where
-    Return: From<R>,
-  {
+    body: impl FnOnce(&mut Scope<R>),
+  ) -> When<'a, R> {
     let mut scope = self.deeper();
-    let ret = body(&mut scope).into();
+    body(&mut scope);
 
     self.erased.instructions.push(ScopeInstr::If {
       condition: condition.into().erased,
       scope: scope.erased,
-      ret,
     });
 
     When { parent_scope: self }
@@ -966,11 +965,8 @@ where
   pub fn unless<'a>(
     &'a mut self,
     condition: impl Into<Expr<bool>>,
-    body: impl FnOnce(&mut Scope<R>) -> R,
-  ) -> When<'a, R>
-  where
-    Return: From<R>,
-  {
+    body: impl FnOnce(&mut Scope<R>),
+  ) -> When<'a, R> {
     self.when(!condition.into(), body)
   }
 }
@@ -1004,13 +1000,9 @@ impl<R> When<'_, R>
 where
   Return: From<R>,
 {
-  pub fn or_else(
-    self,
-    condition: impl Into<Expr<bool>>,
-    body: impl FnOnce(&mut Scope<R>) -> R,
-  ) -> Self {
+  pub fn or_else(self, condition: impl Into<Expr<bool>>, body: impl FnOnce(&mut Scope<R>)) -> Self {
     let mut scope = self.parent_scope.deeper();
-    let ret = body(&mut scope).into();
+    body(&mut scope);
 
     self
       .parent_scope
@@ -1019,15 +1011,14 @@ where
       .push(ScopeInstr::ElseIf {
         condition: condition.into().erased,
         scope: scope.erased,
-        ret,
       });
 
     self
   }
 
-  pub fn or(self, body: impl FnOnce(&mut Scope<R>) -> R) {
+  pub fn or(self, body: impl FnOnce(&mut Scope<R>)) {
     let mut scope = self.parent_scope.deeper();
-    let ret = body(&mut scope).into();
+    body(&mut scope);
 
     self
       .parent_scope
@@ -1035,7 +1026,6 @@ where
       .instructions
       .push(ScopeInstr::Else {
         scope: scope.erased,
-        ret,
       });
   }
 }
@@ -1077,18 +1067,15 @@ enum ScopeInstr {
   If {
     condition: ErasedExpr,
     scope: ErasedScope,
-    ret: Return,
   },
 
   ElseIf {
     condition: ErasedExpr,
     scope: ErasedScope,
-    ret: Return,
   },
 
   Else {
     scope: ErasedScope,
-    ret: Return,
   },
 }
 
@@ -1617,12 +1604,14 @@ mod tests {
     let mut s = Scope::<Expr<[f32; 4]>>::new(0);
 
     let Var(x) = s.var(1);
-    let ret = s.when(x.eq(lit!(2)), |s| {
+    s.when(x.eq(lit!(2)), |s| {
       let Var(y) = s.var(lit![1., 2., 3., 4.]);
-      y
-    });
+      s.leave(y);
+    })
+    .or_else(x.eq(lit!(0)), |s| s.leave(lit!([0., 0., 0., 0.])))
+    .or(|_| ());
 
-    assert_eq!(s.erased.instructions.len(), 2);
+    assert_eq!(s.erased.instructions.len(), 4);
 
     assert_eq!(
       s.erased.instructions[0],
@@ -1636,6 +1625,7 @@ mod tests {
       }
     );
 
+    // if
     let mut scope = ErasedScope::new(1);
     scope.next_var = 1;
     scope.instructions.push(ScopeInstr::VarDecl {
@@ -1646,6 +1636,11 @@ mod tests {
       handle: ScopedHandle::fun_var(1, 0),
       init_value: ErasedExpr::LitFloat4([1., 2., 3., 4.]),
     });
+    scope
+      .instructions
+      .push(ScopeInstr::Return(Return::Expr(ErasedExpr::Var(
+        ScopedHandle::fun_var(1, 0),
+      ))));
 
     assert_eq!(
       s.erased.instructions[1],
@@ -1655,7 +1650,33 @@ mod tests {
           Box::new(ErasedExpr::LitInt(2))
         ),
         scope,
-        ret: Return::Expr(ErasedExpr::Var(ScopedHandle::fun_var(1, 0)))
+      }
+    );
+
+    // else if
+    let mut scope = ErasedScope::new(1);
+    scope
+      .instructions
+      .push(ScopeInstr::Return(Return::Expr(ErasedExpr::LitFloat4([
+        0., 0., 0., 0.,
+      ]))));
+
+    assert_eq!(
+      s.erased.instructions[2],
+      ScopeInstr::ElseIf {
+        condition: ErasedExpr::Eq(
+          Box::new(ErasedExpr::Var(ScopedHandle::fun_var(0, 0))),
+          Box::new(ErasedExpr::LitInt(0))
+        ),
+        scope,
+      }
+    );
+
+    // else
+    assert_eq!(
+      s.erased.instructions[3],
+      ScopeInstr::Else {
+        scope: ErasedScope::new(1)
       }
     );
   }
