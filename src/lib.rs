@@ -936,30 +936,42 @@ where
     Var(Expr::new(ErasedExpr::Var(handle)))
   }
 
-  pub fn when<Q>(
-    &mut self,
+  pub fn leave(&mut self, ret: R) {
+    self
+      .erased
+      .instructions
+      .push(ScopeInstr::Return(ret.into()));
+  }
+
+  pub fn when<'a>(
+    &'a mut self,
     condition: impl Into<Expr<bool>>,
-    body: impl FnOnce(&mut Scope<Q>) -> Q,
-  ) -> Q
+    body: impl FnOnce(&mut Scope<R>) -> R,
+  ) -> When<'a, R>
   where
-    Return: From<Q>,
+    Return: From<R>,
   {
     let mut scope = self.deeper();
-    let ret = body(&mut scope);
+    let ret = body(&mut scope).into();
 
     self.erased.instructions.push(ScopeInstr::If {
       condition: condition.into().erased,
       scope: scope.erased,
+      ret,
     });
 
-    ret
+    When { parent_scope: self }
   }
 
-  pub fn unless<Q>(&mut self, condition: Expr<bool>, body: impl FnOnce(&mut Scope<Q>) -> Q) -> Q
+  pub fn unless<'a>(
+    &'a mut self,
+    condition: impl Into<Expr<bool>>,
+    body: impl FnOnce(&mut Scope<R>) -> R,
+  ) -> When<'a, R>
   where
-    Return: From<Q>,
+    Return: From<R>,
   {
-    self.when(!condition, body)
+    self.when(!condition.into(), body)
   }
 }
 
@@ -977,6 +989,54 @@ impl ErasedScope {
       instructions: Vec::new(),
       next_var: 0,
     }
+  }
+}
+
+pub struct When<'a, R> {
+  /// The scope from which this [`When`] expression comes from.
+  ///
+  /// This will be handy if we want to chain this when with others (corresponding to `else if` and `else`, for
+  /// instance).
+  parent_scope: &'a mut Scope<R>,
+}
+
+impl<R> When<'_, R>
+where
+  Return: From<R>,
+{
+  pub fn or_else(
+    self,
+    condition: impl Into<Expr<bool>>,
+    body: impl FnOnce(&mut Scope<R>) -> R,
+  ) -> Self {
+    let mut scope = self.parent_scope.deeper();
+    let ret = body(&mut scope).into();
+
+    self
+      .parent_scope
+      .erased
+      .instructions
+      .push(ScopeInstr::ElseIf {
+        condition: condition.into().erased,
+        scope: scope.erased,
+        ret,
+      });
+
+    self
+  }
+
+  pub fn or(self, body: impl FnOnce(&mut Scope<R>) -> R) {
+    let mut scope = self.parent_scope.deeper();
+    let ret = body(&mut scope).into();
+
+    self
+      .parent_scope
+      .erased
+      .instructions
+      .push(ScopeInstr::Else {
+        scope: scope.erased,
+        ret,
+      });
   }
 }
 
@@ -1017,6 +1077,18 @@ enum ScopeInstr {
   If {
     condition: ErasedExpr,
     scope: ErasedScope,
+    ret: Return,
+  },
+
+  ElseIf {
+    condition: ErasedExpr,
+    scope: ErasedScope,
+    ret: Return,
+  },
+
+  Else {
+    scope: ErasedScope,
+    ret: Return,
   },
 }
 
@@ -1542,11 +1614,49 @@ mod tests {
 
   #[test]
   fn when() {
-    let mut s = Scope::<()>::new(0);
+    let mut s = Scope::<Expr<[f32; 4]>>::new(0);
 
     let Var(x) = s.var(1);
     let ret = s.when(x.eq(lit!(2)), |s| {
       let Var(y) = s.var(lit![1., 2., 3., 4.]);
+      y
     });
+
+    assert_eq!(s.erased.instructions.len(), 2);
+
+    assert_eq!(
+      s.erased.instructions[0],
+      ScopeInstr::VarDecl {
+        ty: Type {
+          prim_ty: PrimType::Int(Dim::Scalar),
+          array_spec: None,
+        },
+        handle: ScopedHandle::fun_var(0, 0),
+        init_value: ErasedExpr::LitInt(1)
+      }
+    );
+
+    let mut scope = ErasedScope::new(1);
+    scope.next_var = 1;
+    scope.instructions.push(ScopeInstr::VarDecl {
+      ty: Type {
+        prim_ty: PrimType::Float(Dim::D4),
+        array_spec: None,
+      },
+      handle: ScopedHandle::fun_var(1, 0),
+      init_value: ErasedExpr::LitFloat4([1., 2., 3., 4.]),
+    });
+
+    assert_eq!(
+      s.erased.instructions[1],
+      ScopeInstr::If {
+        condition: ErasedExpr::Eq(
+          Box::new(ErasedExpr::Var(ScopedHandle::fun_var(0, 0))),
+          Box::new(ErasedExpr::LitInt(2))
+        ),
+        scope,
+        ret: Return::Expr(ErasedExpr::Var(ScopedHandle::fun_var(1, 0)))
+      }
+    );
   }
 }
