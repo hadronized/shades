@@ -113,10 +113,22 @@ pub enum ErasedExpr {
   Swizzle(Box<Self>, Swizzle),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Expr<T> {
   erased: ErasedExpr,
   _phantom: PhantomData<T>,
+}
+
+impl<T> Clone for Expr<T> {
+  fn clone(&self) -> Self {
+    Self::new(self.erased.clone())
+  }
+}
+
+impl<T> From<&'_ Self> for Expr<T> {
+  fn from(e: &Self) -> Self {
+    e.clone()
+  }
 }
 
 impl<T> Expr<T> {
@@ -932,11 +944,11 @@ where
     Var(Expr::new(ErasedExpr::Var(handle)))
   }
 
-  pub fn leave(&mut self, ret: R) {
+  pub fn leave(&mut self, ret: impl Into<R>) {
     self
       .erased
       .instructions
-      .push(ScopeInstr::Return(ret.into()));
+      .push(ScopeInstr::Return(ret.into().into()));
   }
 
   pub fn abort(&mut self) {
