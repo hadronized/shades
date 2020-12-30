@@ -113,10 +113,22 @@ pub enum ErasedExpr {
   Swizzle(Box<Self>, Swizzle),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Expr<T> {
   erased: ErasedExpr,
   _phantom: PhantomData<T>,
+}
+
+impl<T> Clone for Expr<T> {
+  fn clone(&self) -> Self {
+    Self::new(self.erased.clone())
+  }
+}
+
+impl<T> From<&'_ Self> for Expr<T> {
+  fn from(e: &Self) -> Self {
+    e.clone()
+  }
 }
 
 impl<T> Expr<T> {
@@ -932,11 +944,11 @@ where
     Var(Expr::new(ErasedExpr::Var(handle)))
   }
 
-  pub fn leave(&mut self, ret: R) {
+  pub fn leave(&mut self, ret: impl Into<R>) {
     self
       .erased
       .instructions
-      .push(ScopeInstr::Return(ret.into()));
+      .push(ScopeInstr::Return(ret.into().into()));
   }
 
   pub fn abort(&mut self) {
@@ -968,6 +980,50 @@ where
     body: impl FnOnce(&mut Scope<R>),
   ) -> When<'a, R> {
     self.when(!condition.into(), body)
+  }
+
+  pub fn loop_for<T>(
+    &mut self,
+    init_value: impl Into<Expr<T>>,
+    condition: impl FnOnce(&Expr<T>) -> Expr<bool>,
+    iter_fold: impl FnOnce(&Expr<T>) -> Expr<T>,
+    body: impl FnOnce(&mut Scope<R>, &Expr<T>),
+  ) where
+    T: ToType,
+  {
+    let mut scope = self.deeper();
+
+    // bind the init value so that it’s available in all closures
+    let Var(init_expr) = scope.var(init_value);
+
+    let condition = condition(&init_expr);
+
+    // generate the “post expr”, which is basically the free from of the third part of the for loop; people usually
+    // set this to ++i, i++, etc., but in our case, the expression is to treat as a fold’s accumulator
+    let post_expr = iter_fold(&init_expr);
+
+    body(&mut scope, &init_expr);
+
+    self.erased.instructions.push(ScopeInstr::For {
+      init_expr: init_expr.erased,
+      condition: condition.erased,
+      post_expr: post_expr.erased,
+      scope: scope.erased,
+    });
+  }
+
+  pub fn loop_while(&mut self, condition: impl Into<Expr<bool>>, body: impl FnOnce(&mut Scope<R>)) {
+    let mut scope = self.deeper();
+    body(&mut scope);
+
+    self.erased.instructions.push(ScopeInstr::While {
+      condition: condition.into().erased,
+      scope: scope.erased,
+    });
+  }
+
+  pub fn loop_continue(&mut self) {
+    self.erased.instructions.push(ScopeInstr::Continue);
   }
 }
 
@@ -1064,6 +1120,8 @@ enum ScopeInstr {
 
   Return(Return),
 
+  Continue,
+
   If {
     condition: ErasedExpr,
     scope: ErasedScope,
@@ -1075,6 +1133,18 @@ enum ScopeInstr {
   },
 
   Else {
+    scope: ErasedScope,
+  },
+
+  For {
+    init_expr: ErasedExpr,
+    condition: ErasedExpr,
+    post_expr: ErasedExpr,
+    scope: ErasedScope,
+  },
+
+  While {
+    condition: ErasedExpr,
     scope: ErasedScope,
   },
 }
@@ -1677,6 +1747,76 @@ mod tests {
       s.erased.instructions[3],
       ScopeInstr::Else {
         scope: ErasedScope::new(1)
+      }
+    );
+  }
+
+  #[test]
+  fn for_loop() {
+    let mut scope: Scope<Expr<i32>> = Scope::new(0);
+
+    scope.loop_for(
+      0,
+      |a| a.lt(lit!(10)),
+      |a| a + 1,
+      |s, a| {
+        s.leave(a);
+      },
+    );
+
+    assert_eq!(scope.erased.instructions.len(), 1);
+
+    let mut loop_scope = ErasedScope::new(1);
+    loop_scope.next_var = 1;
+    loop_scope.instructions.push(ScopeInstr::VarDecl {
+      ty: Type {
+        prim_ty: PrimType::Int(Dim::Scalar),
+        array_spec: None,
+      },
+      handle: ScopedHandle::fun_var(1, 0),
+      init_value: ErasedExpr::LitInt(0),
+    });
+    loop_scope
+      .instructions
+      .push(ScopeInstr::Return(Return::Expr(ErasedExpr::Var(
+        ScopedHandle::fun_var(1, 0),
+      ))));
+
+    assert_eq!(
+      scope.erased.instructions[0],
+      ScopeInstr::For {
+        init_expr: ErasedExpr::Var(ScopedHandle::fun_var(1, 0)),
+        condition: ErasedExpr::Lt(
+          Box::new(ErasedExpr::Var(ScopedHandle::fun_var(1, 0))),
+          Box::new(ErasedExpr::LitInt(10))
+        ),
+        post_expr: ErasedExpr::Add(
+          Box::new(ErasedExpr::Var(ScopedHandle::fun_var(1, 0))),
+          Box::new(ErasedExpr::LitInt(1))
+        ),
+        scope: loop_scope
+      }
+    );
+  }
+
+  #[test]
+  fn while_loop() {
+    let mut scope: Scope<Expr<i32>> = Scope::new(0);
+
+    scope.loop_while(lit!(1).lt(lit!(2)), Scope::loop_continue);
+
+    let mut loop_scope = ErasedScope::new(1);
+    loop_scope.instructions.push(ScopeInstr::Continue);
+
+    assert_eq!(scope.erased.instructions.len(), 1);
+    assert_eq!(
+      scope.erased.instructions[0],
+      ScopeInstr::While {
+        condition: ErasedExpr::Lt(
+          Box::new(ErasedExpr::LitInt(1)),
+          Box::new(ErasedExpr::LitInt(2))
+        ),
+        scope: loop_scope
       }
     );
   }
