@@ -1,18 +1,22 @@
 use std::{marker::PhantomData, ops};
 
 #[derive(Debug)]
-pub struct Shader {
+pub struct Shader<S> {
   decls: Vec<ShaderDecl>,
+  _phantom: PhantomData<S>,
 }
 
-impl Shader {
+impl<S> Shader<S> {
   pub fn new() -> Self {
-    Self { decls: Vec::new() }
+    Self {
+      decls: Vec::new(),
+      _phantom: PhantomData,
+    }
   }
 
-  pub fn fun<F, R, A>(&mut self, f: F) -> FunHandle<R, A>
+  pub fn fun<F, R, A>(&mut self, f: F) -> FunHandle<S, R, A>
   where
-    F: ToFun<R, A>,
+    F: ToFun<S, R, A>,
   {
     let fundef = f.build_fn();
     let handle = self.decls.len();
@@ -25,7 +29,7 @@ impl Shader {
     }
   }
 
-  pub fn constant<T>(&mut self, expr: Expr<T>) -> Var<T>
+  pub fn constant<T>(&mut self, expr: Expr<S, T>) -> Var<S, T>
   where
     T: ToType,
   {
@@ -35,7 +39,7 @@ impl Shader {
     Var(Expr::new(ErasedExpr::Var(ScopedHandle::global(n))))
   }
 
-  pub fn input<T>(&mut self) -> Var<T>
+  pub fn input<T>(&mut self) -> Var<S, T>
   where
     T: ToType,
   {
@@ -45,7 +49,7 @@ impl Shader {
     Var(Expr::new(ErasedExpr::Var(ScopedHandle::global(n))))
   }
 
-  pub fn output<T>(&mut self) -> Var<T>
+  pub fn output<T>(&mut self) -> Var<S, T>
   where
     T: ToType,
   {
@@ -114,252 +118,126 @@ pub enum ErasedExpr {
 }
 
 #[derive(Debug)]
-pub struct Expr<T> {
+pub struct Expr<S, T> {
   erased: ErasedExpr,
-  _phantom: PhantomData<T>,
+  _phantom: PhantomData<(S, T)>,
 }
 
-impl<T> Clone for Expr<T> {
+impl<S, T> From<&'_ Self> for Expr<S, T> {
+  fn from(e: &Self) -> Self {
+    Self::new(e.erased.clone())
+  }
+}
+
+impl<T> Clone for Expr<(), T> {
   fn clone(&self) -> Self {
     Self::new(self.erased.clone())
   }
 }
 
-impl<T> From<&'_ Self> for Expr<T> {
-  fn from(e: &Self) -> Self {
-    e.clone()
-  }
-}
-
-impl<T> Expr<T> {
+impl<S, T> Expr<S, T> {
   fn new(erased: ErasedExpr) -> Self {
     Self {
       erased,
       _phantom: PhantomData,
     }
   }
-}
 
-pub trait Eq<RHS> {
-  fn eq(&self, rhs: RHS) -> Expr<bool>;
-
-  fn neq(&self, rhs: RHS) -> Expr<bool>;
-}
-
-impl<T> Eq<Expr<T>> for Expr<T> {
-  fn eq(&self, rhs: Expr<T>) -> Expr<bool> {
+  pub fn eq(&self, rhs: impl Into<Expr<S, T>>) -> Expr<S, bool> {
     Expr::new(ErasedExpr::Eq(
       Box::new(self.erased.clone()),
-      Box::new(rhs.erased),
+      Box::new(rhs.into().erased),
     ))
   }
 
-  fn neq(&self, rhs: Expr<T>) -> Expr<bool> {
+  pub fn neq(&self, rhs: impl Into<Expr<S, T>>) -> Expr<S, bool> {
     Expr::new(ErasedExpr::Neq(
       Box::new(self.erased.clone()),
-      Box::new(rhs.erased),
+      Box::new(rhs.into().erased),
     ))
   }
 }
 
-impl<'a, T> Eq<&'a Expr<T>> for Expr<T> {
-  fn eq(&self, rhs: &'a Expr<T>) -> Expr<bool> {
-    Expr::new(ErasedExpr::Eq(
-      Box::new(self.erased.clone()),
-      Box::new(rhs.erased.clone()),
-    ))
-  }
-
-  fn neq(&self, rhs: &'a Expr<T>) -> Expr<bool> {
-    Expr::new(ErasedExpr::Neq(
-      Box::new(self.erased.clone()),
-      Box::new(rhs.erased.clone()),
-    ))
-  }
-}
-
-pub trait Ord<RHS>: Eq<RHS> {
-  fn lt(&self, rhs: RHS) -> Expr<bool>;
-
-  fn lte(&self, rhs: RHS) -> Expr<bool>;
-
-  fn gt(&self, rhs: RHS) -> Expr<bool>;
-
-  fn gte(&self, rhs: RHS) -> Expr<bool>;
-}
-
-impl<T> Ord<Expr<T>> for Expr<T>
+impl<S, T> Expr<S, T>
 where
   T: PartialOrd,
 {
-  fn lt(&self, rhs: Expr<T>) -> Expr<bool> {
+  pub fn lt(&self, rhs: impl Into<Expr<S, T>>) -> Expr<S, bool> {
     Expr::new(ErasedExpr::Lt(
       Box::new(self.erased.clone()),
-      Box::new(rhs.erased),
+      Box::new(rhs.into().erased),
     ))
   }
 
-  fn lte(&self, rhs: Expr<T>) -> Expr<bool> {
+  pub fn lte(&self, rhs: impl Into<Expr<S, T>>) -> Expr<S, bool> {
     Expr::new(ErasedExpr::Lte(
       Box::new(self.erased.clone()),
-      Box::new(rhs.erased),
+      Box::new(rhs.into().erased),
     ))
   }
 
-  fn gt(&self, rhs: Expr<T>) -> Expr<bool> {
+  pub fn gt(&self, rhs: impl Into<Expr<S, T>>) -> Expr<S, bool> {
     Expr::new(ErasedExpr::Gt(
       Box::new(self.erased.clone()),
-      Box::new(rhs.erased),
+      Box::new(rhs.into().erased),
     ))
   }
 
-  fn gte(&self, rhs: Expr<T>) -> Expr<bool> {
+  pub fn gte(&self, rhs: impl Into<Expr<S, T>>) -> Expr<S, bool> {
     Expr::new(ErasedExpr::Gte(
       Box::new(self.erased.clone()),
-      Box::new(rhs.erased),
+      Box::new(rhs.into().erased),
     ))
   }
 }
 
-impl<'a, T> Ord<&'a Expr<T>> for Expr<T>
-where
-  T: PartialOrd,
-{
-  fn lt(&self, rhs: &'a Expr<T>) -> Expr<bool> {
-    Expr::new(ErasedExpr::Lt(
-      Box::new(self.erased.clone()),
-      Box::new(rhs.erased.clone()),
-    ))
-  }
-
-  fn lte(&self, rhs: &'a Expr<T>) -> Expr<bool> {
-    Expr::new(ErasedExpr::Lte(
-      Box::new(self.erased.clone()),
-      Box::new(rhs.erased.clone()),
-    ))
-  }
-
-  fn gt(&self, rhs: &'a Expr<T>) -> Expr<bool> {
-    Expr::new(ErasedExpr::Gt(
-      Box::new(self.erased.clone()),
-      Box::new(rhs.erased.clone()),
-    ))
-  }
-
-  fn gte(&self, rhs: &'a Expr<T>) -> Expr<bool> {
-    Expr::new(ErasedExpr::Gte(
-      Box::new(self.erased.clone()),
-      Box::new(rhs.erased.clone()),
-    ))
-  }
-}
-
-pub trait Boolean<RHS> {
-  fn and(&self, rhs: RHS) -> Self;
-
-  fn or(&self, rhs: RHS) -> Self;
-
-  fn xor(&self, rhs: RHS) -> Self;
-}
-
-impl Boolean<Expr<bool>> for Expr<bool> {
-  fn and(&self, rhs: Self) -> Self {
+impl<S> Expr<S, bool> {
+  pub fn and(&self, rhs: impl Into<Self>) -> Self {
     Self::new(ErasedExpr::And(
       Box::new(self.erased.clone()),
-      Box::new(rhs.erased),
+      Box::new(rhs.into().erased),
     ))
   }
 
-  fn or(&self, rhs: Self) -> Self {
+  pub fn or(&self, rhs: impl Into<Self>) -> Self {
     Self::new(ErasedExpr::Or(
       Box::new(self.erased.clone()),
-      Box::new(rhs.erased),
+      Box::new(rhs.into().erased),
     ))
   }
 
-  fn xor(&self, rhs: Self) -> Self {
+  pub fn xor(&self, rhs: impl Into<Self>) -> Self {
     Self::new(ErasedExpr::Xor(
       Box::new(self.erased.clone()),
-      Box::new(rhs.erased),
+      Box::new(rhs.into().erased),
     ))
   }
 }
 
-impl<'a> Boolean<&'a Self> for Expr<bool> {
-  fn and(&self, rhs: &'a Self) -> Self {
-    Self::new(ErasedExpr::And(
-      Box::new(self.erased.clone()),
-      Box::new(rhs.erased.clone()),
-    ))
+trait Bounded: Sized {
+  fn min(&self, rhs: impl Into<Self>) -> Self;
+  fn max(&self, rhs: impl Into<Self>) -> Self;
+
+  fn clamp(&self, min_value: impl Into<Self>, max_value: impl Into<Self>) -> Self {
+    self.min(max_value).max(min_value)
   }
-
-  fn or(&self, rhs: &'a Self) -> Self {
-    Self::new(ErasedExpr::Or(
-      Box::new(self.erased.clone()),
-      Box::new(rhs.erased.clone()),
-    ))
-  }
-
-  fn xor(&self, rhs: &'a Self) -> Self {
-    Self::new(ErasedExpr::Xor(
-      Box::new(self.erased.clone()),
-      Box::new(rhs.erased.clone()),
-    ))
-  }
-}
-
-trait Bounded<RHS = Self>: Sized {
-  type Target;
-
-  fn min(&self, rhs: RHS) -> Self::Target;
-  fn max(&self, rhs: RHS) -> Self::Target;
-
-  fn clamp(&self, min_value: RHS, max_value: RHS) -> Self::Target;
 }
 
 macro_rules! impl_Bounded {
   ($t:ty) => {
-    impl Bounded for Expr<$t> {
-      type Target = Self;
-
-      fn min(&self, rhs: Self) -> Self::Target {
+    impl<S> Bounded for Expr<S, $t> {
+      fn min(&self, rhs: impl Into<Self>) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Min,
-          vec![self.erased.clone(), rhs.erased],
+          vec![self.erased.clone(), rhs.into().erased],
         ))
       }
 
-      fn max(&self, rhs: Self) -> Self::Target {
+      fn max(&self, rhs: impl Into<Self>) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Max,
-          vec![self.erased.clone(), rhs.erased],
+          vec![self.erased.clone(), rhs.into().erased],
         ))
-      }
-
-      fn clamp(&self, min_value: Self, max_value: Self) -> Self::Target {
-        self.min(max_value).max(min_value)
-      }
-    }
-
-    impl<'a> Bounded<&'a Self> for Expr<$t> {
-      type Target = Self;
-
-      fn min(&self, rhs: &'a Self) -> Self::Target {
-        Expr::new(ErasedExpr::FunCall(
-          ErasedFunHandle::Min,
-          vec![self.erased.clone(), rhs.erased.clone()],
-        ))
-      }
-
-      fn max(&self, rhs: &'a Self) -> Self::Target {
-        Expr::new(ErasedExpr::FunCall(
-          ErasedFunHandle::Max,
-          vec![self.erased.clone(), rhs.erased.clone()],
-        ))
-      }
-
-      fn clamp(&self, min_value: &'a Self, max_value: &'a Self) -> Self::Target {
-        self.min(max_value).max(min_value)
       }
     }
   };
@@ -388,7 +266,7 @@ impl_Bounded!([bool; 4]);
 // not
 macro_rules! impl_Not_Expr {
   ($t:ty) => {
-    impl ops::Not for Expr<$t> {
+    impl<S> ops::Not for Expr<S, $t> {
       type Output = Self;
 
       fn not(self) -> Self::Output {
@@ -396,8 +274,8 @@ macro_rules! impl_Not_Expr {
       }
     }
 
-    impl<'a> ops::Not for &'a Expr<$t> {
-      type Output = Expr<$t>;
+    impl<'a, S> ops::Not for &'a Expr<S, $t> {
+      type Output = Expr<S, $t>;
 
       fn not(self) -> Self::Output {
         Expr::new(ErasedExpr::Not(Box::new(self.erased.clone())))
@@ -414,7 +292,7 @@ impl_Not_Expr!([bool; 4]);
 // neg
 macro_rules! impl_Neg_Expr {
   ($t:ty) => {
-    impl ops::Neg for Expr<$t> {
+    impl<S> ops::Neg for Expr<S, $t> {
       type Output = Self;
 
       fn neg(self) -> Self::Output {
@@ -422,8 +300,8 @@ macro_rules! impl_Neg_Expr {
       }
     }
 
-    impl<'a> ops::Neg for &'a Expr<$t> {
-      type Output = Expr<$t>;
+    impl<'a, S> ops::Neg for &'a Expr<S, $t> {
+      type Output = Expr<S, $t>;
 
       fn neg(self) -> Self::Output {
         Expr::new(ErasedExpr::Neg(Box::new(self.erased.clone())))
@@ -452,18 +330,18 @@ impl_Neg_Expr!([f32; 4]);
 macro_rules! impl_binop_Expr {
   ($op:ident, $meth_name:ident, $a:ty, $b:ty) => {
     // expr OP expr
-    impl<'a> ops::$op<Expr<$b>> for Expr<$a> {
-      type Output = Expr<$a>;
+    impl<'a, S> ops::$op<Expr<S, $b>> for Expr<S, $a> {
+      type Output = Expr<S, $a>;
 
-      fn $meth_name(self, rhs: Expr<$b>) -> Self::Output {
+      fn $meth_name(self, rhs: Expr<S, $b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
       }
     }
 
-    impl<'a> ops::$op<&'a Expr<$b>> for Expr<$a> {
-      type Output = Expr<$a>;
+    impl<'a, S> ops::$op<&'a Expr<S, $b>> for Expr<S, $a> {
+      type Output = Expr<S, $a>;
 
-      fn $meth_name(self, rhs: &'a Expr<$b>) -> Self::Output {
+      fn $meth_name(self, rhs: &'a Expr<S, $b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased),
           Box::new(rhs.erased.clone()),
@@ -471,10 +349,10 @@ macro_rules! impl_binop_Expr {
       }
     }
 
-    impl<'a> ops::$op<Expr<$b>> for &'a Expr<$a> {
-      type Output = Expr<$a>;
+    impl<'a, S> ops::$op<Expr<S, $b>> for &'a Expr<S, $a> {
+      type Output = Expr<S, $a>;
 
-      fn $meth_name(self, rhs: Expr<$b>) -> Self::Output {
+      fn $meth_name(self, rhs: Expr<S, $b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased.clone()),
           Box::new(rhs.erased),
@@ -482,10 +360,10 @@ macro_rules! impl_binop_Expr {
       }
     }
 
-    impl<'a> ops::$op<&'a Expr<$b>> for &'a Expr<$a> {
-      type Output = Expr<$a>;
+    impl<'a, S> ops::$op<&'a Expr<S, $b>> for &'a Expr<S, $a> {
+      type Output = Expr<S, $a>;
 
-      fn $meth_name(self, rhs: &'a Expr<$b>) -> Self::Output {
+      fn $meth_name(self, rhs: &'a Expr<S, $b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased.clone()),
           Box::new(rhs.erased.clone()),
@@ -494,20 +372,20 @@ macro_rules! impl_binop_Expr {
     }
 
     // expr OP t, where t is automatically lifted
-    impl<'a> ops::$op<$b> for Expr<$a> {
-      type Output = Expr<$a>;
+    impl<'a, S> ops::$op<$b> for Expr<S, $a> {
+      type Output = Expr<S, $a>;
 
       fn $meth_name(self, rhs: $b) -> Self::Output {
-        let rhs = Expr::from(rhs);
+        let rhs: Expr<S, $b> = rhs.into();
         Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
       }
     }
 
-    impl<'a> ops::$op<$b> for &'a Expr<$a> {
-      type Output = Expr<$a>;
+    impl<'a, S> ops::$op<$b> for &'a Expr<S, $a> {
+      type Output = Expr<S, $a>;
 
       fn $meth_name(self, rhs: $b) -> Self::Output {
-        let rhs = Expr::from(rhs);
+        let rhs: Expr<S, $b> = rhs.into();
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased.clone()),
           Box::new(rhs.erased),
@@ -583,18 +461,18 @@ impl_binarith_Expr!(Div, div);
 macro_rules! impl_binshift_Expr {
   ($op:ident, $meth_name:ident, $ty:ty) => {
     // expr OP expr
-    impl ops::$op<Expr<u32>> for Expr<$ty> {
+    impl<S> ops::$op<Expr<S, u32>> for Expr<S, $ty> {
       type Output = Self;
 
-      fn $meth_name(self, rhs: Expr<u32>) -> Self::Output {
+      fn $meth_name(self, rhs: Expr<S, u32>) -> Self::Output {
         Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
       }
     }
 
-    impl<'a> ops::$op<Expr<u32>> for &'a Expr<$ty> {
-      type Output = Expr<$ty>;
+    impl<'a, S> ops::$op<Expr<S, u32>> for &'a Expr<S, $ty> {
+      type Output = Expr<S, $ty>;
 
-      fn $meth_name(self, rhs: Expr<u32>) -> Self::Output {
+      fn $meth_name(self, rhs: Expr<S, u32>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased.clone()),
           Box::new(rhs.erased),
@@ -602,10 +480,10 @@ macro_rules! impl_binshift_Expr {
       }
     }
 
-    impl<'a> ops::$op<&'a Expr<u32>> for Expr<$ty> {
+    impl<'a, S> ops::$op<&'a Expr<S, u32>> for Expr<S, $ty> {
       type Output = Self;
 
-      fn $meth_name(self, rhs: &'a Expr<u32>) -> Self::Output {
+      fn $meth_name(self, rhs: &'a Expr<S, u32>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased),
           Box::new(rhs.erased.clone()),
@@ -613,10 +491,10 @@ macro_rules! impl_binshift_Expr {
       }
     }
 
-    impl<'a> ops::$op<&'a Expr<u32>> for &'a Expr<$ty> {
-      type Output = Expr<$ty>;
+    impl<'a, S> ops::$op<&'a Expr<S, u32>> for &'a Expr<S, $ty> {
+      type Output = Expr<S, $ty>;
 
-      fn $meth_name(self, rhs: &'a Expr<u32>) -> Self::Output {
+      fn $meth_name(self, rhs: &'a Expr<S, u32>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased.clone()),
           Box::new(rhs.erased.clone()),
@@ -625,20 +503,20 @@ macro_rules! impl_binshift_Expr {
     }
 
     // expr OP bits
-    impl ops::$op<u32> for Expr<$ty> {
+    impl<S> ops::$op<u32> for Expr<S, $ty> {
       type Output = Self;
 
       fn $meth_name(self, rhs: u32) -> Self::Output {
-        let rhs = Expr::from(rhs);
+        let rhs: Expr<S, u32> = rhs.into();
         Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
       }
     }
 
-    impl<'a> ops::$op<u32> for &'a Expr<$ty> {
-      type Output = Expr<$ty>;
+    impl<'a, S> ops::$op<u32> for &'a Expr<S, $ty> {
+      type Output = Expr<S, $ty>;
 
       fn $meth_name(self, rhs: u32) -> Self::Output {
-        let rhs = Expr::from(rhs);
+        let rhs: Expr<S, u32> = rhs.into();
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased.clone()),
           Box::new(rhs.erased),
@@ -673,7 +551,7 @@ impl_binshifts_Expr!(Shr, shr);
 
 macro_rules! impl_From_Expr_scalar {
   ($t:ty, $q:ident) => {
-    impl From<$t> for Expr<$t> {
+    impl<S> From<$t> for Expr<S, $t> {
       fn from(a: $t) -> Self {
         Self::new(ErasedExpr::$q(a))
       }
@@ -688,7 +566,7 @@ impl_From_Expr_scalar!(bool, LitBool);
 
 macro_rules! impl_From_Expr_array {
   ([$t:ty; $dim:expr], $q:ident) => {
-    impl From<[$t; $dim]> for Expr<[$t; $dim]> {
+    impl<S> From<[$t; $dim]> for Expr<S, [$t; $dim]> {
       fn from(a: [$t; $dim]) -> Self {
         Self::new(ErasedExpr::$q(a))
       }
@@ -715,19 +593,19 @@ impl_From_Expr_array!([bool; 4], LitBool4);
 #[macro_export]
 macro_rules! lit {
   ($e:expr) => {
-    Expr::from($e)
+    Expr::<(), _>::from($e)
   };
 
   ($a:expr, $b:expr) => {
-    Expr::from([$a, $b])
+    Expr::<(), _>::from([$a, $b])
   };
 
   ($a:expr, $b:expr, $c:expr) => {
-    Expr::from([$a, $b, $c])
+    Expr::<(), _>::from([$a, $b, $c])
   };
 
   ($a:expr, $b:expr, $c:expr, $d:expr) => {
-    Expr::from([$a, $b, $c, $d])
+    Expr::<(), _>::from([$a, $b, $c, $d])
   };
 }
 
@@ -743,22 +621,22 @@ impl From<()> for Return {
   }
 }
 
-impl<T> From<Expr<T>> for Return {
-  fn from(expr: Expr<T>) -> Self {
+impl<S, T> From<Expr<S, T>> for Return {
+  fn from(expr: Expr<S, T>) -> Self {
     Self::Expr(expr.erased)
   }
 }
 
-pub trait ToFun<R, A> {
-  fn build_fn(self) -> FunDef<R, A>;
+pub trait ToFun<S, R, A> {
+  fn build_fn(self) -> FunDef<S, R, A>;
 }
 
-impl<F, R> ToFun<R, ()> for F
+impl<S, F, R> ToFun<S, R, ()> for F
 where
-  Self: Fn(&mut Scope<R>) -> R,
+  Self: Fn(&mut Scope<S, R>) -> R,
   Return: From<R>,
 {
-  fn build_fn(self) -> FunDef<R, ()> {
+  fn build_fn(self) -> FunDef<S, R, ()> {
     let mut scope = Scope::new(0);
     let ret = self(&mut scope);
 
@@ -770,13 +648,13 @@ where
 
 macro_rules! impl_ToFun_args {
   ($($arg:ident , $arg_ident:ident , $arg_rank:expr),*) => {
-    impl<F, R, $($arg),*> ToFun<R, ($(Expr<$arg>),*)> for F
+    impl<S, F, R, $($arg),*> ToFun<S, R, ($(Expr<S, $arg>),*)> for F
       where
-          Self: Fn(&mut Scope<R>, $(Expr<$arg>),*) -> R,
+          Self: Fn(&mut Scope<S, R>, $(Expr<S, $arg>),*) -> R,
           Return: From<R>,
           $($arg: ToType),*
           {
-            fn build_fn(self) -> FunDef<R, ($(Expr<$arg>),*)> {
+            fn build_fn(self) -> FunDef<S, R, ($(Expr<S, $arg>),*)> {
               $( let $arg_ident = Expr::new(ErasedExpr::Var(ScopedHandle::fun_arg($arg_rank))); )*
               let args = vec![$( $arg::TYPE ),*];
 
@@ -791,13 +669,13 @@ macro_rules! impl_ToFun_args {
   }
 }
 
-impl<F, R, A> ToFun<R, Expr<A>> for F
+impl<S, F, R, A> ToFun<S, R, Expr<S, A>> for F
 where
-  Self: Fn(&mut Scope<R>, Expr<A>) -> R,
+  Self: Fn(&mut Scope<S, R>, Expr<S, A>) -> R,
   Return: From<R>,
   A: ToType,
 {
-  fn build_fn(self) -> FunDef<R, Expr<A>> {
+  fn build_fn(self) -> FunDef<S, R, Expr<S, A>> {
     let arg = Expr::new(ErasedExpr::Var(ScopedHandle::fun_arg(0)));
 
     let mut scope = Scope::new(0);
@@ -856,9 +734,9 @@ impl_ToFun_args!(
 );
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FunHandle<R, A> {
+pub struct FunHandle<S, R, A> {
   erased: ErasedFunHandle,
-  _phantom: PhantomData<(R, A)>,
+  _phantom: PhantomData<(S, R, A)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -868,19 +746,13 @@ pub enum ErasedFunHandle {
   UserDefined(u16),
 }
 
-#[derive(Debug)]
-pub struct FunExpr<R, A> {
-  handle: ErasedFunHandle,
-  _phantom: PhantomData<(R, A)>,
-}
-
 #[derive(Clone, Debug)]
-pub struct FunDef<R, A> {
+pub struct FunDef<S, R, A> {
   erased: ErasedFun,
-  _phantom: PhantomData<(R, A)>,
+  _phantom: PhantomData<(S, R, A)>,
 }
 
-impl<R, A> FunDef<R, A> {
+impl<S, R, A> FunDef<S, R, A> {
   fn new(erased: ErasedFun) -> Self {
     Self {
       erased,
@@ -903,12 +775,12 @@ impl ErasedFun {
 }
 
 #[derive(Clone, Debug)]
-pub struct Scope<R> {
+pub struct Scope<S, R> {
   erased: ErasedScope,
-  _phantom: PhantomData<R>,
+  _phantom: PhantomData<(S, R)>,
 }
 
-impl<R> Scope<R>
+impl<S, R> Scope<S, R>
 where
   Return: From<R>,
 {
@@ -919,14 +791,14 @@ where
     }
   }
 
-  fn deeper<Q>(&self) -> Scope<Q>
+  fn deeper<Q>(&self) -> Scope<S, Q>
   where
     Return: From<Q>,
   {
     Scope::new(self.erased.id + 1)
   }
 
-  pub fn var<T>(&mut self, init_value: impl Into<Expr<T>>) -> Var<T>
+  pub fn var<T>(&mut self, init_value: impl Into<Expr<S, T>>) -> Var<S, T>
   where
     T: ToType,
   {
@@ -960,9 +832,9 @@ where
 
   pub fn when<'a>(
     &'a mut self,
-    condition: impl Into<Expr<bool>>,
-    body: impl FnOnce(&mut Scope<R>),
-  ) -> When<'a, R> {
+    condition: impl Into<Expr<S, bool>>,
+    body: impl FnOnce(&mut Scope<S, R>),
+  ) -> When<'a, S, R> {
     let mut scope = self.deeper();
     body(&mut scope);
 
@@ -976,18 +848,18 @@ where
 
   pub fn unless<'a>(
     &'a mut self,
-    condition: impl Into<Expr<bool>>,
-    body: impl FnOnce(&mut Scope<R>),
-  ) -> When<'a, R> {
+    condition: impl Into<Expr<S, bool>>,
+    body: impl FnOnce(&mut Scope<S, R>),
+  ) -> When<'a, S, R> {
     self.when(!condition.into(), body)
   }
 
   pub fn loop_for<T>(
     &mut self,
-    init_value: impl Into<Expr<T>>,
-    condition: impl FnOnce(&Expr<T>) -> Expr<bool>,
-    iter_fold: impl FnOnce(&Expr<T>) -> Expr<T>,
-    body: impl FnOnce(&mut Scope<R>, &Expr<T>),
+    init_value: impl Into<Expr<S, T>>,
+    condition: impl FnOnce(&Expr<S, T>) -> Expr<S, bool>,
+    iter_fold: impl FnOnce(&Expr<S, T>) -> Expr<S, T>,
+    body: impl FnOnce(&mut Scope<S, R>, &Expr<S, T>),
   ) where
     T: ToType,
   {
@@ -1012,7 +884,11 @@ where
     });
   }
 
-  pub fn loop_while(&mut self, condition: impl Into<Expr<bool>>, body: impl FnOnce(&mut Scope<R>)) {
+  pub fn loop_while(
+    &mut self,
+    condition: impl Into<Expr<S, bool>>,
+    body: impl FnOnce(&mut Scope<S, R>),
+  ) {
     let mut scope = self.deeper();
     body(&mut scope);
 
@@ -1048,19 +924,23 @@ impl ErasedScope {
   }
 }
 
-pub struct When<'a, R> {
+pub struct When<'a, S, R> {
   /// The scope from which this [`When`] expression comes from.
   ///
   /// This will be handy if we want to chain this when with others (corresponding to `else if` and `else`, for
   /// instance).
-  parent_scope: &'a mut Scope<R>,
+  parent_scope: &'a mut Scope<S, R>,
 }
 
-impl<R> When<'_, R>
+impl<S, R> When<'_, S, R>
 where
   Return: From<R>,
 {
-  pub fn or_else(self, condition: impl Into<Expr<bool>>, body: impl FnOnce(&mut Scope<R>)) -> Self {
+  pub fn or_else(
+    self,
+    condition: impl Into<Expr<S, bool>>,
+    body: impl FnOnce(&mut Scope<S, R>),
+  ) -> Self {
     let mut scope = self.parent_scope.deeper();
     body(&mut scope);
 
@@ -1076,7 +956,7 @@ where
     self
   }
 
-  pub fn or(self, body: impl FnOnce(&mut Scope<R>)) {
+  pub fn or(self, body: impl FnOnce(&mut Scope<S, R>)) {
     let mut scope = self.parent_scope.deeper();
     body(&mut scope);
 
@@ -1091,7 +971,7 @@ where
 }
 
 #[derive(Debug)]
-pub struct Var<T>(pub Expr<T>);
+pub struct Var<S, T>(pub Expr<S, T>);
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum ScopedHandle {
@@ -1241,7 +1121,7 @@ pub trait Swizzlable<S> {
 }
 
 // 2D
-impl<T> Swizzlable<SwizzleSelector> for Expr<[T; 2]> {
+impl<S, T> Swizzlable<SwizzleSelector> for Expr<S, [T; 2]> {
   fn swizzle(&self, x: SwizzleSelector) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1250,7 +1130,7 @@ impl<T> Swizzlable<SwizzleSelector> for Expr<[T; 2]> {
   }
 }
 
-impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<[T; 2]> {
+impl<S, T> Swizzlable<[SwizzleSelector; 2]> for Expr<S, [T; 2]> {
   fn swizzle(&self, [x, y]: [SwizzleSelector; 2]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1260,7 +1140,7 @@ impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<[T; 2]> {
 }
 
 // 3D
-impl<T> Swizzlable<SwizzleSelector> for Expr<[T; 3]> {
+impl<S, T> Swizzlable<SwizzleSelector> for Expr<S, [T; 3]> {
   fn swizzle(&self, x: SwizzleSelector) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1269,7 +1149,7 @@ impl<T> Swizzlable<SwizzleSelector> for Expr<[T; 3]> {
   }
 }
 
-impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<[T; 3]> {
+impl<S, T> Swizzlable<[SwizzleSelector; 2]> for Expr<S, [T; 3]> {
   fn swizzle(&self, [x, y]: [SwizzleSelector; 2]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1278,7 +1158,7 @@ impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<[T; 3]> {
   }
 }
 
-impl<T> Swizzlable<[SwizzleSelector; 3]> for Expr<[T; 3]> {
+impl<S, T> Swizzlable<[SwizzleSelector; 3]> for Expr<S, [T; 3]> {
   fn swizzle(&self, [x, y, z]: [SwizzleSelector; 3]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1288,7 +1168,7 @@ impl<T> Swizzlable<[SwizzleSelector; 3]> for Expr<[T; 3]> {
 }
 
 // 4D
-impl<T> Swizzlable<SwizzleSelector> for Expr<[T; 4]> {
+impl<S, T> Swizzlable<SwizzleSelector> for Expr<S, [T; 4]> {
   fn swizzle(&self, x: SwizzleSelector) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1297,7 +1177,7 @@ impl<T> Swizzlable<SwizzleSelector> for Expr<[T; 4]> {
   }
 }
 
-impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<[T; 4]> {
+impl<S, T> Swizzlable<[SwizzleSelector; 2]> for Expr<S, [T; 4]> {
   fn swizzle(&self, [x, y]: [SwizzleSelector; 2]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1306,7 +1186,7 @@ impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<[T; 4]> {
   }
 }
 
-impl<T> Swizzlable<[SwizzleSelector; 3]> for Expr<[T; 4]> {
+impl<S, T> Swizzlable<[SwizzleSelector; 3]> for Expr<S, [T; 4]> {
   fn swizzle(&self, [x, y, z]: [SwizzleSelector; 3]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1315,7 +1195,7 @@ impl<T> Swizzlable<[SwizzleSelector; 3]> for Expr<[T; 4]> {
   }
 }
 
-impl<T> Swizzlable<[SwizzleSelector; 4]> for Expr<[T; 4]> {
+impl<S, T> Swizzlable<[SwizzleSelector; 4]> for Expr<S, [T; 4]> {
   fn swizzle(&self, [x, y, z, w]: [SwizzleSelector; 4]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1395,7 +1275,7 @@ mod tests {
 
   #[test]
   fn expr_unary() {
-    let mut scope = Scope::<()>::new(0);
+    let mut scope = Scope::<(), ()>::new(0);
 
     let a = !lit!(true);
     let b = -lit!(3i32);
@@ -1499,7 +1379,7 @@ mod tests {
 
   #[test]
   fn expr_var() {
-    let mut scope = Scope::<()>::new(0);
+    let mut scope = Scope::<(), ()>::new(0);
 
     let Var(x) = scope.var(0);
     let Var(y) = scope.var(1u32);
@@ -1587,7 +1467,7 @@ mod tests {
   #[test]
   fn fun0() {
     let mut shader = Shader::new();
-    let fun = shader.fun(|s: &mut Scope<()>| {
+    let fun = shader.fun(|s: &mut Scope<(), ()>| {
       let _x = s.var(3);
     });
 
@@ -1617,7 +1497,7 @@ mod tests {
   #[test]
   fn fun1() {
     let mut shader = Shader::new();
-    let fun = shader.fun(|f: &mut Scope<Expr<i32>>, _arg: Expr<i32>| {
+    let fun = shader.fun(|f: &mut Scope<(), Expr<(), i32>>, _arg: Expr<(), i32>| {
       let Var(x) = f.var(3i32);
       x
     });
@@ -1653,7 +1533,7 @@ mod tests {
 
   #[test]
   fn swizzling() {
-    let mut scope = Scope::<()>::new(0);
+    let mut scope = Scope::<(), ()>::new(0);
     let Var(foo) = scope.var([1, 2]);
     let foo_xy = sw!(foo, .x.y);
     let foo_xx = sw!(foo, .x.x);
@@ -1677,7 +1557,7 @@ mod tests {
 
   #[test]
   fn when() {
-    let mut s = Scope::<Expr<[f32; 4]>>::new(0);
+    let mut s = Scope::<(), Expr<(), [f32; 4]>>::new(0);
 
     let Var(x) = s.var(1);
     s.when(x.eq(lit!(2)), |s| {
@@ -1759,7 +1639,7 @@ mod tests {
 
   #[test]
   fn for_loop() {
-    let mut scope: Scope<Expr<i32>> = Scope::new(0);
+    let mut scope: Scope<(), Expr<(), i32>> = Scope::new(0);
 
     scope.loop_for(
       0,
@@ -1807,7 +1687,7 @@ mod tests {
 
   #[test]
   fn while_loop() {
-    let mut scope: Scope<Expr<i32>> = Scope::new(0);
+    let mut scope: Scope<(), Expr<(), i32>> = Scope::new(0);
 
     scope.loop_while(lit!(1).lt(lit!(2)), Scope::loop_continue);
 
