@@ -1025,6 +1025,10 @@ where
   pub fn loop_continue(&mut self) {
     self.erased.instructions.push(ScopeInstr::Continue);
   }
+
+  pub fn loop_break(&mut self) {
+    self.erased.instructions.push(ScopeInstr::Break);
+  }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1121,6 +1125,8 @@ enum ScopeInstr {
   Return(Return),
 
   Continue,
+
+  Break,
 
   If {
     condition: ErasedExpr,
