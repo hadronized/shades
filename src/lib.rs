@@ -1021,6 +1021,10 @@ where
       scope: scope.erased,
     });
   }
+
+  pub fn loop_continue(&mut self) {
+    self.erased.instructions.push(ScopeInstr::Continue);
+  }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1115,6 +1119,8 @@ enum ScopeInstr {
   },
 
   Return(Return),
+
+  Continue,
 
   If {
     condition: ErasedExpr,
@@ -1797,7 +1803,10 @@ mod tests {
   fn while_loop() {
     let mut scope: Scope<Expr<i32>> = Scope::new(0);
 
-    scope.loop_while(lit!(1).lt(lit!(2)), |_| ());
+    scope.loop_while(lit!(1).lt(lit!(2)), Scope::loop_continue);
+
+    let mut loop_scope = ErasedScope::new(1);
+    loop_scope.instructions.push(ScopeInstr::Continue);
 
     assert_eq!(scope.erased.instructions.len(), 1);
     assert_eq!(
@@ -1807,7 +1816,7 @@ mod tests {
           Box::new(ErasedExpr::LitInt(1)),
           Box::new(ErasedExpr::LitInt(2))
         ),
-        scope: ErasedScope::new(1),
+        scope: loop_scope
       }
     );
   }
