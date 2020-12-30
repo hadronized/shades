@@ -1011,6 +1011,16 @@ where
       scope: scope.erased,
     });
   }
+
+  pub fn loop_while(&mut self, condition: impl Into<Expr<bool>>, body: impl FnOnce(&mut Scope<R>)) {
+    let mut scope = self.deeper();
+    body(&mut scope);
+
+    self.erased.instructions.push(ScopeInstr::While {
+      condition: condition.into().erased,
+      scope: scope.erased,
+    });
+  }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1124,6 +1134,11 @@ enum ScopeInstr {
     init_expr: ErasedExpr,
     condition: ErasedExpr,
     post_expr: ErasedExpr,
+    scope: ErasedScope,
+  },
+
+  While {
+    condition: ErasedExpr,
     scope: ErasedScope,
   },
 }
@@ -1774,6 +1789,25 @@ mod tests {
           Box::new(ErasedExpr::LitInt(1))
         ),
         scope: loop_scope
+      }
+    );
+  }
+
+  #[test]
+  fn while_loop() {
+    let mut scope: Scope<Expr<i32>> = Scope::new(0);
+
+    scope.loop_while(lit!(1).lt(lit!(2)), |_| ());
+
+    assert_eq!(scope.erased.instructions.len(), 1);
+    assert_eq!(
+      scope.erased.instructions[0],
+      ScopeInstr::While {
+        condition: ErasedExpr::Lt(
+          Box::new(ErasedExpr::LitInt(1)),
+          Box::new(ErasedExpr::LitInt(2))
+        ),
+        scope: ErasedScope::new(1),
       }
     );
   }
