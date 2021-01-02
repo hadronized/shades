@@ -1,6 +1,46 @@
 use std::{marker::PhantomData, ops};
 
 #[derive(Debug)]
+pub struct V;
+
+#[derive(Debug)]
+pub struct TC;
+
+#[derive(Debug)]
+pub struct TE;
+
+#[derive(Debug)]
+pub struct G;
+
+#[derive(Debug)]
+pub struct F;
+
+#[derive(Debug)]
+pub struct L;
+
+pub unsafe trait CompatibleStage<S> {
+  type Intersect;
+}
+
+unsafe impl<T> CompatibleStage<L> for T {
+  type Intersect = T;
+}
+
+macro_rules! impl_CompatibleStage {
+  ($t:ty) => {
+    unsafe impl CompatibleStage<$t> for $t {
+      type Intersect = $t;
+    }
+  };
+}
+
+impl_CompatibleStage!(V);
+impl_CompatibleStage!(TC);
+impl_CompatibleStage!(TE);
+impl_CompatibleStage!(G);
+impl_CompatibleStage!(F);
+
+#[derive(Debug)]
 pub struct Shader<S> {
   decls: Vec<ShaderDecl>,
   _phantom: PhantomData<S>,
@@ -330,18 +370,24 @@ impl_Neg_Expr!([f32; 4]);
 macro_rules! impl_binop_Expr {
   ($op:ident, $meth_name:ident, $a:ty, $b:ty) => {
     // expr OP expr
-    impl<'a, S> ops::$op<Expr<S, $b>> for Expr<S, $a> {
-      type Output = Expr<S, $a>;
+    impl<'a, S, Q> ops::$op<Expr<Q, $b>> for Expr<S, $a>
+    where
+      S: CompatibleStage<Q>,
+    {
+      type Output = Expr<S::Intersect, $a>;
 
-      fn $meth_name(self, rhs: Expr<S, $b>) -> Self::Output {
+      fn $meth_name(self, rhs: Expr<Q, $b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
       }
     }
 
-    impl<'a, S> ops::$op<&'a Expr<S, $b>> for Expr<S, $a> {
-      type Output = Expr<S, $a>;
+    impl<'a, S, Q> ops::$op<&'a Expr<Q, $b>> for Expr<S, $a>
+    where
+      S: CompatibleStage<Q>,
+    {
+      type Output = Expr<S::Intersect, $a>;
 
-      fn $meth_name(self, rhs: &'a Expr<S, $b>) -> Self::Output {
+      fn $meth_name(self, rhs: &'a Expr<Q, $b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased),
           Box::new(rhs.erased.clone()),
@@ -349,10 +395,13 @@ macro_rules! impl_binop_Expr {
       }
     }
 
-    impl<'a, S> ops::$op<Expr<S, $b>> for &'a Expr<S, $a> {
-      type Output = Expr<S, $a>;
+    impl<'a, S, Q> ops::$op<Expr<Q, $b>> for &'a Expr<S, $a>
+    where
+      S: CompatibleStage<Q>,
+    {
+      type Output = Expr<S::Intersect, $a>;
 
-      fn $meth_name(self, rhs: Expr<S, $b>) -> Self::Output {
+      fn $meth_name(self, rhs: Expr<Q, $b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased.clone()),
           Box::new(rhs.erased),
@@ -360,10 +409,13 @@ macro_rules! impl_binop_Expr {
       }
     }
 
-    impl<'a, S> ops::$op<&'a Expr<S, $b>> for &'a Expr<S, $a> {
-      type Output = Expr<S, $a>;
+    impl<'a, S, Q> ops::$op<&'a Expr<Q, $b>> for &'a Expr<S, $a>
+    where
+      S: CompatibleStage<Q>,
+    {
+      type Output = Expr<S::Intersect, $a>;
 
-      fn $meth_name(self, rhs: &'a Expr<S, $b>) -> Self::Output {
+      fn $meth_name(self, rhs: &'a Expr<Q, $b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased.clone()),
           Box::new(rhs.erased.clone()),
@@ -593,19 +645,19 @@ impl_From_Expr_array!([bool; 4], LitBool4);
 #[macro_export]
 macro_rules! lit {
   ($e:expr) => {
-    Expr::<(), _>::from($e)
+    Expr::<L, _>::from($e)
   };
 
   ($a:expr, $b:expr) => {
-    Expr::<(), _>::from([$a, $b])
+    Expr::<L, _>::from([$a, $b])
   };
 
   ($a:expr, $b:expr, $c:expr) => {
-    Expr::<(), _>::from([$a, $b, $c])
+    Expr::<L, _>::from([$a, $b, $c])
   };
 
   ($a:expr, $b:expr, $c:expr, $d:expr) => {
-    Expr::<(), _>::from([$a, $b, $c, $d])
+    Expr::<L, _>::from([$a, $b, $c, $d])
   };
 }
 
@@ -1560,7 +1612,7 @@ mod tests {
 
   #[test]
   fn when() {
-    let mut s = Scope::<(), Expr<(), [f32; 4]>>::new(0);
+    let mut s = Scope::<L, Expr<L, [f32; 4]>>::new(0);
 
     let Var(x) = s.var(1);
     s.when(x.eq(lit!(2)), |s| {
@@ -1642,7 +1694,7 @@ mod tests {
 
   #[test]
   fn for_loop() {
-    let mut scope: Scope<(), Expr<(), i32>> = Scope::new(0);
+    let mut scope: Scope<L, Expr<L, i32>> = Scope::new(0);
 
     scope.loop_for(
       0,
@@ -1690,7 +1742,7 @@ mod tests {
 
   #[test]
   fn while_loop() {
-    let mut scope: Scope<(), Expr<(), i32>> = Scope::new(0);
+    let mut scope: Scope<L, Expr<L, i32>> = Scope::new(0);
 
     scope.loop_while(lit!(1).lt(lit!(2)), Scope::loop_continue);
 
