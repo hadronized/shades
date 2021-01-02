@@ -129,7 +129,7 @@ impl<S, T> From<&'_ Self> for Expr<S, T> {
   }
 }
 
-impl<T> Clone for Expr<(), T> {
+impl<S, T> Clone for Expr<S, T> {
   fn clone(&self) -> Self {
     Self::new(self.erased.clone())
   }
