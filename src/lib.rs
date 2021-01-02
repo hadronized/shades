@@ -176,21 +176,27 @@ impl<S, T> Clone for Expr<S, T> {
 }
 
 impl<S, T> Expr<S, T> {
-  fn new(erased: ErasedExpr) -> Self {
+  const fn new(erased: ErasedExpr) -> Self {
     Self {
       erased,
       _phantom: PhantomData,
     }
   }
 
-  pub fn eq(&self, rhs: impl Into<Expr<S, T>>) -> Expr<S, bool> {
+  pub fn eq<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, bool>
+  where
+    S: CompatibleStage<Q>,
+  {
     Expr::new(ErasedExpr::Eq(
       Box::new(self.erased.clone()),
       Box::new(rhs.into().erased),
     ))
   }
 
-  pub fn neq(&self, rhs: impl Into<Expr<S, T>>) -> Expr<S, bool> {
+  pub fn neq<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, bool>
+  where
+    S: CompatibleStage<Q>,
+  {
     Expr::new(ErasedExpr::Neq(
       Box::new(self.erased.clone()),
       Box::new(rhs.into().erased),
@@ -202,28 +208,40 @@ impl<S, T> Expr<S, T>
 where
   T: PartialOrd,
 {
-  pub fn lt(&self, rhs: impl Into<Expr<S, T>>) -> Expr<S, bool> {
+  pub fn lt<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, bool>
+  where
+    S: CompatibleStage<Q>,
+  {
     Expr::new(ErasedExpr::Lt(
       Box::new(self.erased.clone()),
       Box::new(rhs.into().erased),
     ))
   }
 
-  pub fn lte(&self, rhs: impl Into<Expr<S, T>>) -> Expr<S, bool> {
+  pub fn lte<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S, bool>
+  where
+    S: CompatibleStage<Q>,
+  {
     Expr::new(ErasedExpr::Lte(
       Box::new(self.erased.clone()),
       Box::new(rhs.into().erased),
     ))
   }
 
-  pub fn gt(&self, rhs: impl Into<Expr<S, T>>) -> Expr<S, bool> {
+  pub fn gt<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, bool>
+  where
+    S: CompatibleStage<Q>,
+  {
     Expr::new(ErasedExpr::Gt(
       Box::new(self.erased.clone()),
       Box::new(rhs.into().erased),
     ))
   }
 
-  pub fn gte(&self, rhs: impl Into<Expr<S, T>>) -> Expr<S, bool> {
+  pub fn gte<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, bool>
+  where
+    S: CompatibleStage<Q>,
+  {
     Expr::new(ErasedExpr::Gte(
       Box::new(self.erased.clone()),
       Box::new(rhs.into().erased),
@@ -232,48 +250,76 @@ where
 }
 
 impl<S> Expr<S, bool> {
-  pub fn and(&self, rhs: impl Into<Self>) -> Self {
-    Self::new(ErasedExpr::And(
+  pub fn and<Q>(&self, rhs: impl Into<Expr<Q, bool>>) -> Expr<S::Intersect, bool>
+  where
+    S: CompatibleStage<Q>,
+  {
+    Expr::new(ErasedExpr::And(
       Box::new(self.erased.clone()),
       Box::new(rhs.into().erased),
     ))
   }
 
-  pub fn or(&self, rhs: impl Into<Self>) -> Self {
-    Self::new(ErasedExpr::Or(
+  pub fn or<Q>(&self, rhs: impl Into<Expr<Q, bool>>) -> Expr<S::Intersect, bool>
+  where
+    S: CompatibleStage<Q>,
+  {
+    Expr::new(ErasedExpr::Or(
       Box::new(self.erased.clone()),
       Box::new(rhs.into().erased),
     ))
   }
 
-  pub fn xor(&self, rhs: impl Into<Self>) -> Self {
-    Self::new(ErasedExpr::Xor(
+  pub fn xor<Q>(&self, rhs: impl Into<Expr<Q, bool>>) -> Expr<S::Intersect, bool>
+  where
+    S: CompatibleStage<Q>,
+  {
+    Expr::new(ErasedExpr::Xor(
       Box::new(self.erased.clone()),
       Box::new(rhs.into().erased),
     ))
   }
 }
 
-trait Bounded: Sized {
-  fn min(&self, rhs: impl Into<Self>) -> Self;
-  fn max(&self, rhs: impl Into<Self>) -> Self;
+trait Bounded<S, T>: Sized {
+  fn min<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+  fn max<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
 
-  fn clamp(&self, min_value: impl Into<Self>, max_value: impl Into<Self>) -> Self {
+  fn clamp<Q, R>(
+    &self,
+    min_value: impl Into<Expr<R, T>>,
+    max_value: impl Into<Expr<Q, T>>,
+  ) -> Expr<<S::Intersect as CompatibleStage<R>>::Intersect, T>
+  where
+    S: CompatibleStage<Q>,
+    S::Intersect: CompatibleStage<R>,
+    Expr<S::Intersect, T>: Bounded<S::Intersect, T>,
+  {
     self.min(max_value).max(min_value)
   }
 }
 
 macro_rules! impl_Bounded {
   ($t:ty) => {
-    impl<S> Bounded for Expr<S, $t> {
-      fn min(&self, rhs: impl Into<Self>) -> Self {
+    impl<S, T> Bounded<S, T> for Expr<S, $t> {
+      fn min<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, T>
+      where
+        S: CompatibleStage<Q>,
+      {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Min,
           vec![self.erased.clone(), rhs.into().erased],
         ))
       }
 
-      fn max(&self, rhs: impl Into<Self>) -> Self {
+      fn max<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, T>
+      where
+        S: CompatibleStage<Q>,
+      {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Max,
           vec![self.erased.clone(), rhs.into().erased],
@@ -428,7 +474,7 @@ macro_rules! impl_binop_Expr {
       type Output = Expr<S, $a>;
 
       fn $meth_name(self, rhs: $b) -> Self::Output {
-        let rhs: Expr<S, $b> = rhs.into();
+        let rhs: Expr<_, _> = rhs.into();
         Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
       }
     }
@@ -437,7 +483,7 @@ macro_rules! impl_binop_Expr {
       type Output = Expr<S, $a>;
 
       fn $meth_name(self, rhs: $b) -> Self::Output {
-        let rhs: Expr<S, $b> = rhs.into();
+        let rhs: Expr<L, $b> = rhs.into();
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased.clone()),
           Box::new(rhs.erased),
@@ -513,18 +559,24 @@ impl_binarith_Expr!(Div, div);
 macro_rules! impl_binshift_Expr {
   ($op:ident, $meth_name:ident, $ty:ty) => {
     // expr OP expr
-    impl<S> ops::$op<Expr<S, u32>> for Expr<S, $ty> {
-      type Output = Self;
+    impl<S, Q> ops::$op<Expr<Q, u32>> for Expr<S, $ty>
+    where
+      S: CompatibleStage<Q>,
+    {
+      type Output = Expr<S::Intersect, $ty>;
 
-      fn $meth_name(self, rhs: Expr<S, u32>) -> Self::Output {
+      fn $meth_name(self, rhs: Expr<Q, u32>) -> Self::Output {
         Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
       }
     }
 
-    impl<'a, S> ops::$op<Expr<S, u32>> for &'a Expr<S, $ty> {
-      type Output = Expr<S, $ty>;
+    impl<'a, S, Q> ops::$op<Expr<Q, u32>> for &'a Expr<S, $ty>
+    where
+      S: CompatibleStage<Q>,
+    {
+      type Output = Expr<S::Intersect, $ty>;
 
-      fn $meth_name(self, rhs: Expr<S, u32>) -> Self::Output {
+      fn $meth_name(self, rhs: Expr<Q, u32>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased.clone()),
           Box::new(rhs.erased),
@@ -532,10 +584,13 @@ macro_rules! impl_binshift_Expr {
       }
     }
 
-    impl<'a, S> ops::$op<&'a Expr<S, u32>> for Expr<S, $ty> {
-      type Output = Self;
+    impl<'a, S, Q> ops::$op<&'a Expr<Q, u32>> for Expr<S, $ty>
+    where
+      S: CompatibleStage<Q>,
+    {
+      type Output = Expr<S::Intersect, $ty>;
 
-      fn $meth_name(self, rhs: &'a Expr<S, u32>) -> Self::Output {
+      fn $meth_name(self, rhs: &'a Expr<Q, u32>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased),
           Box::new(rhs.erased.clone()),
@@ -543,10 +598,13 @@ macro_rules! impl_binshift_Expr {
       }
     }
 
-    impl<'a, S> ops::$op<&'a Expr<S, u32>> for &'a Expr<S, $ty> {
-      type Output = Expr<S, $ty>;
+    impl<'a, S, Q> ops::$op<&'a Expr<Q, u32>> for &'a Expr<S, $ty>
+    where
+      S: CompatibleStage<Q>,
+    {
+      type Output = Expr<S::Intersect, $ty>;
 
-      fn $meth_name(self, rhs: &'a Expr<S, u32>) -> Self::Output {
+      fn $meth_name(self, rhs: &'a Expr<Q, u32>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased.clone()),
           Box::new(rhs.erased.clone()),
@@ -559,7 +617,7 @@ macro_rules! impl_binshift_Expr {
       type Output = Self;
 
       fn $meth_name(self, rhs: u32) -> Self::Output {
-        let rhs: Expr<S, u32> = rhs.into();
+        let rhs: Expr<_, _> = rhs.into();
         Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
       }
     }
@@ -568,7 +626,7 @@ macro_rules! impl_binshift_Expr {
       type Output = Expr<S, $ty>;
 
       fn $meth_name(self, rhs: u32) -> Self::Output {
-        let rhs: Expr<S, u32> = rhs.into();
+        let rhs: Expr<_, _> = rhs.into();
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased.clone()),
           Box::new(rhs.erased),
@@ -603,7 +661,7 @@ impl_binshifts_Expr!(Shr, shr);
 
 macro_rules! impl_From_Expr_scalar {
   ($t:ty, $q:ident) => {
-    impl<S> From<$t> for Expr<S, $t> {
+    impl From<$t> for Expr<L, $t> {
       fn from(a: $t) -> Self {
         Self::new(ErasedExpr::$q(a))
       }
@@ -618,7 +676,7 @@ impl_From_Expr_scalar!(bool, LitBool);
 
 macro_rules! impl_From_Expr_array {
   ([$t:ty; $dim:expr], $q:ident) => {
-    impl<S> From<[$t; $dim]> for Expr<S, [$t; $dim]> {
+    impl From<[$t; $dim]> for Expr<L, [$t; $dim]> {
       fn from(a: [$t; $dim]) -> Self {
         Self::new(ErasedExpr::$q(a))
       }
@@ -662,20 +720,38 @@ macro_rules! lit {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Return {
+pub struct Return<S> {
+  erased: ErasedReturn,
+  _phantom: PhantomData<S>,
+}
+
+impl<S> Return<S> {
+  fn new(erased: ErasedReturn) -> Self {
+    Self {
+      erased,
+      _phantom: PhantomData,
+    }
+  }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum ErasedReturn {
   Void,
   Expr(ErasedExpr),
 }
 
-impl From<()> for Return {
+impl<S> From<()> for Return<S> {
   fn from(_: ()) -> Self {
-    Return::Void
+    Self::new(ErasedReturn::Void)
   }
 }
 
-impl<S, T> From<Expr<S, T>> for Return {
-  fn from(expr: Expr<S, T>) -> Self {
-    Self::Expr(expr.erased)
+impl<S, Q, T> From<Expr<Q, T>> for Return<S>
+where
+  S: CompatibleStage<Q, Intersect = S>,
+{
+  fn from(expr: Expr<Q, T>) -> Self {
+    Self::new(ErasedReturn::Expr(expr.erased))
   }
 }
 
@@ -686,13 +762,13 @@ pub trait ToFun<S, R, A> {
 impl<S, F, R> ToFun<S, R, ()> for F
 where
   Self: Fn(&mut Scope<S, R>) -> R,
-  Return: From<R>,
+  Return<S>: From<R>,
 {
   fn build_fn(self) -> FunDef<S, R, ()> {
     let mut scope = Scope::new(0);
     let ret = self(&mut scope);
 
-    let erased = ErasedFun::new(Vec::new(), scope.erased, ret.into());
+    let erased = ErasedFun::new(Vec::new(), scope.erased, Return::<S>::from(ret).erased);
 
     FunDef::new(erased)
   }
@@ -703,7 +779,7 @@ macro_rules! impl_ToFun_args {
     impl<S, F, R, $($arg),*> ToFun<S, R, ($(Expr<S, $arg>),*)> for F
       where
           Self: Fn(&mut Scope<S, R>, $(Expr<S, $arg>),*) -> R,
-          Return: From<R>,
+          Return<S>: From<R>,
           $($arg: ToType),*
           {
             fn build_fn(self) -> FunDef<S, R, ($(Expr<S, $arg>),*)> {
@@ -713,7 +789,7 @@ macro_rules! impl_ToFun_args {
               let mut scope = Scope::new(0);
               let ret = self(&mut scope, $($arg_ident),*);
 
-              let erased = ErasedFun::new(args, scope.erased, ret.into());
+              let erased = ErasedFun::new(args, scope.erased, Return::<S>::from(ret).erased);
 
               FunDef::new(erased)
             }
@@ -724,7 +800,7 @@ macro_rules! impl_ToFun_args {
 impl<S, F, R, A> ToFun<S, R, Expr<S, A>> for F
 where
   Self: Fn(&mut Scope<S, R>, Expr<S, A>) -> R,
-  Return: From<R>,
+  Return<S>: From<R>,
   A: ToType,
 {
   fn build_fn(self) -> FunDef<S, R, Expr<S, A>> {
@@ -733,7 +809,7 @@ where
     let mut scope = Scope::new(0);
     let ret = self(&mut scope, arg);
 
-    let erased = ErasedFun::new(vec![A::TYPE], scope.erased, ret.into());
+    let erased = ErasedFun::new(vec![A::TYPE], scope.erased, Return::<S>::from(ret).erased);
 
     FunDef::new(erased)
   }
@@ -817,11 +893,11 @@ impl<S, R, A> FunDef<S, R, A> {
 pub struct ErasedFun {
   args: Vec<Type>,
   scope: ErasedScope,
-  ret: Return,
+  ret: ErasedReturn,
 }
 
 impl ErasedFun {
-  fn new(args: Vec<Type>, scope: ErasedScope, ret: Return) -> Self {
+  fn new(args: Vec<Type>, scope: ErasedScope, ret: ErasedReturn) -> Self {
     Self { args, scope, ret }
   }
 }
@@ -834,7 +910,7 @@ pub struct Scope<S, R> {
 
 impl<S, R> Scope<S, R>
 where
-  Return: From<R>,
+  Return<S>: From<R>,
 {
   fn new(id: u16) -> Self {
     Self {
@@ -845,13 +921,14 @@ where
 
   fn deeper<Q>(&self) -> Scope<S, Q>
   where
-    Return: From<Q>,
+    Return<S>: From<Q>,
   {
     Scope::new(self.erased.id + 1)
   }
 
-  pub fn var<T>(&mut self, init_value: impl Into<Expr<S, T>>) -> Var<S, T>
+  pub fn var<Q, T>(&mut self, init_value: impl Into<Expr<Q, T>>) -> Var<S, T>
   where
+    S: CompatibleStage<Q>,
     T: ToType,
   {
     let n = self.erased.next_var;
@@ -872,21 +949,24 @@ where
     self
       .erased
       .instructions
-      .push(ScopeInstr::Return(ret.into().into()));
+      .push(ScopeInstr::Return(Return::<S>::from(ret.into()).erased));
   }
 
   pub fn abort(&mut self) {
     self
       .erased
       .instructions
-      .push(ScopeInstr::Return(Return::Void));
+      .push(ScopeInstr::Return(ErasedReturn::Void));
   }
 
-  pub fn when<'a>(
+  pub fn when<'a, Q>(
     &'a mut self,
-    condition: impl Into<Expr<S, bool>>,
+    condition: impl Into<Expr<Q, bool>>,
     body: impl Fn(&mut Scope<S, R>),
-  ) -> When<'a, S, R> {
+  ) -> When<'a, S, R>
+  where
+    S: CompatibleStage<Q>,
+  {
     let mut scope = self.deeper();
     body(&mut scope);
 
@@ -898,21 +978,25 @@ where
     When { parent_scope: self }
   }
 
-  pub fn unless<'a>(
+  pub fn unless<'a, Q>(
     &'a mut self,
-    condition: impl Into<Expr<S, bool>>,
+    condition: impl Into<Expr<Q, bool>>,
     body: impl Fn(&mut Scope<S, R>),
-  ) -> When<'a, S, R> {
+  ) -> When<'a, S, R>
+  where
+    S: CompatibleStage<Q>,
+  {
     self.when(!condition.into(), body)
   }
 
-  pub fn loop_for<T>(
+  pub fn loop_for<Q, T>(
     &mut self,
-    init_value: impl Into<Expr<S, T>>,
+    init_value: impl Into<Expr<Q, T>>,
     condition: impl Fn(&Expr<S, T>) -> Expr<S, bool>,
     iter_fold: impl Fn(&Expr<S, T>) -> Expr<S, T>,
     body: impl Fn(&mut Scope<S, R>, &Expr<S, T>),
   ) where
+    S: CompatibleStage<Q>,
     T: ToType,
   {
     let mut scope = self.deeper();
@@ -922,7 +1006,7 @@ where
 
     let condition = condition(&init_expr);
 
-    // generate the “post expr”, which is basically the free from of the third part of the for loop; people usually
+    // generate the “post expr”, which is basically the free from of the third part of the for loop; people usually
     // set this to ++i, i++, etc., but in our case, the expression is to treat as a fold’s accumulator
     let post_expr = iter_fold(&init_expr);
 
@@ -936,11 +1020,13 @@ where
     });
   }
 
-  pub fn loop_while(
+  pub fn loop_while<Q>(
     &mut self,
-    condition: impl Into<Expr<S, bool>>,
+    condition: impl Into<Expr<Q, bool>>,
     body: impl Fn(&mut Scope<S, R>),
-  ) {
+  ) where
+    S: CompatibleStage<Q>,
+  {
     let mut scope = self.deeper();
     body(&mut scope);
 
@@ -986,13 +1072,16 @@ pub struct When<'a, S, R> {
 
 impl<S, R> When<'_, S, R>
 where
-  Return: From<R>,
+  Return<S>: From<R>,
 {
-  pub fn or_else(
+  pub fn or_else<Q>(
     self,
-    condition: impl Into<Expr<S, bool>>,
+    condition: impl Into<Expr<Q, bool>>,
     body: impl Fn(&mut Scope<S, R>),
-  ) -> Self {
+  ) -> Self
+  where
+    S: CompatibleStage<Q>,
+  {
     let mut scope = self.parent_scope.deeper();
     body(&mut scope);
 
@@ -1027,21 +1116,26 @@ pub struct Var<S, T>(pub Expr<S, T>);
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum ScopedHandle {
+  BuiltIn(BuiltIn),
   Global(u16),
   FunArg(u16),
   FunVar { subscope: u16, handle: u16 },
 }
 
 impl ScopedHandle {
-  fn global(handle: u16) -> Self {
+  const fn built_in(b: BuiltIn) -> Self {
+    Self::BuiltIn(b)
+  }
+
+  const fn global(handle: u16) -> Self {
     Self::Global(handle)
   }
 
-  fn fun_arg(handle: u16) -> Self {
+  const fn fun_arg(handle: u16) -> Self {
     Self::FunArg(handle)
   }
 
-  fn fun_var(subscope: u16, handle: u16) -> Self {
+  const fn fun_var(subscope: u16, handle: u16) -> Self {
     Self::FunVar { subscope, handle }
   }
 }
@@ -1054,7 +1148,7 @@ enum ScopeInstr {
     init_value: ErasedExpr,
   },
 
-  Return(Return),
+  Return(ErasedReturn),
 
   Continue,
 
@@ -1315,6 +1409,15 @@ macro_rules! sw_extract {
   };
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum BuiltIn {
+  VertexID,
+}
+
+// vertex shader built-ins
+pub const VERTEX_ID: Expr<V, i32> =
+  Expr::new(ErasedExpr::Var(ScopedHandle::built_in(BuiltIn::VertexID)));
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -1527,7 +1630,7 @@ mod tests {
 
     match shader.decls[0] {
       ShaderDecl::FunDef(ref fun) => {
-        assert_eq!(fun.ret, Return::Void);
+        assert_eq!(fun.ret, ErasedReturn::Void);
         assert_eq!(fun.args, vec![]);
         assert_eq!(fun.scope.instructions.len(), 1);
         assert_eq!(
@@ -1549,8 +1652,8 @@ mod tests {
   #[test]
   fn fun1() {
     let mut shader = Shader::new();
-    let fun = shader.fun(|f: &mut Scope<(), Expr<(), i32>>, _arg: Expr<(), i32>| {
-      let Var(x) = f.var(3i32);
+    let fun = shader.fun(|f: &mut Scope<V, Expr<V, i32>>, _arg: Expr<V, i32>| {
+      let Var(x) = f.var(lit!(3i32));
       x
     });
 
@@ -1560,7 +1663,7 @@ mod tests {
       ShaderDecl::FunDef(ref fun) => {
         assert_eq!(
           fun.ret,
-          Return::Expr(ErasedExpr::Var(ScopedHandle::fun_var(0, 0)))
+          ErasedReturn::Expr(ErasedExpr::Var(ScopedHandle::fun_var(0, 0)))
         );
         assert_eq!(
           fun.args,
@@ -1649,7 +1752,7 @@ mod tests {
     });
     scope
       .instructions
-      .push(ScopeInstr::Return(Return::Expr(ErasedExpr::Var(
+      .push(ScopeInstr::Return(ErasedReturn::Expr(ErasedExpr::Var(
         ScopedHandle::fun_var(1, 0),
       ))));
 
@@ -1668,9 +1771,9 @@ mod tests {
     let mut scope = ErasedScope::new(1);
     scope
       .instructions
-      .push(ScopeInstr::Return(Return::Expr(ErasedExpr::LitFloat4([
-        0., 0., 0., 0.,
-      ]))));
+      .push(ScopeInstr::Return(ErasedReturn::Expr(
+        ErasedExpr::LitFloat4([0., 0., 0., 0.]),
+      )));
 
     assert_eq!(
       s.erased.instructions[2],
@@ -1719,7 +1822,7 @@ mod tests {
     });
     loop_scope
       .instructions
-      .push(ScopeInstr::Return(Return::Expr(ErasedExpr::Var(
+      .push(ScopeInstr::Return(ErasedReturn::Expr(ErasedExpr::Var(
         ScopedHandle::fun_var(1, 0),
       ))));
 
@@ -1760,5 +1863,11 @@ mod tests {
         scope: loop_scope
       }
     );
+  }
+
+  #[test]
+  fn vertex_id() {
+    let x = lit!(1);
+    let _ = VERTEX_ID + x;
   }
 }
