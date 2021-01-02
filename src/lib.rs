@@ -833,7 +833,7 @@ where
   pub fn when<'a>(
     &'a mut self,
     condition: impl Into<Expr<S, bool>>,
-    body: impl FnOnce(&mut Scope<S, R>),
+    body: impl Fn(&mut Scope<S, R>),
   ) -> When<'a, S, R> {
     let mut scope = self.deeper();
     body(&mut scope);
@@ -849,7 +849,7 @@ where
   pub fn unless<'a>(
     &'a mut self,
     condition: impl Into<Expr<S, bool>>,
-    body: impl FnOnce(&mut Scope<S, R>),
+    body: impl Fn(&mut Scope<S, R>),
   ) -> When<'a, S, R> {
     self.when(!condition.into(), body)
   }
@@ -857,9 +857,9 @@ where
   pub fn loop_for<T>(
     &mut self,
     init_value: impl Into<Expr<S, T>>,
-    condition: impl FnOnce(&Expr<S, T>) -> Expr<S, bool>,
-    iter_fold: impl FnOnce(&Expr<S, T>) -> Expr<S, T>,
-    body: impl FnOnce(&mut Scope<S, R>, &Expr<S, T>),
+    condition: impl Fn(&Expr<S, T>) -> Expr<S, bool>,
+    iter_fold: impl Fn(&Expr<S, T>) -> Expr<S, T>,
+    body: impl Fn(&mut Scope<S, R>, &Expr<S, T>),
   ) where
     T: ToType,
   {
@@ -887,7 +887,7 @@ where
   pub fn loop_while(
     &mut self,
     condition: impl Into<Expr<S, bool>>,
-    body: impl FnOnce(&mut Scope<S, R>),
+    body: impl Fn(&mut Scope<S, R>),
   ) {
     let mut scope = self.deeper();
     body(&mut scope);
@@ -939,7 +939,7 @@ where
   pub fn or_else(
     self,
     condition: impl Into<Expr<S, bool>>,
-    body: impl FnOnce(&mut Scope<S, R>),
+    body: impl Fn(&mut Scope<S, R>),
   ) -> Self {
     let mut scope = self.parent_scope.deeper();
     body(&mut scope);
@@ -956,7 +956,7 @@ where
     self
   }
 
-  pub fn or(self, body: impl FnOnce(&mut Scope<S, R>)) {
+  pub fn or(self, body: impl Fn(&mut Scope<S, R>)) {
     let mut scope = self.parent_scope.deeper();
     body(&mut scope);
 
@@ -1506,7 +1506,10 @@ mod tests {
 
     match shader.decls[0] {
       ShaderDecl::FunDef(ref fun) => {
-        assert_eq!(fun.ret, Return::Void);
+        assert_eq!(
+          fun.ret,
+          Return::Expr(ErasedExpr::Var(ScopedHandle::fun_var(0, 0)))
+        );
         assert_eq!(
           fun.args,
           vec![Type {
