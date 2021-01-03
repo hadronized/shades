@@ -173,6 +173,11 @@ pub enum ErasedExpr {
   FunCall(ErasedFunHandle, Vec<Self>),
   // swizzle
   Swizzle(Box<Self>, Swizzle),
+  // field expression, as in a struct Foo { float x; }, foo.x is an Expr representing the x field on object foo
+  Field {
+    object: Box<ErasedExpr>,
+    field: Box<ErasedExpr>,
+  },
 }
 
 #[derive(Debug)]
@@ -1443,12 +1448,389 @@ macro_rules! sw_extract {
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum BuiltIn {
-  VertexID,
+  Vertex(VertexBuiltIn),
+  TessellationControl(TessellationControlBuiltIn),
+  TessellationEvaluation(TessellationEvaluationBuiltIn),
+  Geometry(GeometryBuiltIn),
+  Fragment(FragmentBuiltIn),
 }
 
-// vertex shader built-ins
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum VertexBuiltIn {
+  VertexID,
+  InstanceID,
+  BaseVertex,
+  BaseInstance,
+  Position,
+  PointSize,
+  ClipDistance,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum TessellationControlBuiltIn {
+  MaxPatchVerticesIn,
+  PatchVerticesIn,
+  PrimitiveID,
+  InvocationID,
+  TessellationLevelOuter,
+  TessellationLevelInner,
+  In,
+  Out,
+  Position,
+  PointSize,
+  ClipDistance,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum TessellationEvaluationBuiltIn {
+  TessCoord,
+  MaxPatchVerticesIn,
+  PatchVerticesIn,
+  PrimitiveID,
+  TessellationLevelOuter,
+  TessellationLevelInner,
+  In,
+  Out,
+  Position,
+  PointSize,
+  ClipDistance,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum GeometryBuiltIn {
+  In,
+  Out,
+  Position,
+  PointSize,
+  ClipDistance,
+  PrimitiveID,
+  PrimitiveIDIn,
+  InvocationID,
+  Layer,
+  ViewportIndex,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum FragmentBuiltIn {
+  FragCoord,
+  FrontFacing,
+  PointCoord,
+  SampleID,
+  SamplePosition,
+  SampleMaskIn,
+  ClipDistance,
+  PrimitiveID,
+  Layer,
+  ViewportIndex,
+  FragDepth,
+  SampleMask,
+}
+
+// vertex shader built-ins; inputs
 pub const VERTEX_ID: Expr<V, i32> =
-  Expr::new(ErasedExpr::Var(ScopedHandle::built_in(BuiltIn::VertexID)));
+  Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::VertexID));
+pub const INSTANCE_ID: Expr<V, i32> =
+  Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::InstanceID));
+pub const BASE_VERTEX: Expr<V, i32> =
+  Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::BaseVertex));
+pub const BASE_INSTANCE: Expr<V, i32> =
+  Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::BaseInstance));
+
+// vertex shader built-ins; outputs
+pub const POSITION: Expr<V, V4<f32>> = Expr::new_builtin(BuiltIn::Vertex(VertexBuiltIn::Position));
+pub const POINT_SIZE: Expr<V, f32> = Expr::new_builtin(BuiltIn::Vertex(VertexBuiltIn::PointSize));
+pub const CLIP_DISTANCE: Expr<V, [f32]> =
+  Expr::new_builtin(BuiltIn::Vertex(VertexBuiltIn::ClipDistance));
+
+// tessellation control shader built-ins; inputs
+pub const MAX_PATCH_VERTICES_IN: Expr<TC, i32> = Expr::new_immut_builtin(
+  BuiltIn::TessellationControl(TessellationControlBuiltIn::MaxPatchVerticesIn),
+);
+pub const CTRL_PATCH_VERTICES_IN: Expr<TC, i32> = Expr::new_immut_builtin(
+  BuiltIn::TessellationControl(TessellationControlBuiltIn::PatchVerticesIn),
+);
+pub const CTRL_PRIMITIVE_ID: Expr<TC, i32> = Expr::new_immut_builtin(BuiltIn::TessellationControl(
+  TessellationControlBuiltIn::PrimitiveID,
+));
+pub const CTRL_INVOCATION_ID: Expr<TC, i32> = Expr::new_immut_builtin(
+  BuiltIn::TessellationControl(TessellationControlBuiltIn::InvocationID),
+);
+pub const CTRL_IN: Expr<TC, [TessControlPerVertexIn]> =
+  Expr::new_immut_builtin(BuiltIn::TessellationControl(TessellationControlBuiltIn::In));
+
+pub struct TessControlPerVertexIn;
+
+impl Expr<TC, TessControlPerVertexIn> {
+  pub fn position(&self) -> Expr<TC, V4<f32>> {
+    let erased = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationControl(
+        TessellationControlBuiltIn::Position,
+      ))),
+    };
+
+    Expr::new(erased)
+  }
+
+  pub fn point_size(&self) -> Expr<TC, f32> {
+    let erased = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationControl(
+        TessellationControlBuiltIn::PointSize,
+      ))),
+    };
+
+    Expr::new(erased)
+  }
+
+  pub fn clip_distance(&self) -> Expr<TC, [f32]> {
+    let erased = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationControl(
+        TessellationControlBuiltIn::ClipDistance,
+      ))),
+    };
+
+    Expr::new(erased)
+  }
+}
+
+// tessellation control shader built-ins; outputs
+pub const CTRL_TESS_LEVEL_OUTER: Expr<TC, [f32; 4]> = Expr::new_builtin(
+  BuiltIn::TessellationControl(TessellationControlBuiltIn::TessellationLevelOuter),
+);
+pub const CTRL_TESS_LEVEL_INNER: Expr<TC, [f32; 2]> = Expr::new_builtin(
+  BuiltIn::TessellationControl(TessellationControlBuiltIn::TessellationLevelInner),
+);
+pub const CTRL_OUT: Expr<TC, [TessControlPerVertexOut]> = Expr::new_immut_builtin(
+  BuiltIn::TessellationControl(TessellationControlBuiltIn::Out),
+);
+
+pub struct TessControlPerVertexOut;
+
+impl Expr<TC, TessControlPerVertexOut> {
+  pub fn position(&self) -> Expr<TC, V4<f32>> {
+    let erased = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationControl(
+        TessellationControlBuiltIn::Position,
+      ))),
+    };
+
+    Expr::new(erased)
+  }
+
+  pub fn point_size(&self) -> Expr<TC, f32> {
+    let erased = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationControl(
+        TessellationControlBuiltIn::PointSize,
+      ))),
+    };
+
+    Expr::new(erased)
+  }
+
+  pub fn clip_distance(&self) -> Expr<TC, [f32]> {
+    let erased = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationControl(
+        TessellationControlBuiltIn::ClipDistance,
+      ))),
+    };
+
+    Expr::new(erased)
+  }
+}
+
+// tessellation evalution shader built-ins; inputs
+pub const TESS_COORD: Expr<TE, V3<f32>> = Expr::new_immut_builtin(BuiltIn::TessellationEvaluation(
+  TessellationEvaluationBuiltIn::TessCoord,
+));
+pub const EVAL_MAX_PATCH_VERTICES_IN: Expr<TE, i32> = Expr::new_immut_builtin(
+  BuiltIn::TessellationEvaluation(TessellationEvaluationBuiltIn::MaxPatchVerticesIn),
+);
+pub const EVAL_PATCH_VERTICES_IN: Expr<TE, i32> = Expr::new_immut_builtin(
+  BuiltIn::TessellationEvaluation(TessellationEvaluationBuiltIn::PatchVerticesIn),
+);
+pub const EVAL_PRIMITIVE_ID: Expr<TE, i32> = Expr::new_immut_builtin(
+  BuiltIn::TessellationEvaluation(TessellationEvaluationBuiltIn::PrimitiveID),
+);
+pub const EVAL_TESS_LEVEL_OUTER: Expr<TE, [f32; 4]> = Expr::new_builtin(
+  BuiltIn::TessellationEvaluation(TessellationEvaluationBuiltIn::TessellationLevelOuter),
+);
+pub const EVAL_TESS_LEVEL_INNER: Expr<TE, [f32; 2]> = Expr::new_builtin(
+  BuiltIn::TessellationEvaluation(TessellationEvaluationBuiltIn::TessellationLevelInner),
+);
+pub const EVAL_IN: Expr<TE, [TessEvaluationPerVertexIn]> = Expr::new_immut_builtin(
+  BuiltIn::TessellationEvaluation(TessellationEvaluationBuiltIn::In),
+);
+
+pub struct TessEvaluationPerVertexIn;
+
+impl Expr<TE, TessEvaluationPerVertexIn> {
+  pub fn position(&self) -> Expr<TE, V4<f32>> {
+    let erased = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationEvaluation(
+        TessellationEvaluationBuiltIn::Position,
+      ))),
+    };
+
+    Expr::new(erased)
+  }
+
+  pub fn point_size(&self) -> Expr<TE, f32> {
+    let erased = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationEvaluation(
+        TessellationEvaluationBuiltIn::PointSize,
+      ))),
+    };
+
+    Expr::new(erased)
+  }
+
+  pub fn clip_distance(&self) -> Expr<TE, [f32]> {
+    let erased = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationEvaluation(
+        TessellationEvaluationBuiltIn::ClipDistance,
+      ))),
+    };
+
+    Expr::new(erased)
+  }
+}
+
+// tessellation evaluation shader built-ins; outputs
+pub const EVAL_OUT: Expr<TE, [TessEvaluationPerVertexOut]> = Expr::new_immut_builtin(
+  BuiltIn::TessellationEvaluation(TessellationEvaluationBuiltIn::Out),
+);
+
+pub struct TessEvaluationPerVertexOut;
+
+impl Expr<TE, TessEvaluationPerVertexOut> {
+  pub fn position(&self) -> Expr<TE, V4<f32>> {
+    let erased = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationEvaluation(
+        TessellationEvaluationBuiltIn::Position,
+      ))),
+    };
+
+    Expr::new(erased)
+  }
+
+  pub fn point_size(&self) -> Expr<TE, f32> {
+    let erased = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationEvaluation(
+        TessellationEvaluationBuiltIn::PointSize,
+      ))),
+    };
+
+    Expr::new(erased)
+  }
+
+  pub fn clip_distance(&self) -> Expr<TE, [f32]> {
+    let erased = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationEvaluation(
+        TessellationEvaluationBuiltIn::ClipDistance,
+      ))),
+    };
+
+    Expr::new(erased)
+  }
+}
+
+// geometry shader built-ins; inputs
+pub const GEO_IN: Expr<G, [GeometryPerVertexIn]> =
+  Expr::new_immut_builtin(BuiltIn::Geometry(GeometryBuiltIn::In));
+
+pub struct GeometryPerVertexIn;
+
+impl Expr<G, GeometryPerVertexIn> {
+  pub fn position(&self) -> Expr<G, V4<f32>> {
+    let erased = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::Geometry(
+        GeometryBuiltIn::Position,
+      ))),
+    };
+
+    Expr::new(erased)
+  }
+
+  pub fn point_size(&self) -> Expr<G, f32> {
+    let erased = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::Geometry(
+        GeometryBuiltIn::PointSize,
+      ))),
+    };
+
+    Expr::new(erased)
+  }
+
+  pub fn clip_distance(&self) -> Expr<G, [f32]> {
+    let erased = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::Geometry(
+        GeometryBuiltIn::ClipDistance,
+      ))),
+    };
+
+    Expr::new(erased)
+  }
+}
+
+pub const PRIMITIVE_ID_IN: Expr<G, i32> =
+  Expr::new_immut_builtin(BuiltIn::Geometry(GeometryBuiltIn::PrimitiveIDIn));
+pub const GEO_INVOCATION_ID: Expr<G, i32> =
+  Expr::new_immut_builtin(BuiltIn::Geometry(GeometryBuiltIn::InvocationID));
+
+// geometry shader outputs
+pub const GEO_POSITION: Expr<G, V4<f32>> =
+  Expr::new_builtin(BuiltIn::Geometry(GeometryBuiltIn::Position));
+pub const GEO_POINT_SIZE: Expr<G, f32> =
+  Expr::new_builtin(BuiltIn::Geometry(GeometryBuiltIn::PointSize));
+pub const GEO_CLIP_DISTANCE: Expr<G, [f32]> =
+  Expr::new_builtin(BuiltIn::Geometry(GeometryBuiltIn::ClipDistance));
+pub const GEO_PRIMITIVE_ID: Expr<G, i32> =
+  Expr::new_builtin(BuiltIn::Geometry(GeometryBuiltIn::PrimitiveID));
+pub const LAYER: Expr<G, i32> = Expr::new_builtin(BuiltIn::Geometry(GeometryBuiltIn::Layer));
+pub const VIEWPORT_INDEX: Expr<G, i32> =
+  Expr::new_builtin(BuiltIn::Geometry(GeometryBuiltIn::ViewportIndex));
+
+// fragment shader built-ins; inputs
+pub const FRAG_COORD: Expr<F, V4<f32>> =
+  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::FragCoord));
+pub const FRONT_FACING: Expr<F, bool> =
+  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::FrontFacing));
+pub const POINT_COORD: Expr<F, V2<f32>> =
+  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::PointCoord));
+pub const SAMPLE_ID: Expr<F, i32> =
+  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::SampleID));
+pub const SAMPLE_POSITION: Expr<F, V2<f32>> =
+  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::SamplePosition));
+pub const SAMPLE_MASK_IN: Expr<F, [i32]> =
+  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::SampleMaskIn));
+pub const FRAG_CLIP_DISTANCE: Expr<F, [f32]> =
+  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::ClipDistance));
+pub const FRAG_PRIMITIVE_ID: Expr<F, i32> =
+  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::PrimitiveID));
+pub const FRAG_LAYER: Expr<F, i32> =
+  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::Layer));
+pub const FRAG_VIEWPORT_INDEX: Expr<F, i32> =
+  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::ViewportIndex));
+
+// fragment shader built-ins; outputs
+pub const FRAG_DEPTH: Expr<F, f32> =
+  Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::FragDepth));
+pub const SAMPLE_MASK: Expr<F, [i32]> =
+  Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::SampleMask));
 
 #[cfg(test)]
 mod tests {
