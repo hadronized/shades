@@ -108,6 +108,23 @@ enum ShaderDecl {
   Out(Type, u16),
 }
 
+macro_rules! make_vn {
+  ($t:ident, $dim:expr) => {
+    #[derive(Clone, Debug, PartialEq)]
+    pub struct $t<T>([T; $dim]);
+
+    impl<T> From<[T; $dim]> for $t<T> {
+      fn from(a: [T; $dim]) -> Self {
+        Self(a)
+      }
+    }
+  };
+}
+
+make_vn!(V2, 2);
+make_vn!(V3, 3);
+make_vn!(V4, 4);
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErasedExpr {
   // scalars
@@ -330,24 +347,24 @@ macro_rules! impl_Bounded {
 }
 
 impl_Bounded!(i32);
-impl_Bounded!([i32; 2]);
-impl_Bounded!([i32; 3]);
-impl_Bounded!([i32; 4]);
+impl_Bounded!(V2<i32>);
+impl_Bounded!(V3<i32>);
+impl_Bounded!(V4<i32>);
 
 impl_Bounded!(u32);
-impl_Bounded!([u32; 2]);
-impl_Bounded!([u32; 3]);
-impl_Bounded!([u32; 4]);
+impl_Bounded!(V2<u32>);
+impl_Bounded!(V3<u32>);
+impl_Bounded!(V4<u32>);
 
 impl_Bounded!(f32);
-impl_Bounded!([f32; 2]);
-impl_Bounded!([f32; 3]);
-impl_Bounded!([f32; 4]);
+impl_Bounded!(V2<f32>);
+impl_Bounded!(V3<f32>);
+impl_Bounded!(V4<f32>);
 
 impl_Bounded!(bool);
-impl_Bounded!([bool; 2]);
-impl_Bounded!([bool; 3]);
-impl_Bounded!([bool; 4]);
+impl_Bounded!(V2<bool>);
+impl_Bounded!(V3<bool>);
+impl_Bounded!(V4<bool>);
 
 // not
 macro_rules! impl_Not_Expr {
@@ -371,9 +388,9 @@ macro_rules! impl_Not_Expr {
 }
 
 impl_Not_Expr!(bool);
-impl_Not_Expr!([bool; 2]);
-impl_Not_Expr!([bool; 3]);
-impl_Not_Expr!([bool; 4]);
+impl_Not_Expr!(V2<bool>);
+impl_Not_Expr!(V3<bool>);
+impl_Not_Expr!(V4<bool>);
 
 // neg
 macro_rules! impl_Neg_Expr {
@@ -397,19 +414,19 @@ macro_rules! impl_Neg_Expr {
 }
 
 impl_Neg_Expr!(i32);
-impl_Neg_Expr!([i32; 2]);
-impl_Neg_Expr!([i32; 3]);
-impl_Neg_Expr!([i32; 4]);
+impl_Neg_Expr!(V2<i32>);
+impl_Neg_Expr!(V3<i32>);
+impl_Neg_Expr!(V4<i32>);
 
 impl_Neg_Expr!(u32);
-impl_Neg_Expr!([u32; 2]);
-impl_Neg_Expr!([u32; 3]);
-impl_Neg_Expr!([u32; 4]);
+impl_Neg_Expr!(V2<u32>);
+impl_Neg_Expr!(V3<u32>);
+impl_Neg_Expr!(V4<u32>);
 
 impl_Neg_Expr!(f32);
-impl_Neg_Expr!([f32; 2]);
-impl_Neg_Expr!([f32; 3]);
-impl_Neg_Expr!([f32; 4]);
+impl_Neg_Expr!(V2<f32>);
+impl_Neg_Expr!(V3<f32>);
+impl_Neg_Expr!(V4<f32>);
 
 // binary arithmetic and logical (+, -, *, /)
 // binop
@@ -495,30 +512,30 @@ macro_rules! impl_binop_Expr {
 
 // or
 impl_binop_Expr!(BitOr, bitor, bool, bool);
-impl_binop_Expr!(BitOr, bitor, [bool; 2], [bool; 2]);
-impl_binop_Expr!(BitOr, bitor, [bool; 2], bool);
-impl_binop_Expr!(BitOr, bitor, [bool; 3], [bool; 3]);
-impl_binop_Expr!(BitOr, bitor, [bool; 3], bool);
-impl_binop_Expr!(BitOr, bitor, [bool; 4], [bool; 4]);
-impl_binop_Expr!(BitOr, bitor, [bool; 4], bool);
+impl_binop_Expr!(BitOr, bitor, V2<bool>, V2<bool>);
+impl_binop_Expr!(BitOr, bitor, V2<bool>, bool);
+impl_binop_Expr!(BitOr, bitor, V3<bool>, V3<bool>);
+impl_binop_Expr!(BitOr, bitor, V3<bool>, bool);
+impl_binop_Expr!(BitOr, bitor, V4<bool>, V4<bool>);
+impl_binop_Expr!(BitOr, bitor, V4<bool>, bool);
 
 // and
 impl_binop_Expr!(BitAnd, bitand, bool, bool);
-impl_binop_Expr!(BitAnd, bitand, [bool; 2], [bool; 2]);
-impl_binop_Expr!(BitAnd, bitand, [bool; 2], bool);
-impl_binop_Expr!(BitAnd, bitand, [bool; 3], [bool; 3]);
-impl_binop_Expr!(BitAnd, bitand, [bool; 3], bool);
-impl_binop_Expr!(BitAnd, bitand, [bool; 4], [bool; 4]);
-impl_binop_Expr!(BitAnd, bitand, [bool; 4], bool);
+impl_binop_Expr!(BitAnd, bitand, V2<bool>, V2<bool>);
+impl_binop_Expr!(BitAnd, bitand, V2<bool>, bool);
+impl_binop_Expr!(BitAnd, bitand, V3<bool>, V3<bool>);
+impl_binop_Expr!(BitAnd, bitand, V3<bool>, bool);
+impl_binop_Expr!(BitAnd, bitand, V4<bool>, V4<bool>);
+impl_binop_Expr!(BitAnd, bitand, V4<bool>, bool);
 
 // xor
 impl_binop_Expr!(BitXor, bitxor, bool, bool);
-impl_binop_Expr!(BitXor, bitxor, [bool; 2], [bool; 2]);
-impl_binop_Expr!(BitXor, bitxor, [bool; 2], bool);
-impl_binop_Expr!(BitXor, bitxor, [bool; 3], [bool; 3]);
-impl_binop_Expr!(BitXor, bitxor, [bool; 3], bool);
-impl_binop_Expr!(BitXor, bitxor, [bool; 4], [bool; 4]);
-impl_binop_Expr!(BitXor, bitxor, [bool; 4], bool);
+impl_binop_Expr!(BitXor, bitxor, V2<bool>, V2<bool>);
+impl_binop_Expr!(BitXor, bitxor, V2<bool>, bool);
+impl_binop_Expr!(BitXor, bitxor, V3<bool>, V3<bool>);
+impl_binop_Expr!(BitXor, bitxor, V3<bool>, bool);
+impl_binop_Expr!(BitXor, bitxor, V4<bool>, V4<bool>);
+impl_binop_Expr!(BitXor, bitxor, V4<bool>, bool);
 
 /// Run a macro on all supported types to generate the impl for them
 ///
@@ -526,28 +543,28 @@ impl_binop_Expr!(BitXor, bitxor, [bool; 4], bool);
 macro_rules! impl_binarith_Expr {
   ($op:ident, $meth_name:ident) => {
     impl_binop_Expr!($op, $meth_name, i32, i32);
-    impl_binop_Expr!($op, $meth_name, [i32; 2], [i32; 2]);
-    impl_binop_Expr!($op, $meth_name, [i32; 2], i32);
-    impl_binop_Expr!($op, $meth_name, [i32; 3], [i32; 3]);
-    impl_binop_Expr!($op, $meth_name, [i32; 3], i32);
-    impl_binop_Expr!($op, $meth_name, [i32; 4], [i32; 4]);
-    impl_binop_Expr!($op, $meth_name, [i32; 4], i32);
+    impl_binop_Expr!($op, $meth_name, V2<i32>, V2<i32>);
+    impl_binop_Expr!($op, $meth_name, V2<i32>, i32);
+    impl_binop_Expr!($op, $meth_name, V3<i32>, V3<i32>);
+    impl_binop_Expr!($op, $meth_name, V3<i32>, i32);
+    impl_binop_Expr!($op, $meth_name, V4<i32>, V4<i32>);
+    impl_binop_Expr!($op, $meth_name, V4<i32>, i32);
 
     impl_binop_Expr!($op, $meth_name, u32, u32);
-    impl_binop_Expr!($op, $meth_name, [u32; 2], [u32; 2]);
-    impl_binop_Expr!($op, $meth_name, [u32; 2], u32);
-    impl_binop_Expr!($op, $meth_name, [u32; 3], [u32; 3]);
-    impl_binop_Expr!($op, $meth_name, [u32; 3], u32);
-    impl_binop_Expr!($op, $meth_name, [u32; 4], [u32; 4]);
-    impl_binop_Expr!($op, $meth_name, [u32; 4], u32);
+    impl_binop_Expr!($op, $meth_name, V2<u32>, V2<u32>);
+    impl_binop_Expr!($op, $meth_name, V2<u32>, u32);
+    impl_binop_Expr!($op, $meth_name, V3<u32>, V3<u32>);
+    impl_binop_Expr!($op, $meth_name, V3<u32>, u32);
+    impl_binop_Expr!($op, $meth_name, V4<u32>, V4<u32>);
+    impl_binop_Expr!($op, $meth_name, V4<u32>, u32);
 
     impl_binop_Expr!($op, $meth_name, f32, f32);
-    impl_binop_Expr!($op, $meth_name, [f32; 2], [f32; 2]);
-    impl_binop_Expr!($op, $meth_name, [f32; 2], f32);
-    impl_binop_Expr!($op, $meth_name, [f32; 3], [f32; 3]);
-    impl_binop_Expr!($op, $meth_name, [f32; 3], f32);
-    impl_binop_Expr!($op, $meth_name, [f32; 4], [f32; 4]);
-    impl_binop_Expr!($op, $meth_name, [f32; 4], f32);
+    impl_binop_Expr!($op, $meth_name, V2<f32>, V2<f32>);
+    impl_binop_Expr!($op, $meth_name, V2<f32>, f32);
+    impl_binop_Expr!($op, $meth_name, V3<f32>, V3<f32>);
+    impl_binop_Expr!($op, $meth_name, V3<f32>, f32);
+    impl_binop_Expr!($op, $meth_name, V4<f32>, V4<f32>);
+    impl_binop_Expr!($op, $meth_name, V4<f32>, f32);
   };
 }
 
@@ -640,19 +657,19 @@ macro_rules! impl_binshift_Expr {
 macro_rules! impl_binshifts_Expr {
   ($op:ident, $meth_name:ident) => {
     impl_binshift_Expr!($op, $meth_name, i32);
-    impl_binshift_Expr!($op, $meth_name, [i32; 2]);
-    impl_binshift_Expr!($op, $meth_name, [i32; 3]);
-    impl_binshift_Expr!($op, $meth_name, [i32; 4]);
+    impl_binshift_Expr!($op, $meth_name, V2<i32>);
+    impl_binshift_Expr!($op, $meth_name, V3<i32>);
+    impl_binshift_Expr!($op, $meth_name, V4<i32>);
 
     impl_binshift_Expr!($op, $meth_name, u32);
-    impl_binshift_Expr!($op, $meth_name, [u32; 2]);
-    impl_binshift_Expr!($op, $meth_name, [u32; 3]);
-    impl_binshift_Expr!($op, $meth_name, [u32; 4]);
+    impl_binshift_Expr!($op, $meth_name, V2<u32>);
+    impl_binshift_Expr!($op, $meth_name, V3<u32>);
+    impl_binshift_Expr!($op, $meth_name, V4<u32>);
 
     impl_binshift_Expr!($op, $meth_name, f32);
-    impl_binshift_Expr!($op, $meth_name, [f32; 2]);
-    impl_binshift_Expr!($op, $meth_name, [f32; 3]);
-    impl_binshift_Expr!($op, $meth_name, [f32; 4]);
+    impl_binshift_Expr!($op, $meth_name, V2<f32>);
+    impl_binshift_Expr!($op, $meth_name, V3<f32>);
+    impl_binshift_Expr!($op, $meth_name, V4<f32>);
   };
 }
 
@@ -674,28 +691,28 @@ impl_From_Expr_scalar!(u32, LitUInt);
 impl_From_Expr_scalar!(f32, LitFloat);
 impl_From_Expr_scalar!(bool, LitBool);
 
-macro_rules! impl_From_Expr_array {
-  ([$t:ty; $dim:expr], $q:ident) => {
-    impl From<[$t; $dim]> for Expr<L, [$t; $dim]> {
-      fn from(a: [$t; $dim]) -> Self {
-        Self::new(ErasedExpr::$q(a))
+macro_rules! impl_From_Expr_vn {
+  ($t:ty, $q:ident) => {
+    impl From<$t> for Expr<L, $t> {
+      fn from(a: $t) -> Self {
+        Self::new(ErasedExpr::$q(a.0))
       }
     }
   };
 }
 
-impl_From_Expr_array!([i32; 2], LitInt2);
-impl_From_Expr_array!([u32; 2], LitUInt2);
-impl_From_Expr_array!([f32; 2], LitFloat2);
-impl_From_Expr_array!([bool; 2], LitBool2);
-impl_From_Expr_array!([i32; 3], LitInt3);
-impl_From_Expr_array!([u32; 3], LitUInt3);
-impl_From_Expr_array!([f32; 3], LitFloat3);
-impl_From_Expr_array!([bool; 3], LitBool3);
-impl_From_Expr_array!([i32; 4], LitInt4);
-impl_From_Expr_array!([u32; 4], LitUInt4);
-impl_From_Expr_array!([f32; 4], LitFloat4);
-impl_From_Expr_array!([bool; 4], LitBool4);
+impl_From_Expr_vn!(V2<i32>, LitInt2);
+impl_From_Expr_vn!(V2<u32>, LitUInt2);
+impl_From_Expr_vn!(V2<f32>, LitFloat2);
+impl_From_Expr_vn!(V2<bool>, LitBool2);
+impl_From_Expr_vn!(V3<i32>, LitInt3);
+impl_From_Expr_vn!(V3<u32>, LitUInt3);
+impl_From_Expr_vn!(V3<f32>, LitFloat3);
+impl_From_Expr_vn!(V3<bool>, LitBool3);
+impl_From_Expr_vn!(V4<i32>, LitInt4);
+impl_From_Expr_vn!(V4<u32>, LitUInt4);
+impl_From_Expr_vn!(V4<f32>, LitFloat4);
+impl_From_Expr_vn!(V4<bool>, LitBool4);
 
 /// Easily create literal expressions.
 ///
@@ -707,15 +724,15 @@ macro_rules! lit {
   };
 
   ($a:expr, $b:expr) => {
-    Expr::<L, _>::from([$a, $b])
+    Expr::<L, _>::from(V2::from([$a, $b]))
   };
 
   ($a:expr, $b:expr, $c:expr) => {
-    Expr::<L, _>::from([$a, $b, $c])
+    Expr::<L, _>::from(V3::from([$a, $b, $c]))
   };
 
   ($a:expr, $b:expr, $c:expr, $d:expr) => {
-    Expr::<L, _>::from([$a, $b, $c, $d])
+    Expr::<L, _>::from(V4::from([$a, $b, $c, $d]))
   };
 }
 
@@ -1228,18 +1245,18 @@ impl_ToType!(i32, Int, Scalar);
 impl_ToType!(u32, UInt, Scalar);
 impl_ToType!(f32, Float, Scalar);
 impl_ToType!(bool, Bool, Scalar);
-impl_ToType!([i32; 2], Int, D2);
-impl_ToType!([u32; 2], UInt, D2);
-impl_ToType!([f32; 2], Float, D2);
-impl_ToType!([bool; 2], Bool, D2);
-impl_ToType!([i32; 3], Int, D3);
-impl_ToType!([u32; 3], UInt, D3);
-impl_ToType!([f32; 3], Float, D3);
-impl_ToType!([bool; 3], Bool, D3);
-impl_ToType!([i32; 4], Int, D4);
-impl_ToType!([u32; 4], UInt, D4);
-impl_ToType!([f32; 4], Float, D4);
-impl_ToType!([bool; 4], Bool, D4);
+impl_ToType!(V2<i32>, Int, D2);
+impl_ToType!(V2<u32>, UInt, D2);
+impl_ToType!(V2<f32>, Float, D2);
+impl_ToType!(V2<bool>, Bool, D2);
+impl_ToType!(V3<i32>, Int, D3);
+impl_ToType!(V3<u32>, UInt, D3);
+impl_ToType!(V3<f32>, Float, D3);
+impl_ToType!(V3<bool>, Bool, D3);
+impl_ToType!(V4<i32>, Int, D4);
+impl_ToType!(V4<u32>, UInt, D4);
+impl_ToType!(V4<f32>, Float, D4);
+impl_ToType!(V4<bool>, Bool, D4);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SwizzleSelector {
@@ -1267,7 +1284,7 @@ pub trait Swizzlable<S> {
 }
 
 // 2D
-impl<S, T> Swizzlable<SwizzleSelector> for Expr<S, [T; 2]> {
+impl<S, T> Swizzlable<SwizzleSelector> for Expr<S, V2<T>> {
   fn swizzle(&self, x: SwizzleSelector) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1276,7 +1293,7 @@ impl<S, T> Swizzlable<SwizzleSelector> for Expr<S, [T; 2]> {
   }
 }
 
-impl<S, T> Swizzlable<[SwizzleSelector; 2]> for Expr<S, [T; 2]> {
+impl<S, T> Swizzlable<[SwizzleSelector; 2]> for Expr<S, V2<T>> {
   fn swizzle(&self, [x, y]: [SwizzleSelector; 2]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1286,7 +1303,7 @@ impl<S, T> Swizzlable<[SwizzleSelector; 2]> for Expr<S, [T; 2]> {
 }
 
 // 3D
-impl<S, T> Swizzlable<SwizzleSelector> for Expr<S, [T; 3]> {
+impl<S, T> Swizzlable<SwizzleSelector> for Expr<S, V3<T>> {
   fn swizzle(&self, x: SwizzleSelector) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1295,7 +1312,7 @@ impl<S, T> Swizzlable<SwizzleSelector> for Expr<S, [T; 3]> {
   }
 }
 
-impl<S, T> Swizzlable<[SwizzleSelector; 2]> for Expr<S, [T; 3]> {
+impl<S, T> Swizzlable<[SwizzleSelector; 2]> for Expr<S, V3<T>> {
   fn swizzle(&self, [x, y]: [SwizzleSelector; 2]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1304,7 +1321,7 @@ impl<S, T> Swizzlable<[SwizzleSelector; 2]> for Expr<S, [T; 3]> {
   }
 }
 
-impl<S, T> Swizzlable<[SwizzleSelector; 3]> for Expr<S, [T; 3]> {
+impl<S, T> Swizzlable<[SwizzleSelector; 3]> for Expr<S, V3<T>> {
   fn swizzle(&self, [x, y, z]: [SwizzleSelector; 3]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1314,7 +1331,7 @@ impl<S, T> Swizzlable<[SwizzleSelector; 3]> for Expr<S, [T; 3]> {
 }
 
 // 4D
-impl<S, T> Swizzlable<SwizzleSelector> for Expr<S, [T; 4]> {
+impl<S, T> Swizzlable<SwizzleSelector> for Expr<S, V4<T>> {
   fn swizzle(&self, x: SwizzleSelector) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1323,7 +1340,7 @@ impl<S, T> Swizzlable<SwizzleSelector> for Expr<S, [T; 4]> {
   }
 }
 
-impl<S, T> Swizzlable<[SwizzleSelector; 2]> for Expr<S, [T; 4]> {
+impl<S, T> Swizzlable<[SwizzleSelector; 2]> for Expr<S, V4<T>> {
   fn swizzle(&self, [x, y]: [SwizzleSelector; 2]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1332,7 +1349,7 @@ impl<S, T> Swizzlable<[SwizzleSelector; 2]> for Expr<S, [T; 4]> {
   }
 }
 
-impl<S, T> Swizzlable<[SwizzleSelector; 3]> for Expr<S, [T; 4]> {
+impl<S, T> Swizzlable<[SwizzleSelector; 3]> for Expr<S, V4<T>> {
   fn swizzle(&self, [x, y, z]: [SwizzleSelector; 3]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1341,7 +1358,7 @@ impl<S, T> Swizzlable<[SwizzleSelector; 3]> for Expr<S, [T; 4]> {
   }
 }
 
-impl<S, T> Swizzlable<[SwizzleSelector; 4]> for Expr<S, [T; 4]> {
+impl<S, T> Swizzlable<[SwizzleSelector; 4]> for Expr<S, V4<T>> {
   fn swizzle(&self, [x, y, z, w]: [SwizzleSelector; 4]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1538,7 +1555,7 @@ mod tests {
 
     let Var(x) = scope.var(0);
     let Var(y) = scope.var(1u32);
-    let Var(z) = scope.var([false, true, false]);
+    let Var(z) = scope.var(lit![false, true, false]);
 
     assert_eq!(x.erased, ErasedExpr::Var(ScopedHandle::fun_var(0, 0)));
     assert_eq!(y.erased, ErasedExpr::Var(ScopedHandle::fun_var(0, 1)));
@@ -1692,7 +1709,7 @@ mod tests {
   #[test]
   fn swizzling() {
     let mut scope = Scope::<(), ()>::new(0);
-    let Var(foo) = scope.var([1, 2]);
+    let Var(foo) = scope.var(lit![1, 2]);
     let foo_xy = sw!(foo, .x.y);
     let foo_xx = sw!(foo, .x.x);
 
@@ -1715,14 +1732,14 @@ mod tests {
 
   #[test]
   fn when() {
-    let mut s = Scope::<L, Expr<L, [f32; 4]>>::new(0);
+    let mut s = Scope::<L, Expr<L, V4<f32>>>::new(0);
 
     let Var(x) = s.var(1);
     s.when(x.eq(lit!(2)), |s| {
       let Var(y) = s.var(lit![1., 2., 3., 4.]);
       s.leave(y);
     })
-    .or_else(x.eq(lit!(0)), |s| s.leave(lit!([0., 0., 0., 0.])))
+    .or_else(x.eq(lit!(0)), |s| s.leave(lit![0., 0., 0., 0.]))
     .or(|_| ());
 
     assert_eq!(s.erased.instructions.len(), 4);
