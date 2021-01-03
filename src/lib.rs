@@ -76,7 +76,7 @@ impl<S> Shader<S> {
     let n = self.decls.len() as u16;
     self.decls.push(ShaderDecl::Const(expr.erased));
 
-    Var(Expr::new(ErasedExpr::Var(ScopedHandle::global(n))))
+    Var(Expr::new(ErasedExpr::MutVar(ScopedHandle::global(n))))
   }
 
   pub fn input<T>(&mut self) -> Var<S, T>
@@ -86,7 +86,7 @@ impl<S> Shader<S> {
     let n = self.decls.len() as u16;
     self.decls.push(ShaderDecl::In(T::TYPE, n));
 
-    Var(Expr::new(ErasedExpr::Var(ScopedHandle::global(n))))
+    Var(Expr::new(ErasedExpr::MutVar(ScopedHandle::global(n))))
   }
 
   pub fn output<T>(&mut self) -> Var<S, T>
@@ -96,7 +96,7 @@ impl<S> Shader<S> {
     let n = self.decls.len() as u16;
     self.decls.push(ShaderDecl::Out(T::TYPE, n));
 
-    Var(Expr::new(ErasedExpr::Var(ScopedHandle::global(n))))
+    Var(Expr::new(ErasedExpr::MutVar(ScopedHandle::global(n))))
   }
 }
 
@@ -146,7 +146,8 @@ pub enum ErasedExpr {
   LitFloat4([f32; 4]),
   LitBool4([bool; 4]),
   // var
-  Var(ScopedHandle),
+  MutVar(ScopedHandle),
+  ImmutBuiltIn(BuiltIn),
   // built-in functions and operators
   Not(Box<Self>),
   And(Box<Self>, Box<Self>),
@@ -204,6 +205,14 @@ where
       erased,
       _phantom: PhantomData,
     }
+  }
+
+  const fn new_builtin(builtin: BuiltIn) -> Self {
+    Self::new(ErasedExpr::MutVar(ScopedHandle::builtin(builtin)))
+  }
+
+  const fn new_immut_builtin(builtin: BuiltIn) -> Self {
+    Self::new(ErasedExpr::ImmutBuiltIn(builtin))
   }
 
   pub fn eq<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, bool>
@@ -806,7 +815,7 @@ macro_rules! impl_ToFun_args {
           $($arg: ToType),*
           {
             fn build_fn(self) -> FunDef<S, R, ($(Expr<S, $arg>),*)> {
-              $( let $arg_ident = Expr::new(ErasedExpr::Var(ScopedHandle::fun_arg($arg_rank))); )*
+              $( let $arg_ident = Expr::new(ErasedExpr::MutVar(ScopedHandle::fun_arg($arg_rank))); )*
               let args = vec![$( $arg::TYPE ),*];
 
               let mut scope = Scope::new(0);
@@ -827,7 +836,7 @@ where
   A: ToType,
 {
   fn build_fn(self) -> FunDef<S, R, Expr<S, A>> {
-    let arg = Expr::new(ErasedExpr::Var(ScopedHandle::fun_arg(0)));
+    let arg = Expr::new(ErasedExpr::MutVar(ScopedHandle::fun_arg(0)));
 
     let mut scope = Scope::new(0);
     let ret = self(&mut scope, arg);
@@ -965,7 +974,7 @@ where
       init_value: init_value.into().erased,
     });
 
-    Var(Expr::new(ErasedExpr::Var(handle)))
+    Var(Expr::new(ErasedExpr::MutVar(handle)))
   }
 
   pub fn leave(&mut self, ret: impl Into<R>) {
@@ -1146,7 +1155,7 @@ pub enum ScopedHandle {
 }
 
 impl ScopedHandle {
-  const fn built_in(b: BuiltIn) -> Self {
+  const fn builtin(b: BuiltIn) -> Self {
     Self::BuiltIn(b)
   }
 
@@ -1464,7 +1473,7 @@ mod tests {
       ErasedExpr::Not(Box::new(ErasedExpr::LitBool(true)))
     );
     assert_eq!(b.erased, ErasedExpr::Neg(Box::new(ErasedExpr::LitInt(3))));
-    assert_eq!(c.erased, ErasedExpr::Var(ScopedHandle::fun_var(0, 0)));
+    assert_eq!(c.erased, ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0)));
   }
 
   #[test]
@@ -1563,11 +1572,11 @@ mod tests {
     let Var(y) = scope.var(1u32);
     let Var(z) = scope.var(lit![false, true, false]);
 
-    assert_eq!(x.erased, ErasedExpr::Var(ScopedHandle::fun_var(0, 0)));
-    assert_eq!(y.erased, ErasedExpr::Var(ScopedHandle::fun_var(0, 1)));
+    assert_eq!(x.erased, ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0)));
+    assert_eq!(y.erased, ErasedExpr::MutVar(ScopedHandle::fun_var(0, 1)));
     assert_eq!(
       z.erased,
-      ErasedExpr::Var(ScopedHandle::fun_var(0, 2).into())
+      ErasedExpr::MutVar(ScopedHandle::fun_var(0, 2).into())
     );
     assert_eq!(scope.erased.instructions.len(), 3);
     assert_eq!(
@@ -1686,7 +1695,7 @@ mod tests {
       ShaderDecl::FunDef(ref fun) => {
         assert_eq!(
           fun.ret,
-          ErasedReturn::Expr(ErasedExpr::Var(ScopedHandle::fun_var(0, 0)))
+          ErasedReturn::Expr(ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0)))
         );
         assert_eq!(
           fun.args,
@@ -1722,7 +1731,7 @@ mod tests {
     assert_eq!(
       foo_xy.erased,
       ErasedExpr::Swizzle(
-        Box::new(ErasedExpr::Var(ScopedHandle::fun_var(0, 0))),
+        Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0))),
         Swizzle::D2(SwizzleSelector::X, SwizzleSelector::Y)
       )
     );
@@ -1730,7 +1739,7 @@ mod tests {
     assert_eq!(
       foo_xx.erased,
       ErasedExpr::Swizzle(
-        Box::new(ErasedExpr::Var(ScopedHandle::fun_var(0, 0))),
+        Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0))),
         Swizzle::D2(SwizzleSelector::X, SwizzleSelector::X)
       )
     );
@@ -1775,7 +1784,7 @@ mod tests {
     });
     scope
       .instructions
-      .push(ScopeInstr::Return(ErasedReturn::Expr(ErasedExpr::Var(
+      .push(ScopeInstr::Return(ErasedReturn::Expr(ErasedExpr::MutVar(
         ScopedHandle::fun_var(1, 0),
       ))));
 
@@ -1783,7 +1792,7 @@ mod tests {
       s.erased.instructions[1],
       ScopeInstr::If {
         condition: ErasedExpr::Eq(
-          Box::new(ErasedExpr::Var(ScopedHandle::fun_var(0, 0))),
+          Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0))),
           Box::new(ErasedExpr::LitInt(2))
         ),
         scope,
@@ -1802,7 +1811,7 @@ mod tests {
       s.erased.instructions[2],
       ScopeInstr::ElseIf {
         condition: ErasedExpr::Eq(
-          Box::new(ErasedExpr::Var(ScopedHandle::fun_var(0, 0))),
+          Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0))),
           Box::new(ErasedExpr::LitInt(0))
         ),
         scope,
@@ -1845,20 +1854,20 @@ mod tests {
     });
     loop_scope
       .instructions
-      .push(ScopeInstr::Return(ErasedReturn::Expr(ErasedExpr::Var(
+      .push(ScopeInstr::Return(ErasedReturn::Expr(ErasedExpr::MutVar(
         ScopedHandle::fun_var(1, 0),
       ))));
 
     assert_eq!(
       scope.erased.instructions[0],
       ScopeInstr::For {
-        init_expr: ErasedExpr::Var(ScopedHandle::fun_var(1, 0)),
+        init_expr: ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0)),
         condition: ErasedExpr::Lt(
-          Box::new(ErasedExpr::Var(ScopedHandle::fun_var(1, 0))),
+          Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0))),
           Box::new(ErasedExpr::LitInt(10))
         ),
         post_expr: ErasedExpr::Add(
-          Box::new(ErasedExpr::Var(ScopedHandle::fun_var(1, 0))),
+          Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0))),
           Box::new(ErasedExpr::LitInt(1))
         ),
         scope: loop_scope
