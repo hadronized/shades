@@ -175,7 +175,10 @@ pub enum ErasedExpr {
 }
 
 #[derive(Debug)]
-pub struct Expr<S, T> {
+pub struct Expr<S, T>
+where
+  T: ?Sized,
+{
   erased: ErasedExpr,
   _phantom: PhantomData<(S, T)>,
 }
@@ -192,7 +195,10 @@ impl<S, T> Clone for Expr<S, T> {
   }
 }
 
-impl<S, T> Expr<S, T> {
+impl<S, T> Expr<S, T>
+where
+  T: ?Sized,
+{
   const fn new(erased: ErasedExpr) -> Self {
     Self {
       erased,
