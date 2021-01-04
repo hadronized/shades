@@ -916,8 +916,129 @@ pub struct FunHandle<S, R, A> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErasedFunHandle {
+  // trigonometry
+  Radians,
+  Degrees,
+  Sin,
+  Cos,
+  Tan,
+  ASin,
+  ACos,
+  ATan,
+  SinH,
+  CosH,
+  TanH,
+  ASinH,
+  ACosH,
+  ATanH,
+  // exponential
+  Pow,
+  Exp,
+  Exp2,
+  Log,
+  Log2,
+  Sqrt,
+  InverseSqrt,
+  // common
+  Abs,
+  Sign,
+  Floor,
+  Trunc,
+  Round,
+  RoundEven,
+  Ceil,
+  Fract,
+  Mod,
+  Modf,
   Min,
   Max,
+  Clamp,
+  Mix,
+  Step,
+  Smoothstep,
+  IsNan,
+  IsInf,
+  FloatBitsToInt,
+  IntBitsToFloat,
+  UIntBitsToFloat,
+  FMA,
+  Frexp,
+  Ldexp,
+  // floating-point pack and unpack functions
+  PackUnorm2x16,
+  PackSnorm2x16,
+  PackUnorm4x8,
+  PackSnorm4x8,
+  UnpackUnorm2x16,
+  UnpackSnorm2x16,
+  UnpackUnorm4x8,
+  UnpackSnorm4x8,
+  PackHalf2x16,
+  UnpackHalf2x16,
+  // geometry functions
+  Length,
+  Distance,
+  Dot,
+  Cross,
+  Normalize,
+  FaceForward,
+  Reflect,
+  Refract,
+  // matrix functions
+  // TODO
+  // vector relational functions
+  VLt,
+  VLte,
+  VGt,
+  VGte,
+  VEq,
+  VNeq,
+  VAny,
+  VAll,
+  VNot,
+  // integer functions
+  UAddCarry,
+  USubBorrow,
+  UMulExtended,
+  IMulExtended,
+  BitfieldExtract,
+  BitfieldInsert,
+  BitfieldReverse,
+  BitCount,
+  FindLSB,
+  FindMSB,
+  // texture functions
+  // TODO
+  // geometry shader functions
+  EmitStreamVertex,
+  EndStreamPrimitive,
+  EmitVertex,
+  EndPrimitive,
+  // fragment processing functions
+  DFDX,
+  DFDY,
+  DFDXFine,
+  DFDYFine,
+  DFDXCoarse,
+  DFDYCoarse,
+  FWidth,
+  FWidthFine,
+  FWidthCoarse,
+  InterpolateAtCentroid,
+  InterpolateAtSample,
+  InterpolateAtOffset,
+  // shader invocation control functions
+  Barrier,
+  MemoryBarrier,
+  MemoryBarrierAtomic,
+  MemoryBarrierBuffer,
+  MemoryBarrierShared,
+  MemoryBarrierImage,
+  GroupMemoryBarrier,
+  // shader invocation group functions
+  AnyInvocation,
+  AllInvocations,
+  AllInvocationsEqual,
   UserDefined(u16),
 }
 
@@ -1841,6 +1962,331 @@ pub const FRAG_DEPTH: Expr<F, f32> =
   Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::FragDepth));
 pub const SAMPLE_MASK: Expr<F, [i32]> =
   Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::SampleMask));
+
+// standard library
+
+pub trait Trigonometry<S, T> {
+  fn radians<Q>(&self) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn degrees<Q>(&self) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn sin<Q>(&self) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn cos<Q>(&self) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn tan<Q>(&self) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn asin<Q>(&self) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn acos<Q>(&self) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn atan<Q>(&self) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn sinh<Q>(&self) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn cosh<Q>(&self) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn tanh<Q>(&self) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn asinh<Q>(&self) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn acosh<Q>(&self) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn atanh<Q>(&self) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+}
+
+macro_rules! impl_Trigonometry {
+  ($t:ty) => {
+    impl<S> Trigonometry<S, $t> for Expr<S, $t> {
+      fn radians<Q>(&self) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Radians,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn degrees<Q>(&self) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Degrees,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn sin<Q>(&self) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Sin,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn cos<Q>(&self) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Cos,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn tan<Q>(&self) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Tan,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn asin<Q>(&self) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::ASin,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn acos<Q>(&self) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::ACos,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn atan<Q>(&self) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::ATan,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn sinh<Q>(&self) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::SinH,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn cosh<Q>(&self) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::CosH,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn tanh<Q>(&self) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::TanH,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn asinh<Q>(&self) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::ASinH,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn acosh<Q>(&self) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::ACosH,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn atanh<Q>(&self) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::ATanH,
+          vec![self.erased.clone()],
+        ))
+      }
+    }
+  };
+}
+
+impl_Trigonometry!(f32);
+impl_Trigonometry!(V2<f32>);
+impl_Trigonometry!(V3<f32>);
+impl_Trigonometry!(V4<f32>);
+
+pub trait Exponential<S, T> {
+  fn pow<Q, R>(&self, p: impl Into<Expr<Q, T>>) -> Expr<<S as CompatibleStage<Q>>::Intersect, T>
+  where
+    S: CompatibleStage<Q> + CompatibleStage<R>;
+
+  fn exp<Q>(&self) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn exp2<Q>(&self) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn log<Q>(&self) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn log2<Q>(&self) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn sqrt<Q>(&self) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn isqrt<Q>(&self) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+}
+
+macro_rules! impl_Exponential {
+  ($t:ty) => {
+    impl<S> Exponential<S, $t> for Expr<S, $t> {
+      fn pow<Q, R>(
+        &self,
+        p: impl Into<Expr<Q, $t>>,
+      ) -> Expr<<S as CompatibleStage<Q>>::Intersect, $t>
+      where
+        S: CompatibleStage<Q> + CompatibleStage<R>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Pow,
+          vec![self.erased.clone(), p.into().erased],
+        ))
+      }
+
+      fn exp<Q>(&self) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Exp,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn exp2<Q>(&self) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Exp2,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn log<Q>(&self) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Log,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn log2<Q>(&self) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Log2,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn sqrt<Q>(&self) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Sqrt,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn isqrt<Q>(&self) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::InverseSqrt,
+          vec![self.erased.clone()],
+        ))
+      }
+    }
+  };
+}
+
+impl_Exponential!(f32);
+impl_Exponential!(V2<f32>);
+impl_Exponential!(V3<f32>);
+impl_Exponential!(V4<f32>);
 
 #[cfg(test)]
 mod tests {
