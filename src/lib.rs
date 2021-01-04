@@ -174,10 +174,8 @@ pub enum ErasedExpr {
   // swizzle
   Swizzle(Box<Self>, Swizzle),
   // field expression, as in a struct Foo { float x; }, foo.x is an Expr representing the x field on object foo
-  Field {
-    object: Box<ErasedExpr>,
-    field: Box<ErasedExpr>,
-  },
+  Field { object: Box<Self>, field: Box<Self> },
+  ArrayLookup { object: Box<Self>, index: Box<Self> },
 }
 
 #[derive(Debug)]
@@ -315,6 +313,18 @@ impl<S> Expr<S, bool> {
       Box::new(self.erased.clone()),
       Box::new(rhs.into().erased),
     ))
+  }
+}
+
+impl<S, T> Expr<S, [T]> {
+  pub fn at<Q>(&self, index: impl Into<Expr<Q, i32>>) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>,
+  {
+    Expr::new(ErasedExpr::ArrayLookup {
+      object: Box::new(self.erased.clone()),
+      index: Box::new(index.into().erased),
+    })
   }
 }
 
@@ -2283,5 +2293,18 @@ mod tests {
   fn vertex_id() {
     let x = lit!(1);
     let _ = VERTEX_ID + x;
+  }
+
+  #[test]
+  fn array_lookup() {
+    let x = CLIP_DISTANCE.at(1);
+
+    assert_eq!(
+      x.erased,
+      ErasedExpr::ArrayLookup {
+        object: Box::new(CLIP_DISTANCE.erased),
+        index: Box::new(ErasedExpr::LitInt(1))
+      }
+    );
   }
 }
