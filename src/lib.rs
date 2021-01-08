@@ -1219,7 +1219,25 @@ where
 }
 
 #[derive(Debug)]
-pub struct Var<S, T>(pub Expr<S, T>);
+pub struct Var<S, T>(Expr<S, T>);
+
+impl<S, T> From<Var<S, T>> for Expr<S, T> {
+  fn from(v: Var<S, T>) -> Self {
+    v.0
+  }
+}
+
+impl<'a, S, T> From<&'a Var<S, T>> for Expr<S, T> {
+  fn from(v: &'a Var<S, T>) -> Self {
+    v.0.clone()
+  }
+}
+
+impl<S, T> Var<S, T> {
+  pub fn to_expr(&self) -> Expr<S, T> {
+    self.0.clone()
+  }
+}
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum ScopedHandle {
@@ -2449,14 +2467,14 @@ mod tests {
       a.erased,
       ErasedExpr::Add(
         Box::new(ErasedExpr::LitInt(1)),
-        Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(2)),
       )
     );
     assert_eq!(
       b.erased,
       ErasedExpr::Add(
         Box::new(ErasedExpr::LitInt(1)),
-        Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(2)),
       )
     );
 
@@ -2468,14 +2486,14 @@ mod tests {
       a.erased,
       ErasedExpr::Sub(
         Box::new(ErasedExpr::LitInt(1)),
-        Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(2)),
       )
     );
     assert_eq!(
       b.erased,
       ErasedExpr::Sub(
         Box::new(ErasedExpr::LitInt(1)),
-        Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(2)),
       )
     );
 
@@ -2487,14 +2505,14 @@ mod tests {
       a.erased,
       ErasedExpr::Mul(
         Box::new(ErasedExpr::LitInt(1)),
-        Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(2)),
       )
     );
     assert_eq!(
       b.erased,
       ErasedExpr::Mul(
         Box::new(ErasedExpr::LitInt(1)),
-        Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(2)),
       )
     );
 
@@ -2506,14 +2524,14 @@ mod tests {
       a.erased,
       ErasedExpr::Div(
         Box::new(ErasedExpr::LitInt(1)),
-        Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(2)),
       )
     );
     assert_eq!(
       b.erased,
       ErasedExpr::Div(
         Box::new(ErasedExpr::LitInt(1)),
-        Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(2)),
       )
     );
   }
@@ -2547,10 +2565,10 @@ mod tests {
       ScopeInstr::VarDecl {
         ty: Type {
           prim_ty: PrimType::Int(Dim::Scalar),
-          array_spec: None
+          array_spec: None,
         },
         handle: ScopedHandle::fun_var(0, 0),
-        init_value: ErasedExpr::LitInt(0)
+        init_value: ErasedExpr::LitInt(0),
       }
     );
     assert_eq!(
@@ -2558,10 +2576,10 @@ mod tests {
       ScopeInstr::VarDecl {
         ty: Type {
           prim_ty: PrimType::UInt(Dim::Scalar),
-          array_spec: None
+          array_spec: None,
         },
         handle: ScopedHandle::fun_var(0, 1),
-        init_value: ErasedExpr::LitUInt(1)
+        init_value: ErasedExpr::LitUInt(1),
       }
     );
     assert_eq!(
@@ -2569,10 +2587,10 @@ mod tests {
       ScopeInstr::VarDecl {
         ty: Type {
           prim_ty: PrimType::Bool(Dim::D3),
-          array_spec: None
+          array_spec: None,
         },
         handle: ScopedHandle::fun_var(0, 2),
-        init_value: ErasedExpr::LitBool3([false, true, false])
+        init_value: ErasedExpr::LitBool3([false, true, false]),
       }
     );
   }
@@ -2587,7 +2605,7 @@ mod tests {
       a.min(&b).erased,
       ErasedExpr::FunCall(
         ErasedFunHandle::Min,
-        vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)]
+        vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)],
       )
     );
 
@@ -2595,21 +2613,19 @@ mod tests {
       a.max(&b).erased,
       ErasedExpr::FunCall(
         ErasedFunHandle::Max,
-        vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)]
+        vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)],
       )
     );
 
     assert_eq!(
       a.clamp(b, c).erased,
       ErasedExpr::FunCall(
-        ErasedFunHandle::Max,
+        ErasedFunHandle::Clamp,
         vec![
-          ErasedExpr::FunCall(
-            ErasedFunHandle::Min,
-            vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(3)]
-          ),
+          ErasedExpr::LitInt(1),
           ErasedExpr::LitInt(2),
-        ]
+          ErasedExpr::LitInt(3)
+        ],
       )
     );
   }
@@ -2633,10 +2649,10 @@ mod tests {
           ScopeInstr::VarDecl {
             ty: Type {
               prim_ty: PrimType::Int(Dim::Scalar),
-              array_spec: None
+              array_spec: None,
             },
             handle: ScopedHandle::fun_var(0, 0),
-            init_value: ErasedExpr::LitInt(3)
+            init_value: ErasedExpr::LitInt(3),
           }
         )
       }
@@ -2664,7 +2680,7 @@ mod tests {
           fun.args,
           vec![Type {
             prim_ty: PrimType::Int(Dim::Scalar),
-            array_spec: None
+            array_spec: None,
           }]
         );
         assert_eq!(fun.scope.instructions.len(), 1);
@@ -2673,10 +2689,10 @@ mod tests {
           ScopeInstr::VarDecl {
             ty: Type {
               prim_ty: PrimType::Int(Dim::Scalar),
-              array_spec: None
+              array_spec: None,
             },
             handle: ScopedHandle::fun_var(0, 0),
-            init_value: ErasedExpr::LitInt(3)
+            init_value: ErasedExpr::LitInt(3),
           }
         )
       }
@@ -2695,7 +2711,7 @@ mod tests {
       foo_xy.erased,
       ErasedExpr::Swizzle(
         Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0))),
-        Swizzle::D2(SwizzleSelector::X, SwizzleSelector::Y)
+        Swizzle::D2(SwizzleSelector::X, SwizzleSelector::Y),
       )
     );
 
@@ -2703,7 +2719,7 @@ mod tests {
       foo_xx.erased,
       ErasedExpr::Swizzle(
         Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0))),
-        Swizzle::D2(SwizzleSelector::X, SwizzleSelector::X)
+        Swizzle::D2(SwizzleSelector::X, SwizzleSelector::X),
       )
     );
   }
@@ -2730,7 +2746,7 @@ mod tests {
           array_spec: None,
         },
         handle: ScopedHandle::fun_var(0, 0),
-        init_value: ErasedExpr::LitInt(1)
+        init_value: ErasedExpr::LitInt(1),
       }
     );
 
@@ -2756,7 +2772,7 @@ mod tests {
       ScopeInstr::If {
         condition: ErasedExpr::Eq(
           Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0))),
-          Box::new(ErasedExpr::LitInt(2))
+          Box::new(ErasedExpr::LitInt(2)),
         ),
         scope,
       }
@@ -2775,7 +2791,7 @@ mod tests {
       ScopeInstr::ElseIf {
         condition: ErasedExpr::Eq(
           Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0))),
-          Box::new(ErasedExpr::LitInt(0))
+          Box::new(ErasedExpr::LitInt(0)),
         ),
         scope,
       }
@@ -2827,13 +2843,13 @@ mod tests {
         init_expr: ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0)),
         condition: ErasedExpr::Lt(
           Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0))),
-          Box::new(ErasedExpr::LitInt(10))
+          Box::new(ErasedExpr::LitInt(10)),
         ),
         post_expr: ErasedExpr::Add(
           Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0))),
-          Box::new(ErasedExpr::LitInt(1))
+          Box::new(ErasedExpr::LitInt(1)),
         ),
-        scope: loop_scope
+        scope: loop_scope,
       }
     );
   }
@@ -2853,9 +2869,9 @@ mod tests {
       ScopeInstr::While {
         condition: ErasedExpr::Lt(
           Box::new(ErasedExpr::LitInt(1)),
-          Box::new(ErasedExpr::LitInt(2))
+          Box::new(ErasedExpr::LitInt(2)),
         ),
-        scope: loop_scope
+        scope: loop_scope,
       }
     );
   }
@@ -2874,7 +2890,7 @@ mod tests {
       x.erased,
       ErasedExpr::ArrayLookup {
         object: Box::new(CLIP_DISTANCE.erased),
-        index: Box::new(ErasedExpr::LitInt(1))
+        index: Box::new(ErasedExpr::LitInt(1)),
       }
     );
   }
