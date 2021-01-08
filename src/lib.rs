@@ -2448,7 +2448,7 @@ mod tests {
 
   #[test]
   fn expr_unary() {
-    let mut scope = Scope::<(), ()>::new(0);
+    let mut scope = Scope::<L, ()>::new(0);
 
     let a = !lit!(true);
     let b = -lit!(3i32);
@@ -2552,7 +2552,7 @@ mod tests {
 
   #[test]
   fn expr_var() {
-    let mut scope = Scope::<(), ()>::new(0);
+    let mut scope = Scope::<L, ()>::new(0);
 
     let Var(x) = scope.var(0);
     let Var(y) = scope.var(1u32);
@@ -2638,7 +2638,7 @@ mod tests {
   #[test]
   fn fun0() {
     let mut shader = Shader::new();
-    let fun = shader.fun(|s: &mut Scope<(), ()>| {
+    let fun = shader.fun(|s: &mut Scope<L, ()>| {
       let _x = s.var(3);
     });
 
@@ -2707,7 +2707,7 @@ mod tests {
 
   #[test]
   fn swizzling() {
-    let mut scope = Scope::<(), ()>::new(0);
+    let mut scope = Scope::<L, ()>::new(0);
     let Var(foo) = scope.var(lit![1, 2]);
     let foo_xy = sw!(foo, .x.y);
     let foo_xx = sw!(foo, .x.x);
@@ -2882,9 +2882,9 @@ mod tests {
   }
 
   #[test]
-  fn vertex_id() {
+  fn vertex_id_commutative() {
     let x = lit!(1);
-    let _ = VERTEX_ID + x;
+    let _ = VERTEX_ID + &x;
     let _ = x + VERTEX_ID;
   }
 
