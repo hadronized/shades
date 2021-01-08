@@ -770,23 +770,23 @@ where
 macro_rules! impl_ToFun_args {
   ($($arg:ident , $arg_ident:ident , $arg_rank:expr),*) => {
     impl<S, F, R, $($arg),*> ToFun<S, R, ($(Expr<S, $arg>),*)> for F
-      where
-          Self: Fn(&mut Scope<S, R>, $(Expr<S, $arg>),*) -> R,
-          Return<S>: From<R>,
-          $($arg: ToType),*
-          {
-            fn build_fn(self) -> FunDef<S, R, ($(Expr<S, $arg>),*)> {
-              $( let $arg_ident = Expr::new(ErasedExpr::MutVar(ScopedHandle::fun_arg($arg_rank))); )*
-              let args = vec![$( $arg::TYPE ),*];
+    where
+      Self: Fn(&mut Scope<S, R>, $(Expr<S, $arg>),*) -> R,
+      Return<S>: From<R>,
+      $($arg: ToType),*
+    {
+      fn build_fn(self) -> FunDef<S, R, ($(Expr<S, $arg>),*)> {
+        $( let $arg_ident = Expr::new(ErasedExpr::MutVar(ScopedHandle::fun_arg($arg_rank))); )*
+          let args = vec![$( $arg::TYPE ),*];
 
-              let mut scope = Scope::new(0);
-              let ret = self(&mut scope, $($arg_ident),*);
+        let mut scope = Scope::new(0);
+        let ret = self(&mut scope, $($arg_ident),*);
 
-              let erased = ErasedFun::new(args, scope.erased, Return::<S>::from(ret).erased);
+        let erased = ErasedFun::new(args, scope.erased, Return::<S>::from(ret).erased);
 
-              FunDef::new(erased)
-            }
-          }
+        FunDef::new(erased)
+      }
+    }
   }
 }
 
