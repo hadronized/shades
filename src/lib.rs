@@ -161,6 +161,7 @@ pub enum ErasedExpr {
   Sub(Box<Self>, Box<Self>),
   Mul(Box<Self>, Box<Self>),
   Div(Box<Self>, Box<Self>),
+  Rem(Box<Self>, Box<Self>),
   Shl(Box<Self>, Box<Self>),
   Shr(Box<Self>, Box<Self>),
   Eq(Box<Self>, Box<Self>),
@@ -328,74 +329,6 @@ impl<S, T> Expr<S, [T]> {
   }
 }
 
-trait Bounded<S, T>: Sized {
-  fn min<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, T>
-  where
-    S: CompatibleStage<Q>;
-  fn max<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, T>
-  where
-    S: CompatibleStage<Q>;
-
-  fn clamp<Q, R>(
-    &self,
-    min_value: impl Into<Expr<R, T>>,
-    max_value: impl Into<Expr<Q, T>>,
-  ) -> Expr<<S::Intersect as CompatibleStage<R>>::Intersect, T>
-  where
-    S: CompatibleStage<Q>,
-    S::Intersect: CompatibleStage<R>,
-    Expr<S::Intersect, T>: Bounded<S::Intersect, T>,
-  {
-    self.min(max_value).max(min_value)
-  }
-}
-
-macro_rules! impl_Bounded {
-  ($t:ty) => {
-    impl<S, T> Bounded<S, T> for Expr<S, $t> {
-      fn min<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, T>
-      where
-        S: CompatibleStage<Q>,
-      {
-        Expr::new(ErasedExpr::FunCall(
-          ErasedFunHandle::Min,
-          vec![self.erased.clone(), rhs.into().erased],
-        ))
-      }
-
-      fn max<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, T>
-      where
-        S: CompatibleStage<Q>,
-      {
-        Expr::new(ErasedExpr::FunCall(
-          ErasedFunHandle::Max,
-          vec![self.erased.clone(), rhs.into().erased],
-        ))
-      }
-    }
-  };
-}
-
-impl_Bounded!(i32);
-impl_Bounded!(V2<i32>);
-impl_Bounded!(V3<i32>);
-impl_Bounded!(V4<i32>);
-
-impl_Bounded!(u32);
-impl_Bounded!(V2<u32>);
-impl_Bounded!(V3<u32>);
-impl_Bounded!(V4<u32>);
-
-impl_Bounded!(f32);
-impl_Bounded!(V2<f32>);
-impl_Bounded!(V3<f32>);
-impl_Bounded!(V4<f32>);
-
-impl_Bounded!(bool);
-impl_Bounded!(V2<bool>);
-impl_Bounded!(V3<bool>);
-impl_Bounded!(V4<bool>);
-
 // not
 macro_rules! impl_Not_Expr {
   ($t:ty) => {
@@ -458,7 +391,7 @@ impl_Neg_Expr!(V2<f32>);
 impl_Neg_Expr!(V3<f32>);
 impl_Neg_Expr!(V4<f32>);
 
-// binary arithmetic and logical (+, -, *, /)
+// binary arithmetic and logical (+, -, *, /, %)
 // binop
 macro_rules! impl_binop_Expr {
   ($op:ident, $meth_name:ident, $a:ty, $b:ty) => {
@@ -602,6 +535,14 @@ impl_binarith_Expr!(Add, add);
 impl_binarith_Expr!(Sub, sub);
 impl_binarith_Expr!(Mul, mul);
 impl_binarith_Expr!(Div, div);
+
+impl_binop_Expr!(Rem, rem, f32, f32);
+impl_binop_Expr!(Rem, rem, V2<f32>, V2<f32>);
+impl_binop_Expr!(Rem, rem, V2<f32>, f32);
+impl_binop_Expr!(Rem, rem, V3<f32>, V3<f32>);
+impl_binop_Expr!(Rem, rem, V3<f32>, f32);
+impl_binop_Expr!(Rem, rem, V4<f32>, V4<f32>);
+impl_binop_Expr!(Rem, rem, V4<f32>, f32);
 
 macro_rules! impl_binshift_Expr {
   ($op:ident, $meth_name:ident, $ty:ty) => {
@@ -916,8 +857,127 @@ pub struct FunHandle<S, R, A> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErasedFunHandle {
+  // trigonometry
+  Radians,
+  Degrees,
+  Sin,
+  Cos,
+  Tan,
+  ASin,
+  ACos,
+  ATan,
+  SinH,
+  CosH,
+  TanH,
+  ASinH,
+  ACosH,
+  ATanH,
+  // exponential
+  Pow,
+  Exp,
+  Exp2,
+  Log,
+  Log2,
+  Sqrt,
+  InverseSqrt,
+  // common
+  Abs,
+  Sign,
+  Floor,
+  Trunc,
+  Round,
+  RoundEven,
+  Ceil,
+  Fract,
   Min,
   Max,
+  Clamp,
+  Mix,
+  Step,
+  SmoothStep,
+  IsNan,
+  IsInf,
+  FloatBitsToInt,
+  IntBitsToFloat,
+  UIntBitsToFloat,
+  FMA,
+  Frexp,
+  Ldexp,
+  // floating-point pack and unpack functions
+  PackUnorm2x16,
+  PackSnorm2x16,
+  PackUnorm4x8,
+  PackSnorm4x8,
+  UnpackUnorm2x16,
+  UnpackSnorm2x16,
+  UnpackUnorm4x8,
+  UnpackSnorm4x8,
+  PackHalf2x16,
+  UnpackHalf2x16,
+  // geometry functions
+  Length,
+  Distance,
+  Dot,
+  Cross,
+  Normalize,
+  FaceForward,
+  Reflect,
+  Refract,
+  // matrix functions
+  // TODO
+  // vector relational functions
+  VLt,
+  VLte,
+  VGt,
+  VGte,
+  VEq,
+  VNeq,
+  VAny,
+  VAll,
+  VNot,
+  // integer functions
+  UAddCarry,
+  USubBorrow,
+  UMulExtended,
+  IMulExtended,
+  BitfieldExtract,
+  BitfieldInsert,
+  BitfieldReverse,
+  BitCount,
+  FindLSB,
+  FindMSB,
+  // texture functions
+  // TODO
+  // geometry shader functions
+  EmitStreamVertex,
+  EndStreamPrimitive,
+  EmitVertex,
+  EndPrimitive,
+  // fragment processing functions
+  DFDX,
+  DFDY,
+  DFDXFine,
+  DFDYFine,
+  DFDXCoarse,
+  DFDYCoarse,
+  FWidth,
+  FWidthFine,
+  FWidthCoarse,
+  InterpolateAtCentroid,
+  InterpolateAtSample,
+  InterpolateAtOffset,
+  // shader invocation control functions
+  Barrier,
+  MemoryBarrier,
+  MemoryBarrierAtomic,
+  MemoryBarrierBuffer,
+  MemoryBarrierShared,
+  MemoryBarrierImage,
+  GroupMemoryBarrier,
+  // shader invocation group functions
+  AnyInvocation,
+  AllInvocations,
+  AllInvocationsEqual,
   UserDefined(u16),
 }
 
@@ -1159,7 +1219,25 @@ where
 }
 
 #[derive(Debug)]
-pub struct Var<S, T>(pub Expr<S, T>);
+pub struct Var<S, T>(Expr<S, T>);
+
+impl<S, T> From<Var<S, T>> for Expr<S, T> {
+  fn from(v: Var<S, T>) -> Self {
+    v.0
+  }
+}
+
+impl<'a, S, T> From<&'a Var<S, T>> for Expr<S, T> {
+  fn from(v: &'a Var<S, T>) -> Self {
+    v.0.clone()
+  }
+}
+
+impl<S, T> Var<S, T> {
+  pub fn to_expr(&self) -> Expr<S, T> {
+    self.0.clone()
+  }
+}
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum ScopedHandle {
@@ -1842,6 +1920,517 @@ pub const FRAG_DEPTH: Expr<F, f32> =
 pub const SAMPLE_MASK: Expr<F, [i32]> =
   Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::SampleMask));
 
+// standard library
+
+pub trait Trigonometry {
+  fn radians(&self) -> Self;
+
+  fn degrees(&self) -> Self;
+
+  fn sin(&self) -> Self;
+
+  fn cos(&self) -> Self;
+
+  fn tan(&self) -> Self;
+
+  fn asin(&self) -> Self;
+
+  fn acos(&self) -> Self;
+
+  fn atan(&self) -> Self;
+
+  fn sinh(&self) -> Self;
+
+  fn cosh(&self) -> Self;
+
+  fn tanh(&self) -> Self;
+
+  fn asinh(&self) -> Self;
+
+  fn acosh(&self) -> Self;
+
+  fn atanh(&self) -> Self;
+}
+
+macro_rules! impl_Trigonometry {
+  ($t:ty) => {
+    impl<S> Trigonometry for Expr<S, $t> {
+      fn radians(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Radians,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn degrees(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Degrees,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn sin(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Sin,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn cos(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Cos,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn tan(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Tan,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn asin(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::ASin,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn acos(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::ACos,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn atan(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::ATan,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn sinh(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::SinH,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn cosh(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::CosH,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn tanh(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::TanH,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn asinh(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::ASinH,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn acosh(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::ACosH,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn atanh(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::ATanH,
+          vec![self.erased.clone()],
+        ))
+      }
+    }
+  };
+}
+
+impl_Trigonometry!(f32);
+impl_Trigonometry!(V2<f32>);
+impl_Trigonometry!(V3<f32>);
+impl_Trigonometry!(V4<f32>);
+
+pub trait Exponential<S, T> {
+  fn pow<Q>(&self, p: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn exp(&self) -> Self;
+
+  fn exp2(&self) -> Self;
+
+  fn log(&self) -> Self;
+
+  fn log2(&self) -> Self;
+
+  fn sqrt(&self) -> Self;
+
+  fn isqrt(&self) -> Self;
+}
+
+macro_rules! impl_Exponential {
+  ($t:ty) => {
+    impl<S> Exponential<S, $t> for Expr<S, $t> {
+      fn pow<Q>(&self, p: impl Into<Expr<Q, $t>>) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Pow,
+          vec![self.erased.clone(), p.into().erased],
+        ))
+      }
+
+      fn exp(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Exp,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn exp2(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Exp2,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn log(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Log,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn log2(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Log2,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn sqrt(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Sqrt,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn isqrt(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::InverseSqrt,
+          vec![self.erased.clone()],
+        ))
+      }
+    }
+  };
+}
+
+impl_Exponential!(f32);
+impl_Exponential!(V2<f32>);
+impl_Exponential!(V3<f32>);
+impl_Exponential!(V4<f32>);
+
+pub trait Relative {
+  fn abs(&self) -> Self;
+
+  fn sign(&self) -> Self;
+}
+
+macro_rules! impl_Relative {
+  ($t:ty) => {
+    impl<S> Relative for Expr<S, $t> {
+      fn abs(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Abs,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn sign(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Sign,
+          vec![self.erased.clone()],
+        ))
+      }
+    }
+  };
+}
+
+impl_Relative!(i32);
+impl_Relative!(V2<i32>);
+impl_Relative!(V3<i32>);
+impl_Relative!(V4<i32>);
+impl_Relative!(f32);
+impl_Relative!(V2<f32>);
+impl_Relative!(V3<f32>);
+impl_Relative!(V4<f32>);
+
+pub trait Floating<S> {
+  fn floor(&self) -> Self;
+
+  fn trunc(&self) -> Self;
+
+  fn round(&self) -> Self;
+
+  fn ceil(&self) -> Self;
+
+  fn fract(&self) -> Self;
+}
+
+macro_rules! impl_Floating {
+  ($t:ty) => {
+    impl<S> Floating<S> for Expr<S, $t> {
+      fn floor(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Floor,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn trunc(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Trunc,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn round(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Round,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn ceil(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Ceil,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn fract(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Fract,
+          vec![self.erased.clone()],
+        ))
+      }
+    }
+  };
+}
+
+impl_Floating!(f32);
+impl_Floating!(V2<f32>);
+impl_Floating!(V3<f32>);
+impl_Floating!(V4<f32>);
+
+trait Bounded<S, T> {
+  fn min<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn max<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn clamp<Q, R>(
+    &self,
+    min_value: impl Into<Expr<R, T>>,
+    max_value: impl Into<Expr<Q, T>>,
+  ) -> Expr<<S::Intersect as CompatibleStage<R>>::Intersect, T>
+  where
+    S: CompatibleStage<Q>,
+    S::Intersect: CompatibleStage<R>,
+    Expr<S::Intersect, T>: Bounded<S::Intersect, T>;
+}
+
+macro_rules! impl_Bounded {
+  ($t:ty) => {
+    impl<S, T> Bounded<S, T> for Expr<S, $t> {
+      fn min<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, T>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Min,
+          vec![self.erased.clone(), rhs.into().erased],
+        ))
+      }
+
+      fn max<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, T>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Max,
+          vec![self.erased.clone(), rhs.into().erased],
+        ))
+      }
+
+      fn clamp<Q, R>(
+        &self,
+        min_value: impl Into<Expr<R, T>>,
+        max_value: impl Into<Expr<Q, T>>,
+      ) -> Expr<<S::Intersect as CompatibleStage<R>>::Intersect, T>
+      where
+        S: CompatibleStage<Q>,
+        S::Intersect: CompatibleStage<R>,
+        Expr<S::Intersect, T>: Bounded<S::Intersect, T>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Clamp,
+          vec![
+            self.erased.clone(),
+            min_value.into().erased,
+            max_value.into().erased,
+          ],
+        ))
+      }
+    }
+  };
+}
+
+impl_Bounded!(i32);
+impl_Bounded!(V2<i32>);
+impl_Bounded!(V3<i32>);
+impl_Bounded!(V4<i32>);
+
+impl_Bounded!(u32);
+impl_Bounded!(V2<u32>);
+impl_Bounded!(V3<u32>);
+impl_Bounded!(V4<u32>);
+
+impl_Bounded!(f32);
+impl_Bounded!(V2<f32>);
+impl_Bounded!(V3<f32>);
+impl_Bounded!(V4<f32>);
+
+impl_Bounded!(bool);
+impl_Bounded!(V2<bool>);
+impl_Bounded!(V3<bool>);
+impl_Bounded!(V4<bool>);
+
+pub trait Mix<S, T> {
+  fn mix<Q, R>(
+    &self,
+    y: impl Into<Expr<Q, T>>,
+    a: impl Into<Expr<R, T>>,
+  ) -> Expr<<S as CompatibleStage<Q>>::Intersect, T>
+  where
+    S: CompatibleStage<Q> + CompatibleStage<R>;
+
+  fn step<Q>(&self, edge: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, T>
+  where
+    S: CompatibleStage<Q>;
+
+  fn smooth_step<Q, R>(
+    &self,
+    edge_a: impl Into<Expr<Q, T>>,
+    edge_b: impl Into<Expr<R, T>>,
+  ) -> Expr<<S as CompatibleStage<Q>>::Intersect, T>
+  where
+    S: CompatibleStage<Q> + CompatibleStage<R>;
+}
+
+macro_rules! impl_Mix {
+  ($t:ty) => {
+    impl<S> Mix<S, $t> for Expr<S, $t> {
+      fn mix<Q, R>(
+        &self,
+        y: impl Into<Expr<Q, $t>>,
+        a: impl Into<Expr<R, $t>>,
+      ) -> Expr<<S as CompatibleStage<Q>>::Intersect, $t>
+      where
+        S: CompatibleStage<Q> + CompatibleStage<R>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Mix,
+          vec![self.erased.clone(), y.into().erased, a.into().erased],
+        ))
+      }
+
+      fn step<Q>(&self, edge: impl Into<Expr<Q, $t>>) -> Expr<S::Intersect, $t>
+      where
+        S: CompatibleStage<Q>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Step,
+          vec![self.erased.clone(), edge.into().erased],
+        ))
+      }
+
+      fn smooth_step<Q, R>(
+        &self,
+        edge_a: impl Into<Expr<Q, $t>>,
+        edge_b: impl Into<Expr<R, $t>>,
+      ) -> Expr<<S as CompatibleStage<Q>>::Intersect, $t>
+      where
+        S: CompatibleStage<Q> + CompatibleStage<R>,
+      {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::SmoothStep,
+          vec![
+            self.erased.clone(),
+            edge_a.into().erased,
+            edge_b.into().erased,
+          ],
+        ))
+      }
+    }
+  };
+}
+
+impl_Mix!(f32);
+impl_Mix!(V2<f32>);
+impl_Mix!(V3<f32>);
+impl_Mix!(V4<f32>);
+
+pub trait FloatingExt<S> {
+  type BoolExpr;
+
+  fn is_nan(&self) -> Self::BoolExpr;
+
+  fn is_inf(&self) -> Self::BoolExpr;
+}
+
+macro_rules! impl_FloatingExt {
+  ($t:ty, $bool_expr:ty) => {
+    impl<S> FloatingExt<S> for Expr<S, $t> {
+      type BoolExpr = Expr<S, $bool_expr>;
+
+      fn is_nan(&self) -> Self::BoolExpr {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::IsNan,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn is_inf(&self) -> Self::BoolExpr {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::IsInf,
+          vec![self.erased.clone()],
+        ))
+      }
+    }
+  };
+}
+
+impl_FloatingExt!(f32, bool);
+impl_FloatingExt!(V2<f32>, V2<bool>);
+impl_FloatingExt!(V3<f32>, V3<bool>);
+impl_FloatingExt!(V4<f32>, V4<bool>);
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -1878,14 +2467,14 @@ mod tests {
       a.erased,
       ErasedExpr::Add(
         Box::new(ErasedExpr::LitInt(1)),
-        Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(2)),
       )
     );
     assert_eq!(
       b.erased,
       ErasedExpr::Add(
         Box::new(ErasedExpr::LitInt(1)),
-        Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(2)),
       )
     );
 
@@ -1897,14 +2486,14 @@ mod tests {
       a.erased,
       ErasedExpr::Sub(
         Box::new(ErasedExpr::LitInt(1)),
-        Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(2)),
       )
     );
     assert_eq!(
       b.erased,
       ErasedExpr::Sub(
         Box::new(ErasedExpr::LitInt(1)),
-        Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(2)),
       )
     );
 
@@ -1916,14 +2505,14 @@ mod tests {
       a.erased,
       ErasedExpr::Mul(
         Box::new(ErasedExpr::LitInt(1)),
-        Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(2)),
       )
     );
     assert_eq!(
       b.erased,
       ErasedExpr::Mul(
         Box::new(ErasedExpr::LitInt(1)),
-        Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(2)),
       )
     );
 
@@ -1935,14 +2524,14 @@ mod tests {
       a.erased,
       ErasedExpr::Div(
         Box::new(ErasedExpr::LitInt(1)),
-        Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(2)),
       )
     );
     assert_eq!(
       b.erased,
       ErasedExpr::Div(
         Box::new(ErasedExpr::LitInt(1)),
-        Box::new(ErasedExpr::LitInt(2))
+        Box::new(ErasedExpr::LitInt(2)),
       )
     );
   }
@@ -1976,10 +2565,10 @@ mod tests {
       ScopeInstr::VarDecl {
         ty: Type {
           prim_ty: PrimType::Int(Dim::Scalar),
-          array_spec: None
+          array_spec: None,
         },
         handle: ScopedHandle::fun_var(0, 0),
-        init_value: ErasedExpr::LitInt(0)
+        init_value: ErasedExpr::LitInt(0),
       }
     );
     assert_eq!(
@@ -1987,10 +2576,10 @@ mod tests {
       ScopeInstr::VarDecl {
         ty: Type {
           prim_ty: PrimType::UInt(Dim::Scalar),
-          array_spec: None
+          array_spec: None,
         },
         handle: ScopedHandle::fun_var(0, 1),
-        init_value: ErasedExpr::LitUInt(1)
+        init_value: ErasedExpr::LitUInt(1),
       }
     );
     assert_eq!(
@@ -1998,10 +2587,10 @@ mod tests {
       ScopeInstr::VarDecl {
         ty: Type {
           prim_ty: PrimType::Bool(Dim::D3),
-          array_spec: None
+          array_spec: None,
         },
         handle: ScopedHandle::fun_var(0, 2),
-        init_value: ErasedExpr::LitBool3([false, true, false])
+        init_value: ErasedExpr::LitBool3([false, true, false]),
       }
     );
   }
@@ -2016,7 +2605,7 @@ mod tests {
       a.min(&b).erased,
       ErasedExpr::FunCall(
         ErasedFunHandle::Min,
-        vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)]
+        vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)],
       )
     );
 
@@ -2024,21 +2613,19 @@ mod tests {
       a.max(&b).erased,
       ErasedExpr::FunCall(
         ErasedFunHandle::Max,
-        vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)]
+        vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)],
       )
     );
 
     assert_eq!(
       a.clamp(b, c).erased,
       ErasedExpr::FunCall(
-        ErasedFunHandle::Max,
+        ErasedFunHandle::Clamp,
         vec![
-          ErasedExpr::FunCall(
-            ErasedFunHandle::Min,
-            vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(3)]
-          ),
+          ErasedExpr::LitInt(1),
           ErasedExpr::LitInt(2),
-        ]
+          ErasedExpr::LitInt(3)
+        ],
       )
     );
   }
@@ -2062,10 +2649,10 @@ mod tests {
           ScopeInstr::VarDecl {
             ty: Type {
               prim_ty: PrimType::Int(Dim::Scalar),
-              array_spec: None
+              array_spec: None,
             },
             handle: ScopedHandle::fun_var(0, 0),
-            init_value: ErasedExpr::LitInt(3)
+            init_value: ErasedExpr::LitInt(3),
           }
         )
       }
@@ -2093,7 +2680,7 @@ mod tests {
           fun.args,
           vec![Type {
             prim_ty: PrimType::Int(Dim::Scalar),
-            array_spec: None
+            array_spec: None,
           }]
         );
         assert_eq!(fun.scope.instructions.len(), 1);
@@ -2102,10 +2689,10 @@ mod tests {
           ScopeInstr::VarDecl {
             ty: Type {
               prim_ty: PrimType::Int(Dim::Scalar),
-              array_spec: None
+              array_spec: None,
             },
             handle: ScopedHandle::fun_var(0, 0),
-            init_value: ErasedExpr::LitInt(3)
+            init_value: ErasedExpr::LitInt(3),
           }
         )
       }
@@ -2124,7 +2711,7 @@ mod tests {
       foo_xy.erased,
       ErasedExpr::Swizzle(
         Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0))),
-        Swizzle::D2(SwizzleSelector::X, SwizzleSelector::Y)
+        Swizzle::D2(SwizzleSelector::X, SwizzleSelector::Y),
       )
     );
 
@@ -2132,7 +2719,7 @@ mod tests {
       foo_xx.erased,
       ErasedExpr::Swizzle(
         Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0))),
-        Swizzle::D2(SwizzleSelector::X, SwizzleSelector::X)
+        Swizzle::D2(SwizzleSelector::X, SwizzleSelector::X),
       )
     );
   }
@@ -2159,7 +2746,7 @@ mod tests {
           array_spec: None,
         },
         handle: ScopedHandle::fun_var(0, 0),
-        init_value: ErasedExpr::LitInt(1)
+        init_value: ErasedExpr::LitInt(1),
       }
     );
 
@@ -2185,7 +2772,7 @@ mod tests {
       ScopeInstr::If {
         condition: ErasedExpr::Eq(
           Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0))),
-          Box::new(ErasedExpr::LitInt(2))
+          Box::new(ErasedExpr::LitInt(2)),
         ),
         scope,
       }
@@ -2204,7 +2791,7 @@ mod tests {
       ScopeInstr::ElseIf {
         condition: ErasedExpr::Eq(
           Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0))),
-          Box::new(ErasedExpr::LitInt(0))
+          Box::new(ErasedExpr::LitInt(0)),
         ),
         scope,
       }
@@ -2256,13 +2843,13 @@ mod tests {
         init_expr: ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0)),
         condition: ErasedExpr::Lt(
           Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0))),
-          Box::new(ErasedExpr::LitInt(10))
+          Box::new(ErasedExpr::LitInt(10)),
         ),
         post_expr: ErasedExpr::Add(
           Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0))),
-          Box::new(ErasedExpr::LitInt(1))
+          Box::new(ErasedExpr::LitInt(1)),
         ),
-        scope: loop_scope
+        scope: loop_scope,
       }
     );
   }
@@ -2282,9 +2869,9 @@ mod tests {
       ScopeInstr::While {
         condition: ErasedExpr::Lt(
           Box::new(ErasedExpr::LitInt(1)),
-          Box::new(ErasedExpr::LitInt(2))
+          Box::new(ErasedExpr::LitInt(2)),
         ),
-        scope: loop_scope
+        scope: loop_scope,
       }
     );
   }
@@ -2303,7 +2890,7 @@ mod tests {
       x.erased,
       ErasedExpr::ArrayLookup {
         object: Box::new(CLIP_DISTANCE.erased),
-        index: Box::new(ErasedExpr::LitInt(1))
+        index: Box::new(ErasedExpr::LitInt(1)),
       }
     );
   }
