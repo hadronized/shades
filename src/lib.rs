@@ -22,13 +22,18 @@ pub unsafe trait CompatibleStage<S> {
   type Intersect;
 }
 
-unsafe impl<T> CompatibleStage<L> for T {
+// universal implementor
+unsafe impl<T> CompatibleStage<T> for T {
   type Intersect = T;
 }
 
 macro_rules! impl_CompatibleStage {
   ($t:ty) => {
-    unsafe impl CompatibleStage<$t> for $t {
+    unsafe impl CompatibleStage<$t> for L {
+      type Intersect = $t;
+    }
+
+    unsafe impl CompatibleStage<L> for $t {
       type Intersect = $t;
     }
   };
@@ -2880,6 +2885,7 @@ mod tests {
   fn vertex_id() {
     let x = lit!(1);
     let _ = VERTEX_ID + x;
+    let _ = x + VERTEX_ID;
   }
 
   #[test]
