@@ -1,17 +1,21 @@
 //! GLSL writers.
 
 use crate::{
-  ArraySpec, BuiltIn, Dim, ErasedExpr, ErasedFun, ErasedFunHandle, ErasedReturn, FragmentBuiltIn,
-  GeometryBuiltIn, PrimType, ScopedHandle, Shader, ShaderDecl, Swizzle, SwizzleSelector,
-  TessellationControlBuiltIn, TessellationEvaluationBuiltIn, Type, VertexBuiltIn,
+  ArraySpec, BuiltIn, Dim, ErasedExpr, ErasedFun, ErasedFunHandle, ErasedReturn, ErasedScope,
+  FragmentBuiltIn, GeometryBuiltIn, PrimType, ScopeInstr, ScopedHandle, Shader, ShaderDecl,
+  Swizzle, SwizzleSelector, TessellationControlBuiltIn, TessellationEvaluationBuiltIn, Type,
+  VertexBuiltIn,
 };
 use std::fmt;
+
+// Number of space an indent level represents.
+const INDENT_SPACES: usize = 2;
 
 #[derive(Debug)]
 pub enum WriteError {}
 
 impl fmt::Display for WriteError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+  fn fmt(&self, _f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
     Ok(()) // TODO: remove me
   }
 }
@@ -23,6 +27,7 @@ pub fn write_shader_to_str<S>(shader: &Shader<S>) -> Result<String, WriteError> 
 
   for decl in &shader.decls {
     match decl {
+      ShaderDecl::Main(fun) => write_main_fun_to_str(&mut output, fun)?,
       ShaderDecl::FunDef(handle, fun) => write_fun_def_to_str(&mut output, *handle, fun)?,
       ShaderDecl::Const(handle, ty, ref constant) => {
         write_constant_to_str(&mut output, *handle, ty, constant)?
@@ -33,6 +38,13 @@ pub fn write_shader_to_str<S>(shader: &Shader<S>) -> Result<String, WriteError> 
   }
 
   Ok(output)
+}
+
+fn write_main_fun_to_str(output: &mut String, fun: &ErasedFun) -> Result<(), WriteError> {
+  *output += "void main() {\n";
+  write_scope_to_str(output, &fun.scope, 1)?;
+  *output += "}\n";
+  Ok(())
 }
 
 fn write_fun_def_to_str(
@@ -62,8 +74,119 @@ fn write_fun_def_to_str(
   }
   *output += ") {\n";
 
+  // TODO: scope
+  write_scope_to_str(output, &fun.scope, 1)?;
+
   // TODO: return
   *output += "}\n";
+  Ok(())
+}
+
+fn write_scope_to_str(
+  output: &mut String,
+  scope: &ErasedScope,
+  indent_lvl: usize,
+) -> Result<(), WriteError> {
+  let indent = " ".repeat(indent_lvl * INDENT_SPACES);
+
+  for instr in &scope.instructions {
+    // put the indent level
+    *output += &indent;
+
+    match instr {
+      ScopeInstr::VarDecl {
+        ty,
+        handle,
+        init_value,
+      } => {
+        write_type_to_str(output, ty)?;
+        *output += " ";
+        write_scoped_handle_to_str(output, handle)?;
+        *output += " = ";
+        write_expr_to_str(output, init_value)?;
+        *output += ";";
+      }
+
+      ScopeInstr::Return(ret) => match ret {
+        ErasedReturn::Void => *output += "return;",
+        ErasedReturn::Expr(_, expr) => {
+          *output += "return ";
+          write_expr_to_str(output, expr)?;
+          *output += ";";
+        }
+      },
+
+      ScopeInstr::Continue => *output += "continue;",
+      ScopeInstr::Break => *output += "break;",
+
+      ScopeInstr::If { condition, scope } => {
+        *output += "if (";
+        write_expr_to_str(output, condition)?;
+        *output += ") {\n";
+        write_scope_to_str(output, scope, indent_lvl + 1)?;
+        *output += "}";
+      }
+
+      ScopeInstr::ElseIf { condition, scope } => {
+        *output += " else if (";
+        write_expr_to_str(output, condition)?;
+        *output += ") {\n";
+        write_scope_to_str(output, scope, indent_lvl + 1)?;
+        *output += "}";
+      }
+
+      ScopeInstr::Else { scope } => {
+        *output += " else {\n";
+        write_scope_to_str(output, scope, indent_lvl + 1)?;
+        *output += "}";
+      }
+
+      ScopeInstr::For {
+        init_ty,
+        init_handle,
+        init_expr,
+        condition,
+        post_expr,
+        scope,
+      } => {
+        *output += "for (";
+
+        // initialization
+        write_type_to_str(output, init_ty)?;
+        *output += " ";
+        write_scoped_handle_to_str(output, init_handle)?;
+        *output += " = ";
+        write_expr_to_str(output, init_expr)?;
+        *output += "; ";
+
+        // condition
+        write_expr_to_str(output, condition)?;
+        *output += "; ";
+
+        // iteration; we basically write <init-expr> = <next-expr> in a fold-like way, so we need to re-use the
+        // init_handle
+        write_scoped_handle_to_str(output, init_handle)?;
+        *output += " = ";
+        write_expr_to_str(output, post_expr)?;
+        *output += ") {\n";
+
+        // scope
+        write_scope_to_str(output, scope, indent_lvl + 1)?;
+        *output += "}";
+      }
+
+      ScopeInstr::While { condition, scope } => {
+        *output += "while (";
+        write_expr_to_str(output, condition)?;
+        *output += ") {\n";
+        write_scope_to_str(output, scope, indent_lvl + 1)?;
+        *output += "}";
+      }
+    }
+
+    *output += "\n";
+  }
+
   Ok(())
 }
 
@@ -76,7 +199,7 @@ fn write_constant_to_str(
   *output += "const ";
   write_type_to_str(output, ty)?;
   *output += " ";
-  write_scoped_handle(output, &ScopedHandle::global(handle))?;
+  write_scoped_handle_to_str(output, &ScopedHandle::global(handle))?;
   *output += " = ";
   write_expr_to_str(output, constant)?;
   *output += ";\n";
@@ -89,7 +212,7 @@ fn write_input_to_str(output: &mut String, handle: u16, ty: &Type) -> Result<(),
   write_type_to_str(output, ty)?;
 
   // the handle is treated as a global
-  write_scoped_handle(output, &ScopedHandle::global(handle))?;
+  write_scoped_handle_to_str(output, &ScopedHandle::global(handle))?;
 
   *output += ";\n";
 
@@ -101,7 +224,7 @@ fn write_output_to_str(output: &mut String, handle: u16, ty: &Type) -> Result<()
   write_type_to_str(output, ty)?;
 
   // the handle is treated as a global
-  write_scoped_handle(output, &ScopedHandle::global(handle))?;
+  write_scoped_handle_to_str(output, &ScopedHandle::global(handle))?;
 
   *output += ";\n";
 
@@ -375,6 +498,7 @@ fn write_swizzle_sel_to_str(output: &mut String, d: &SwizzleSelector) -> Result<
 
 fn write_fun_handle_to_str(output: &mut String, f: &ErasedFunHandle) -> Result<(), WriteError> {
   match f {
+    ErasedFunHandle::Main => *output += "main",
     ErasedFunHandle::Radians => *output += "radians",
     ErasedFunHandle::Degrees => *output += "degrees",
     ErasedFunHandle::Sin => *output += "sin",
@@ -493,10 +617,13 @@ fn write_fun_handle(output: &mut String, handle: u16) -> Result<(), WriteError> 
 }
 
 fn write_mut_var_to_str(output: &mut String, handle: &ScopedHandle) -> Result<(), WriteError> {
-  write_scoped_handle(output, handle)
+  write_scoped_handle_to_str(output, handle)
 }
 
-fn write_scoped_handle(output: &mut String, handle: &ScopedHandle) -> Result<(), WriteError> {
+fn write_scoped_handle_to_str(
+  output: &mut String,
+  handle: &ScopedHandle,
+) -> Result<(), WriteError> {
   match handle {
     ScopedHandle::BuiltIn(builtin) => write_builtin_to_str(output, builtin)?,
 

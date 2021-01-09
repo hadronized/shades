@@ -81,6 +81,20 @@ impl<S> Shader<S> {
     }
   }
 
+  pub fn main_fun<F, R>(&mut self, f: F) -> FunHandle<S, R, ()>
+  where
+    F: ToFun<S, R, ()>,
+  {
+    let fundef = f.build_fn();
+
+    self.decls.push(ShaderDecl::Main(fundef.erased));
+
+    FunHandle {
+      erased: ErasedFunHandle::Main,
+      _phantom: PhantomData,
+    }
+  }
+
   pub fn constant<T>(&mut self, expr: Expr<S, T>) -> Var<S, T>
   where
     T: ToType,
@@ -122,6 +136,7 @@ impl<S> Shader<S> {
 
 #[derive(Debug)]
 pub(crate) enum ShaderDecl {
+  Main(ErasedFun),
   FunDef(u16, ErasedFun),
   Const(u16, Type, ErasedExpr),
   In(u16, Type),
@@ -208,13 +223,19 @@ where
   _phantom: PhantomData<(S, T)>,
 }
 
-impl<S, T> From<&'_ Self> for Expr<S, T> {
+impl<S, T> From<&'_ Self> for Expr<S, T>
+where
+  T: ?Sized,
+{
   fn from(e: &Self) -> Self {
     Self::new(e.erased.clone())
   }
 }
 
-impl<S, T> Clone for Expr<S, T> {
+impl<S, T> Clone for Expr<S, T>
+where
+  T: ?Sized,
+{
   fn clone(&self) -> Self {
     Self::new(self.erased.clone())
   }
@@ -878,6 +899,7 @@ pub struct FunHandle<S, R, A> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErasedFunHandle {
+  Main,
   // trigonometry
   Radians,
   Degrees,
@@ -1141,6 +1163,8 @@ where
     body(&mut scope, &init_expr);
 
     self.erased.instructions.push(ScopeInstr::For {
+      init_ty: T::TYPE,
+      init_handle: ScopedHandle::fun_var(scope.erased.id, 0),
       init_expr: init_expr.erased,
       condition: condition.erased,
       post_expr: post_expr.erased,
@@ -1240,23 +1264,45 @@ where
 }
 
 #[derive(Debug)]
-pub struct Var<S, T>(Expr<S, T>);
+pub struct Var<S, T>(Expr<S, T>)
+where
+  T: ?Sized;
 
-impl<S, T> From<Var<S, T>> for Expr<S, T> {
+impl<S, T> From<Var<S, T>> for Expr<S, T>
+where
+  T: ?Sized,
+{
   fn from(v: Var<S, T>) -> Self {
     v.0
   }
 }
 
-impl<'a, S, T> From<&'a Var<S, T>> for Expr<S, T> {
+impl<'a, S, T> From<&'a Var<S, T>> for Expr<S, T>
+where
+  T: ?Sized,
+{
   fn from(v: &'a Var<S, T>) -> Self {
     v.0.clone()
   }
 }
 
-impl<S, T> Var<S, T> {
+impl<S, T> Var<S, T>
+where
+  T: ?Sized,
+{
   pub fn to_expr(&self) -> Expr<S, T> {
     self.0.clone()
+  }
+}
+
+impl<S, T> ops::Deref for Var<S, T>
+where
+  T: ?Sized,
+{
+  type Target = Expr<S, T>;
+
+  fn deref(&self) -> &Self::Target {
+    &self.0
   }
 }
 
@@ -1315,6 +1361,8 @@ enum ScopeInstr {
   },
 
   For {
+    init_ty: Type,
+    init_handle: ScopedHandle,
     init_expr: ErasedExpr,
     condition: ErasedExpr,
     post_expr: ErasedExpr,
@@ -1646,10 +1694,13 @@ pub const BASE_INSTANCE: Expr<V, i32> =
   Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::BaseInstance));
 
 // vertex shader built-ins; outputs
-pub const POSITION: Expr<V, V4<f32>> = Expr::new_builtin(BuiltIn::Vertex(VertexBuiltIn::Position));
-pub const POINT_SIZE: Expr<V, f32> = Expr::new_builtin(BuiltIn::Vertex(VertexBuiltIn::PointSize));
-pub const CLIP_DISTANCE: Expr<V, [f32]> =
-  Expr::new_builtin(BuiltIn::Vertex(VertexBuiltIn::ClipDistance));
+pub const POSITION: Var<V, V4<f32>> =
+  Var(Expr::new_builtin(BuiltIn::Vertex(VertexBuiltIn::Position)));
+pub const POINT_SIZE: Var<V, f32> =
+  Var(Expr::new_builtin(BuiltIn::Vertex(VertexBuiltIn::PointSize)));
+pub const CLIP_DISTANCE: Var<V, [f32]> = Var(Expr::new_builtin(BuiltIn::Vertex(
+  VertexBuiltIn::ClipDistance,
+)));
 
 // tessellation control shader built-ins; inputs
 pub const MAX_PATCH_VERTICES_IN: Expr<TC, i32> = Expr::new_immut_builtin(
@@ -2864,6 +2915,8 @@ mod tests {
     assert_eq!(
       scope.erased.instructions[0],
       ScopeInstr::For {
+        init_ty: i32::TYPE,
+        init_handle: ScopedHandle::fun_var(1, 0),
         init_expr: ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0)),
         condition: ErasedExpr::Lt(
           Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0))),
@@ -2914,7 +2967,7 @@ mod tests {
     assert_eq!(
       x.erased,
       ErasedExpr::ArrayLookup {
-        object: Box::new(CLIP_DISTANCE.erased),
+        object: Box::new(CLIP_DISTANCE.erased.clone()),
         index: Box::new(ErasedExpr::LitInt(1)),
       }
     );
