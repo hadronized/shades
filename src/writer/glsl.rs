@@ -43,7 +43,7 @@ pub fn write_shader_to_str<S>(shader: &Shader<S>) -> Result<String, WriteError> 
 fn write_main_fun_to_str(output: &mut String, fun: &ErasedFun) -> Result<(), WriteError> {
   *output += "\nvoid main() {\n";
   write_scope_to_str(output, &fun.scope, 1)?;
-  *output += "}\n";
+  *output += "}";
   Ok(())
 }
 
@@ -55,10 +55,17 @@ fn write_fun_def_to_str(
   // just for aesthetics :')
   *output += "\n";
 
-  match fun.ret {
-    ErasedReturn::Void => *output += "void",
-    ErasedReturn::Expr(ref ty, _) => write_type_to_str(output, ty)?,
-  }
+  let ret_expr = match &fun.ret {
+    ErasedReturn::Void => {
+      *output += "void";
+      None
+    }
+
+    ErasedReturn::Expr(ref ty, expr) => {
+      write_type_to_str(output, ty)?;
+      Some(expr)
+    }
+  };
 
   *output += " ";
   write_fun_handle(output, handle)?;
@@ -77,11 +84,16 @@ fn write_fun_def_to_str(
   }
   *output += ") {\n";
 
-  // TODO: scope
   write_scope_to_str(output, &fun.scope, 1)?;
 
-  // TODO: return
-  *output += "}\n";
+  if let Some(ref expr) = ret_expr {
+    *output += &" ".repeat(INDENT_SPACES);
+    *output += "return ";
+    write_expr_to_str(output, expr)?;
+    *output += ";";
+  }
+
+  *output += "\n}\n";
   Ok(())
 }
 
