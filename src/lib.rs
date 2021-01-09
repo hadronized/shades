@@ -106,7 +106,7 @@ impl<S> Shader<S> {
       .decls
       .push(ShaderDecl::Const(handle, T::TYPE, expr.erased));
 
-    Var(Expr::new(ErasedExpr::MutVar(ScopedHandle::global(handle))))
+    Var::new(ScopedHandle::global(handle))
   }
 
   pub fn input<T>(&mut self) -> Var<S, T>
@@ -118,7 +118,7 @@ impl<S> Shader<S> {
 
     self.decls.push(ShaderDecl::In(handle, T::TYPE));
 
-    Var(Expr::new(ErasedExpr::MutVar(ScopedHandle::global(handle))))
+    Var::new(ScopedHandle::global(handle))
   }
 
   pub fn output<T>(&mut self) -> Var<S, T>
@@ -130,7 +130,7 @@ impl<S> Shader<S> {
 
     self.decls.push(ShaderDecl::Out(handle, T::TYPE));
 
-    Var(Expr::new(ErasedExpr::MutVar(ScopedHandle::global(handle))))
+    Var::new(ScopedHandle::global(handle))
   }
 }
 
@@ -732,19 +732,19 @@ impl_From_Expr_vn!(V4<bool>, LitBool4);
 #[macro_export]
 macro_rules! lit {
   ($e:expr) => {
-    Expr::<L, _>::from($e)
+    $crate::Expr::<$crate::L, _>::from($e)
   };
 
   ($a:expr, $b:expr) => {
-    Expr::<L, _>::from(V2::from([$a, $b]))
+    $crate::Expr::<$crate::L, _>::from(V2::from([$a, $b]))
   };
 
   ($a:expr, $b:expr, $c:expr) => {
-    Expr::<L, _>::from(V3::from([$a, $b, $c]))
+    $crate::Expr::<$crate::L, _>::from($crate::V3::from([$a, $b, $c]))
   };
 
   ($a:expr, $b:expr, $c:expr, $d:expr) => {
-    Expr::<L, _>::from(V4::from([$a, $b, $c, $d]))
+    $crate::Expr::<$crate::L, _>::from($crate::V4::from([$a, $b, $c, $d]))
   };
 }
 
@@ -1092,7 +1092,7 @@ where
       init_value: init_value.into().erased,
     });
 
-    Var(Expr::new(ErasedExpr::MutVar(handle)))
+    Var::new(handle)
   }
 
   pub fn leave(&mut self, ret: impl Into<R>) {
@@ -1152,20 +1152,20 @@ where
     let mut scope = self.deeper();
 
     // bind the init value so that it’s available in all closures
-    let Var(init_expr) = scope.var(init_value);
+    let init_var = scope.var(init_value);
 
-    let condition = condition(&init_expr);
+    let condition = condition(&init_var);
 
     // generate the “post expr”, which is basically the free from of the third part of the for loop; people usually
     // set this to ++i, i++, etc., but in our case, the expression is to treat as a fold’s accumulator
-    let post_expr = iter_fold(&init_expr);
+    let post_expr = iter_fold(&init_var);
 
-    body(&mut scope, &init_expr);
+    body(&mut scope, &init_var);
 
     self.erased.instructions.push(ScopeInstr::For {
       init_ty: T::TYPE,
       init_handle: ScopedHandle::fun_var(scope.erased.id, 0),
-      init_expr: init_expr.erased,
+      init_expr: init_var.to_expr().erased,
       condition: condition.erased,
       post_expr: post_expr.erased,
       scope: scope.erased,
@@ -1194,6 +1194,16 @@ where
 
   pub fn loop_break(&mut self) {
     self.erased.instructions.push(ScopeInstr::Break);
+  }
+
+  pub fn set<P, Q, T>(&mut self, var: impl Into<Var<P, T>>, value: impl Into<Expr<Q, T>>)
+  where
+    S: CompatibleStage<P> + CompatibleStage<Q>,
+  {
+    self.erased.instructions.push(ScopeInstr::MutateVar {
+      var: var.into().to_expr().erased,
+      expr: value.into().erased,
+    });
   }
 }
 
@@ -1290,6 +1300,10 @@ impl<S, T> Var<S, T>
 where
   T: ?Sized,
 {
+  pub const fn new(handle: ScopedHandle) -> Self {
+    Self(Expr::new(ErasedExpr::MutVar(handle)))
+  }
+
   pub fn to_expr(&self) -> Expr<S, T> {
     self.0.clone()
   }
@@ -1372,6 +1386,11 @@ enum ScopeInstr {
   While {
     condition: ErasedExpr,
     scope: ErasedScope,
+  },
+
+  MutateVar {
+    var: ErasedExpr,
+    expr: ErasedExpr,
   },
 }
 
