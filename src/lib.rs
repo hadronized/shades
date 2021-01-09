@@ -1,3 +1,5 @@
+pub mod writer;
+
 use std::{marker::PhantomData, ops};
 
 #[derive(Debug)]
@@ -47,7 +49,9 @@ impl_CompatibleStage!(F);
 
 #[derive(Debug)]
 pub struct Shader<S> {
-  decls: Vec<ShaderDecl>,
+  pub(crate) decls: Vec<ShaderDecl>,
+  next_fun_handle: u16,
+  next_global_handle: u16,
   _phantom: PhantomData<S>,
 }
 
@@ -55,6 +59,8 @@ impl<S> Shader<S> {
   pub fn new() -> Self {
     Self {
       decls: Vec::new(),
+      next_fun_handle: 0,
+      next_global_handle: 0,
       _phantom: PhantomData,
     }
   }
@@ -64,9 +70,10 @@ impl<S> Shader<S> {
     F: ToFun<S, R, A>,
   {
     let fundef = f.build_fn();
-    let handle = self.decls.len();
+    let handle = self.next_fun_handle;
+    self.next_fun_handle += 1;
 
-    self.decls.push(ShaderDecl::FunDef(fundef.erased));
+    self.decls.push(ShaderDecl::FunDef(handle, fundef.erased));
 
     FunHandle {
       erased: ErasedFunHandle::UserDefined(handle as _),
@@ -78,39 +85,47 @@ impl<S> Shader<S> {
   where
     T: ToType,
   {
-    let n = self.decls.len() as u16;
-    self.decls.push(ShaderDecl::Const(expr.erased));
+    let handle = self.next_global_handle;
+    self.next_global_handle += 1;
 
-    Var(Expr::new(ErasedExpr::MutVar(ScopedHandle::global(n))))
+    self
+      .decls
+      .push(ShaderDecl::Const(handle, T::TYPE, expr.erased));
+
+    Var(Expr::new(ErasedExpr::MutVar(ScopedHandle::global(handle))))
   }
 
   pub fn input<T>(&mut self) -> Var<S, T>
   where
     T: ToType,
   {
-    let n = self.decls.len() as u16;
-    self.decls.push(ShaderDecl::In(T::TYPE, n));
+    let handle = self.next_global_handle;
+    self.next_global_handle += 1;
 
-    Var(Expr::new(ErasedExpr::MutVar(ScopedHandle::global(n))))
+    self.decls.push(ShaderDecl::In(handle, T::TYPE));
+
+    Var(Expr::new(ErasedExpr::MutVar(ScopedHandle::global(handle))))
   }
 
   pub fn output<T>(&mut self) -> Var<S, T>
   where
     T: ToType,
   {
-    let n = self.decls.len() as u16;
-    self.decls.push(ShaderDecl::Out(T::TYPE, n));
+    let handle = self.next_global_handle;
+    self.next_global_handle += 1;
 
-    Var(Expr::new(ErasedExpr::MutVar(ScopedHandle::global(n))))
+    self.decls.push(ShaderDecl::Out(handle, T::TYPE));
+
+    Var(Expr::new(ErasedExpr::MutVar(ScopedHandle::global(handle))))
   }
 }
 
 #[derive(Debug)]
-enum ShaderDecl {
-  FunDef(ErasedFun),
-  Const(ErasedExpr),
-  In(Type, u16),
-  Out(Type, u16),
+pub(crate) enum ShaderDecl {
+  FunDef(u16, ErasedFun),
+  Const(u16, Type, ErasedExpr),
+  In(u16, Type),
+  Out(u16, Type),
 }
 
 macro_rules! make_vn {
@@ -730,7 +745,7 @@ impl<S> Return<S> {
 #[derive(Clone, Debug, PartialEq)]
 enum ErasedReturn {
   Void,
-  Expr(ErasedExpr),
+  Expr(Type, ErasedExpr),
 }
 
 impl<S> From<()> for Return<S> {
@@ -742,9 +757,10 @@ impl<S> From<()> for Return<S> {
 impl<S, Q, T> From<Expr<Q, T>> for Return<S>
 where
   S: CompatibleStage<Q, Intersect = S>,
+  T: ToType,
 {
   fn from(expr: Expr<Q, T>) -> Self {
-    Self::new(ErasedReturn::Expr(expr.erased))
+    Self::new(ErasedReturn::Expr(T::TYPE, expr.erased))
   }
 }
 
@@ -2645,7 +2661,7 @@ mod tests {
     assert_eq!(fun.erased, ErasedFunHandle::UserDefined(0));
 
     match shader.decls[0] {
-      ShaderDecl::FunDef(ref fun) => {
+      ShaderDecl::FunDef(0, ref fun) => {
         assert_eq!(fun.ret, ErasedReturn::Void);
         assert_eq!(fun.args, vec![]);
         assert_eq!(fun.scope.instructions.len(), 1);
@@ -2676,10 +2692,10 @@ mod tests {
     assert_eq!(fun.erased, ErasedFunHandle::UserDefined(0));
 
     match shader.decls[0] {
-      ShaderDecl::FunDef(ref fun) => {
+      ShaderDecl::FunDef(0, ref fun) => {
         assert_eq!(
           fun.ret,
-          ErasedReturn::Expr(ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0)))
+          ErasedReturn::Expr(i32::TYPE, ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0)))
         );
         assert_eq!(
           fun.args,
@@ -2768,9 +2784,10 @@ mod tests {
     });
     scope
       .instructions
-      .push(ScopeInstr::Return(ErasedReturn::Expr(ErasedExpr::MutVar(
-        ScopedHandle::fun_var(1, 0),
-      ))));
+      .push(ScopeInstr::Return(ErasedReturn::Expr(
+        i32::TYPE,
+        ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0)),
+      )));
 
     assert_eq!(
       s.erased.instructions[1],
@@ -2788,6 +2805,7 @@ mod tests {
     scope
       .instructions
       .push(ScopeInstr::Return(ErasedReturn::Expr(
+        i32::TYPE,
         ErasedExpr::LitFloat4([0., 0., 0., 0.]),
       )));
 
@@ -2838,9 +2856,10 @@ mod tests {
     });
     loop_scope
       .instructions
-      .push(ScopeInstr::Return(ErasedReturn::Expr(ErasedExpr::MutVar(
-        ScopedHandle::fun_var(1, 0),
-      ))));
+      .push(ScopeInstr::Return(ErasedReturn::Expr(
+        i32::TYPE,
+        ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0)),
+      )));
 
     assert_eq!(
       scope.erased.instructions[0],
