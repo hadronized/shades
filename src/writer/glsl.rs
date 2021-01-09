@@ -41,7 +41,7 @@ pub fn write_shader_to_str<S>(shader: &Shader<S>) -> Result<String, WriteError> 
 }
 
 fn write_main_fun_to_str(output: &mut String, fun: &ErasedFun) -> Result<(), WriteError> {
-  *output += "void main() {\n";
+  *output += "\nvoid main() {\n";
   write_scope_to_str(output, &fun.scope, 1)?;
   *output += "}\n";
   Ok(())
@@ -52,6 +52,9 @@ fn write_fun_def_to_str(
   handle: u16,
   fun: &ErasedFun,
 ) -> Result<(), WriteError> {
+  // just for aesthetics :')
+  *output += "\n";
+
   match fun.ret {
     ErasedReturn::Void => *output += "void",
     ErasedReturn::Expr(ref ty, _) => write_type_to_str(output, ty)?,
@@ -182,6 +185,13 @@ fn write_scope_to_str(
         write_scope_to_str(output, scope, indent_lvl + 1)?;
         *output += "}";
       }
+
+      ScopeInstr::MutateVar { var, expr } => {
+        write_expr_to_str(output, var)?;
+        *output += " = ";
+        write_expr_to_str(output, expr)?;
+        *output += ";";
+      }
     }
 
     *output += "\n";
@@ -212,6 +222,7 @@ fn write_input_to_str(output: &mut String, handle: u16, ty: &Type) -> Result<(),
   write_type_to_str(output, ty)?;
 
   // the handle is treated as a global
+  *output += " ";
   write_scoped_handle_to_str(output, &ScopedHandle::global(handle))?;
 
   *output += ";\n";
@@ -235,22 +246,39 @@ fn write_expr_to_str(output: &mut String, expr: &ErasedExpr) -> Result<(), Write
   match expr {
     ErasedExpr::LitInt(x) => *output += &format!("{}", x),
     ErasedExpr::LitUInt(x) => *output += &format!("{}", x),
-    ErasedExpr::LitFloat(x) => *output += &format!("{}", x),
+    ErasedExpr::LitFloat(x) => *output += &format!("{}", float_to_str(*x)),
     ErasedExpr::LitBool(x) => *output += &format!("{}", x),
 
     ErasedExpr::LitInt2([x, y]) => *output += &format!("ivec2({}, {})", x, y),
     ErasedExpr::LitUInt2([x, y]) => *output += &format!("uvec2({}, {})", x, y),
-    ErasedExpr::LitFloat2([x, y]) => *output += &format!("vec2({}, {})", x, y),
+    ErasedExpr::LitFloat2([x, y]) => {
+      *output += &format!("vec2({}, {})", float_to_str(*x), float_to_str(*y))
+    }
     ErasedExpr::LitBool2([x, y]) => *output += &format!("bvec2({}, {})", x, y),
 
     ErasedExpr::LitInt3([x, y, z]) => *output += &format!("ivec3({}, {}, {})", x, y, z),
     ErasedExpr::LitUInt3([x, y, z]) => *output += &format!("uvec3({}, {}, {})", x, y, z),
-    ErasedExpr::LitFloat3([x, y, z]) => *output += &format!("vec3({}, {}, {})", x, y, z),
+    ErasedExpr::LitFloat3([x, y, z]) => {
+      *output += &format!(
+        "vec3({}, {}, {})",
+        float_to_str(*x),
+        float_to_str(*y),
+        float_to_str(*z)
+      )
+    }
     ErasedExpr::LitBool3([x, y, z]) => *output += &format!("bvec3({}, {}, {})", x, y, z),
 
     ErasedExpr::LitInt4([x, y, z, w]) => *output += &format!("ivec4({}, {}, {}, {})", x, y, z, w),
     ErasedExpr::LitUInt4([x, y, z, w]) => *output += &format!("uvec4({}, {}, {}, {})", x, y, z, w),
-    ErasedExpr::LitFloat4([x, y, z, w]) => *output += &format!("vec4({}, {}, {}, {})", x, y, z, w),
+    ErasedExpr::LitFloat4([x, y, z, w]) => {
+      *output += &format!(
+        "vec4({}, {}, {}, {})",
+        float_to_str(*x),
+        float_to_str(*y),
+        float_to_str(*z),
+        float_to_str(*w)
+      )
+    }
     ErasedExpr::LitBool4([x, y, z, w]) => *output += &format!("bvec4({}, {}, {}, {})", x, y, z, w),
 
     ErasedExpr::MutVar(handle) => write_mut_var_to_str(output, handle)?,
@@ -457,6 +485,23 @@ fn write_expr_to_str(output: &mut String, expr: &ErasedExpr) -> Result<(), Write
   }
 
   Ok(())
+}
+
+fn float_to_str(f: f32) -> String {
+  if f == 0. {
+    return "0.".to_owned();
+  }
+
+  let mut s = f.to_string();
+
+  if f.trunc() == 0. {
+    s[1..].to_string()
+  } else if f.fract() == 0. {
+    s += ".";
+    s
+  } else {
+    s
+  }
 }
 
 fn write_swizzle_to_str(output: &mut String, s: &Swizzle) -> Result<(), WriteError> {
