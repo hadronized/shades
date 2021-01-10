@@ -22,7 +22,7 @@ impl fmt::Display for WriteError {
 
 impl std::error::Error for WriteError {}
 
-pub fn write_shader_to_str<S>(shader: &Shader<S>) -> Result<String, WriteError> {
+pub fn write_shader_to_str(shader: &Shader) -> Result<String, WriteError> {
   let mut output = String::new();
 
   for decl in &shader.decls {
