@@ -20,4 +20,4 @@ fun-call = []
 
 [[example]]
 name = "simple"
-
+required-features = ["fun-call"]

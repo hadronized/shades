@@ -1015,7 +1015,35 @@ macro_rules! impl_FunCall {
   };
 }
 
-impl_FunCall!((a, A, S0), (b, B, S1));
+// implement function calls for Expr up to 16 arguments
+macro_rules! impl_FunCall_rec {
+  ( ( $a:ident, $b:ident, $c:ident ) , ( $x:ident, $y:ident, $z:ident )) => {
+    impl_FunCall!(($a, $b, $c), ($x, $y, $z));
+  };
+
+  ( ( $a:ident, $b:ident, $c:ident ) , ( $x: ident, $y: ident, $z: ident ) , $($r:tt)* ) => {
+    impl_FunCall_rec!(($a, $b, $c), $($r)*);
+    impl_FunCall!(($a, $b, $c), ($x, $y, $z), $($r)*);
+  };
+}
+impl_FunCall_rec!(
+  (a, A, S0),
+  (b, B, S1),
+  (c, C, S2),
+  (d, D, S3),
+  (e, E, S4),
+  (f, F, S5),
+  (g, G, S6),
+  (h, H, S7),
+  (i, I, S8),
+  (j, J, S9),
+  (k, K, S10),
+  (l, L, S11),
+  (m, M, S12),
+  (n, N, S13),
+  (o, O, S14),
+  (p, P, S15)
+);
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErasedFunHandle {
