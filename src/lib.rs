@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "fun-call", feature(unboxed_closures), feature(fn_traits))]
+
 pub mod writer;
 
 use std::{marker::PhantomData, ops};
@@ -896,6 +898,124 @@ pub struct FunHandle<S, R, A> {
   erased: ErasedFunHandle,
   _phantom: PhantomData<(S, R, A)>,
 }
+
+impl<S, R> FunHandle<S, R, ()> {
+  pub fn call(&self) -> Expr<S, R> {
+    Expr::new(ErasedExpr::FunCall(self.erased.clone(), Vec::new()))
+  }
+}
+
+#[cfg(feature = "fun-call")]
+impl<S, R> FnOnce<()> for FunHandle<S, R, ()> {
+  type Output = Expr<S, R>;
+
+  extern "rust-call" fn call_once(self, _: ()) -> Self::Output {
+    self.call()
+  }
+}
+
+#[cfg(feature = "fun-call")]
+impl<S, R> FnMut<()> for FunHandle<S, R, ()> {
+  extern "rust-call" fn call_mut(&mut self, _: ()) -> Self::Output {
+    self.call()
+  }
+}
+
+#[cfg(feature = "fun-call")]
+impl<S, R> Fn<()> for FunHandle<S, R, ()> {
+  extern "rust-call" fn call(&self, _: ()) -> Self::Output {
+    self.call()
+  }
+}
+
+impl<S, R, A, S0> FunHandle<S, R, Expr<S0, A>>
+where
+  S: CompatibleStage<S0>,
+{
+  pub fn call(&self, a: Expr<S0, A>) -> Expr<S::Intersect, R> {
+    Expr::new(ErasedExpr::FunCall(self.erased.clone(), vec![a.erased]))
+  }
+}
+
+#[cfg(feature = "fun-call")]
+impl<S, R, A, S0> FnOnce<(Expr<S0, A>,)> for FunHandle<S, R, Expr<S0, A>>
+where
+  S: CompatibleStage<S0>,
+{
+  type Output = Expr<S::Intersect, R>;
+
+  extern "rust-call" fn call_once(self, a: (Expr<S0, A>,)) -> Self::Output {
+    self.call(a.0)
+  }
+}
+
+#[cfg(feature = "fun-call")]
+impl<S, R, A, S0> FnMut<(Expr<S0, A>,)> for FunHandle<S, R, Expr<S0, A>>
+where
+  S: CompatibleStage<S0>,
+{
+  extern "rust-call" fn call_mut(&mut self, a: (Expr<S0, A>,)) -> Self::Output {
+    self.call(a.0)
+  }
+}
+
+#[cfg(feature = "fun-call")]
+impl<S, R, A, S0> Fn<(Expr<S0, A>,)> for FunHandle<S, R, Expr<S0, A>>
+where
+  S: CompatibleStage<S0>,
+{
+  extern "rust-call" fn call(&self, a: (Expr<S0, A>,)) -> Self::Output {
+    self.call(a.0)
+  }
+}
+
+// the first stage must be named S0
+macro_rules! impl_FunCall {
+  ( $( ( $arg_name:ident, $arg_ty:ident, $arg_stage:ident ) ),*) => {
+    impl<S, R, $($arg_ty),* , $($arg_stage),*> FunHandle<S, R, ($(Expr<$arg_stage, $arg_ty>),*)>
+    where
+      S: $(CompatibleStage<$arg_stage> + )*
+    {
+      pub fn call(&self, $($arg_name : Expr<$arg_stage, $arg_ty>),*) -> Expr<<S as CompatibleStage<S0>>::Intersect, R> {
+        Expr::new(ErasedExpr::FunCall(self.erased.clone(), vec![$($arg_name.erased),*]))
+      }
+    }
+
+    #[cfg(feature = "fun-call")]
+    impl<S, R, $($arg_ty),* , $($arg_stage),*> FnOnce<($(Expr<$arg_stage, $arg_ty>),*)> for FunHandle<S, R, ($(Expr<$arg_stage, $arg_ty>),*)>
+    where
+      S: $(CompatibleStage<$arg_stage> +)*
+    {
+      type Output = Expr<<S as CompatibleStage<S0>>::Intersect, R>;
+
+      extern "rust-call" fn call_once(self, ($($arg_name),*): ($(Expr<$arg_stage, $arg_ty>),*)) -> Self::Output {
+        self.call($($arg_name),*)
+      }
+    }
+
+    #[cfg(feature = "fun-call")]
+    impl<S, R, $($arg_ty),* , $($arg_stage),*> FnMut<($(Expr<$arg_stage, $arg_ty>),*)> for FunHandle<S, R, ($(Expr<$arg_stage, $arg_ty>),*)>
+    where
+      S: $(CompatibleStage<$arg_stage> +)*
+    {
+      extern "rust-call" fn call_mut(&mut self, ($($arg_name),*): ($(Expr<$arg_stage, $arg_ty>),*)) -> Self::Output {
+        self.call($($arg_name),*)
+      }
+    }
+
+    #[cfg(feature = "fun-call")]
+    impl<S, R, $($arg_ty),* , $($arg_stage),*> Fn<($(Expr<$arg_stage, $arg_ty>),*)> for FunHandle<S, R, ($(Expr<$arg_stage, $arg_ty>),*)>
+    where
+      S: $(CompatibleStage<$arg_stage> +)*
+    {
+      extern "rust-call" fn call(&self, ($($arg_name),*): ($(Expr<$arg_stage, $arg_ty>),*)) -> Self::Output {
+        self.call($($arg_name),*)
+      }
+    }
+  };
+}
+
+impl_FunCall!((a, A, S0), (b, B, S1));
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErasedFunHandle {

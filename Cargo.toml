@@ -15,5 +15,9 @@ edition = "2018"
 [badges]
 maintenance = { status = "actively-developed" }
 
+[features]
+fun-call = []
+
 [[example]]
 name = "simple"
+
