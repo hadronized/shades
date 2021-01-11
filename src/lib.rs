@@ -5,71 +5,54 @@ pub mod writer;
 use std::{marker::PhantomData, ops};
 
 #[derive(Debug)]
-pub struct V;
-
-#[derive(Debug)]
-pub struct TC;
-
-#[derive(Debug)]
-pub struct TE;
-
-#[derive(Debug)]
-pub struct G;
-
-#[derive(Debug)]
-pub struct F;
-
-#[derive(Debug)]
-pub struct L;
-
-pub unsafe trait CompatibleStage<S> {
-  type Intersect;
-}
-
-// universal implementor
-unsafe impl<T> CompatibleStage<T> for T {
-  type Intersect = T;
-}
-
-macro_rules! impl_CompatibleStage {
-  ($t:ty) => {
-    unsafe impl CompatibleStage<$t> for L {
-      type Intersect = $t;
-    }
-
-    unsafe impl CompatibleStage<L> for $t {
-      type Intersect = $t;
-    }
-  };
-}
-
-impl_CompatibleStage!(V);
-impl_CompatibleStage!(TC);
-impl_CompatibleStage!(TE);
-impl_CompatibleStage!(G);
-impl_CompatibleStage!(F);
-
-#[derive(Debug)]
-pub struct Shader<S> {
+pub struct Shader {
   pub(crate) decls: Vec<ShaderDecl>,
   next_fun_handle: u16,
   next_global_handle: u16,
-  _phantom: PhantomData<S>,
 }
 
-impl<S> Shader<S> {
-  pub fn new() -> Self {
+impl Shader {
+  pub fn new_vertex_shader(f: impl FnOnce(&mut Self, VertexShaderEnv)) -> Self {
+    let mut shader = Self::new();
+    f(&mut shader, VertexShaderEnv::new());
+    shader
+  }
+
+  pub fn new_tess_ctrl_shader(f: impl FnOnce(&mut Self, TessCtrlShaderEnv)) -> Self {
+    let mut shader = Self::new();
+    f(&mut shader, TessCtrlShaderEnv::new());
+    shader
+  }
+
+  pub fn new_tess_eval_shader(f: impl FnOnce(&mut Self, TessEvalShaderEnv)) -> Self {
+    let mut shader = Self::new();
+    f(&mut shader, TessEvalShaderEnv::new());
+    shader
+  }
+
+  pub fn new_geometry_shader(f: impl FnOnce(&mut Self, GeometryShaderEnv)) -> Self {
+    let mut shader = Self::new();
+    f(&mut shader, GeometryShaderEnv::new());
+    shader
+  }
+
+  pub fn new_fragment_shader(f: impl FnOnce(&mut Self, FragmentShaderEnv)) -> Self {
+    let mut shader = Self::new();
+    f(&mut shader, FragmentShaderEnv::new());
+    shader
+  }
+
+  fn new() -> Self {
     Self {
       decls: Vec::new(),
       next_fun_handle: 0,
       next_global_handle: 0,
-      _phantom: PhantomData,
     }
   }
 
-  pub fn fun<F, R, A>(&mut self, f: F) -> FunHandle<S, R, A>
+  pub fn fun<F, R, A>(&mut self, f: F) -> FunHandle<R, A>
   where
-    F: ToFun<S, R, A>,
+    F: ToFun<R, A>,
   {
     let fundef = f.build_fn();
     let handle = self.next_fun_handle;
@@ -83,9 +66,9 @@ impl<S> Shader<S> {
     }
   }
 
-  pub fn main_fun<F, R>(&mut self, f: F) -> FunHandle<S, R, ()>
+  pub fn main_fun<F, R>(&mut self, f: F) -> FunHandle<R, ()>
   where
-    F: ToFun<S, R, ()>,
+    F: ToFun<R, ()>,
   {
     let fundef = f.build_fn();
 
@@ -97,7 +80,7 @@ impl<S> Shader<S> {
     }
   }
 
-  pub fn constant<T>(&mut self, expr: Expr<S, T>) -> Var<S, T>
+  pub fn constant<T>(&mut self, expr: Expr<T>) -> Var<T>
   where
     T: ToType,
   {
@@ -111,7 +94,7 @@ impl<S> Shader<S> {
     Var::new(ScopedHandle::global(handle))
   }
 
-  pub fn input<T>(&mut self) -> Var<S, T>
+  pub fn input<T>(&mut self) -> Var<T>
   where
     T: ToType,
   {
@@ -123,7 +106,7 @@ impl<S> Shader<S> {
     Var::new(ScopedHandle::global(handle))
   }
 
-  pub fn output<T>(&mut self) -> Var<S, T>
+  pub fn output<T>(&mut self) -> Var<T>
   where
     T: ToType,
   {
@@ -217,15 +200,15 @@ pub enum ErasedExpr {
 }
 
 #[derive(Debug)]
-pub struct Expr<S, T>
+pub struct Expr<T>
 where
   T: ?Sized,
 {
   erased: ErasedExpr,
-  _phantom: PhantomData<(S, T)>,
+  _phantom: PhantomData<T>,
 }
 
-impl<S, T> From<&'_ Self> for Expr<S, T>
+impl<T> From<&'_ Self> for Expr<T>
 where
   T: ?Sized,
 {
@@ -234,7 +217,7 @@ where
   }
 }
 
-impl<S, T> Clone for Expr<S, T>
+impl<T> Clone for Expr<T>
 where
   T: ?Sized,
 {
@@ -243,7 +226,7 @@ where
   }
 }
 
-impl<S, T> Expr<S, T>
+impl<T> Expr<T>
 where
   T: ?Sized,
 {
@@ -262,20 +245,14 @@ where
     Self::new(ErasedExpr::ImmutBuiltIn(builtin))
   }
 
-  pub fn eq<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, bool>
-  where
-    S: CompatibleStage<Q>,
-  {
+  pub fn eq(&self, rhs: impl Into<Expr<T>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Eq(
       Box::new(self.erased.clone()),
       Box::new(rhs.into().erased),
     ))
   }
 
-  pub fn neq<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, bool>
-  where
-    S: CompatibleStage<Q>,
-  {
+  pub fn neq(&self, rhs: impl Into<Expr<T>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Neq(
       Box::new(self.erased.clone()),
       Box::new(rhs.into().erased),
@@ -283,44 +260,32 @@ where
   }
 }
 
-impl<S, T> Expr<S, T>
+impl<T> Expr<T>
 where
   T: PartialOrd,
 {
-  pub fn lt<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, bool>
-  where
-    S: CompatibleStage<Q>,
-  {
+  pub fn lt(&self, rhs: impl Into<Expr<T>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Lt(
       Box::new(self.erased.clone()),
       Box::new(rhs.into().erased),
     ))
   }
 
-  pub fn lte<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S, bool>
-  where
-    S: CompatibleStage<Q>,
-  {
+  pub fn lte(&self, rhs: impl Into<Expr<T>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Lte(
       Box::new(self.erased.clone()),
       Box::new(rhs.into().erased),
     ))
   }
 
-  pub fn gt<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, bool>
-  where
-    S: CompatibleStage<Q>,
-  {
+  pub fn gt(&self, rhs: impl Into<Expr<T>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Gt(
       Box::new(self.erased.clone()),
       Box::new(rhs.into().erased),
     ))
   }
 
-  pub fn gte<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, bool>
-  where
-    S: CompatibleStage<Q>,
-  {
+  pub fn gte(&self, rhs: impl Into<Expr<T>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Gte(
       Box::new(self.erased.clone()),
       Box::new(rhs.into().erased),
@@ -328,31 +293,22 @@ where
   }
 }
 
-impl<S> Expr<S, bool> {
-  pub fn and<Q>(&self, rhs: impl Into<Expr<Q, bool>>) -> Expr<S::Intersect, bool>
-  where
-    S: CompatibleStage<Q>,
-  {
+impl Expr<bool> {
+  pub fn and(&self, rhs: impl Into<Expr<bool>>) -> Expr<bool> {
     Expr::new(ErasedExpr::And(
       Box::new(self.erased.clone()),
       Box::new(rhs.into().erased),
     ))
   }
 
-  pub fn or<Q>(&self, rhs: impl Into<Expr<Q, bool>>) -> Expr<S::Intersect, bool>
-  where
-    S: CompatibleStage<Q>,
-  {
+  pub fn or(&self, rhs: impl Into<Expr<bool>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Or(
       Box::new(self.erased.clone()),
       Box::new(rhs.into().erased),
     ))
   }
 
-  pub fn xor<Q>(&self, rhs: impl Into<Expr<Q, bool>>) -> Expr<S::Intersect, bool>
-  where
-    S: CompatibleStage<Q>,
-  {
+  pub fn xor(&self, rhs: impl Into<Expr<bool>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Xor(
       Box::new(self.erased.clone()),
       Box::new(rhs.into().erased),
@@ -360,11 +316,8 @@ impl<S> Expr<S, bool> {
   }
 }
 
-impl<S, T> Expr<S, [T]> {
-  pub fn at<Q>(&self, index: impl Into<Expr<Q, i32>>) -> Expr<S::Intersect, T>
-  where
-    S: CompatibleStage<Q>,
-  {
+impl<T> Expr<[T]> {
+  pub fn at(&self, index: impl Into<Expr<i32>>) -> Expr<T> {
     Expr::new(ErasedExpr::ArrayLookup {
       object: Box::new(self.erased.clone()),
       index: Box::new(index.into().erased),
@@ -375,7 +328,7 @@ impl<S, T> Expr<S, [T]> {
 // not
 macro_rules! impl_Not_Expr {
   ($t:ty) => {
-    impl<S> ops::Not for Expr<S, $t> {
+    impl ops::Not for Expr<$t> {
       type Output = Self;
 
       fn not(self) -> Self::Output {
@@ -383,8 +336,8 @@ macro_rules! impl_Not_Expr {
       }
     }
 
-    impl<'a, S> ops::Not for &'a Expr<S, $t> {
-      type Output = Expr<S, $t>;
+    impl<'a> ops::Not for &'a Expr<$t> {
+      type Output = Expr<$t>;
 
       fn not(self) -> Self::Output {
         Expr::new(ErasedExpr::Not(Box::new(self.erased.clone())))
@@ -401,7 +354,7 @@ impl_Not_Expr!(V4<bool>);
 // neg
 macro_rules! impl_Neg_Expr {
   ($t:ty) => {
-    impl<S> ops::Neg for Expr<S, $t> {
+    impl ops::Neg for Expr<$t> {
       type Output = Self;
 
       fn neg(self) -> Self::Output {
@@ -409,8 +362,8 @@ macro_rules! impl_Neg_Expr {
       }
     }
 
-    impl<'a, S> ops::Neg for &'a Expr<S, $t> {
-      type Output = Expr<S, $t>;
+    impl<'a> ops::Neg for &'a Expr<$t> {
+      type Output = Expr<$t>;
 
       fn neg(self) -> Self::Output {
         Expr::new(ErasedExpr::Neg(Box::new(self.erased.clone())))
@@ -439,24 +392,18 @@ impl_Neg_Expr!(V4<f32>);
 macro_rules! impl_binop_Expr {
   ($op:ident, $meth_name:ident, $a:ty, $b:ty) => {
     // expr OP expr
-    impl<'a, S, Q> ops::$op<Expr<Q, $b>> for Expr<S, $a>
-    where
-      S: CompatibleStage<Q>,
-    {
-      type Output = Expr<S::Intersect, $a>;
+    impl<'a> ops::$op<Expr<$b>> for Expr<$a> {
+      type Output = Expr<$a>;
 
-      fn $meth_name(self, rhs: Expr<Q, $b>) -> Self::Output {
+      fn $meth_name(self, rhs: Expr<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
       }
     }
 
-    impl<'a, S, Q> ops::$op<&'a Expr<Q, $b>> for Expr<S, $a>
-    where
-      S: CompatibleStage<Q>,
-    {
-      type Output = Expr<S::Intersect, $a>;
+    impl<'a> ops::$op<&'a Expr<$b>> for Expr<$a> {
+      type Output = Expr<$a>;
 
-      fn $meth_name(self, rhs: &'a Expr<Q, $b>) -> Self::Output {
+      fn $meth_name(self, rhs: &'a Expr<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased),
           Box::new(rhs.erased.clone()),
@@ -464,13 +411,10 @@ macro_rules! impl_binop_Expr {
       }
     }
 
-    impl<'a, S, Q> ops::$op<Expr<Q, $b>> for &'a Expr<S, $a>
-    where
-      S: CompatibleStage<Q>,
-    {
-      type Output = Expr<S::Intersect, $a>;
+    impl<'a> ops::$op<Expr<$b>> for &'a Expr<$a> {
+      type Output = Expr<$a>;
 
-      fn $meth_name(self, rhs: Expr<Q, $b>) -> Self::Output {
+      fn $meth_name(self, rhs: Expr<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased.clone()),
           Box::new(rhs.erased),
@@ -478,13 +422,10 @@ macro_rules! impl_binop_Expr {
       }
     }
 
-    impl<'a, S, Q> ops::$op<&'a Expr<Q, $b>> for &'a Expr<S, $a>
-    where
-      S: CompatibleStage<Q>,
-    {
-      type Output = Expr<S::Intersect, $a>;
+    impl<'a> ops::$op<&'a Expr<$b>> for &'a Expr<$a> {
+      type Output = Expr<$a>;
 
-      fn $meth_name(self, rhs: &'a Expr<Q, $b>) -> Self::Output {
+      fn $meth_name(self, rhs: &'a Expr<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased.clone()),
           Box::new(rhs.erased.clone()),
@@ -493,20 +434,20 @@ macro_rules! impl_binop_Expr {
     }
 
     // expr OP t, where t is automatically lifted
-    impl<'a, S> ops::$op<$b> for Expr<S, $a> {
-      type Output = Expr<S, $a>;
+    impl<'a> ops::$op<$b> for Expr<$a> {
+      type Output = Expr<$a>;
 
       fn $meth_name(self, rhs: $b) -> Self::Output {
-        let rhs: Expr<_, _> = rhs.into();
+        let rhs = Expr::from(rhs);
         Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
       }
     }
 
-    impl<'a, S> ops::$op<$b> for &'a Expr<S, $a> {
-      type Output = Expr<S, $a>;
+    impl<'a> ops::$op<$b> for &'a Expr<$a> {
+      type Output = Expr<$a>;
 
       fn $meth_name(self, rhs: $b) -> Self::Output {
-        let rhs: Expr<L, $b> = rhs.into();
+        let rhs: Expr<$b> = rhs.into();
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased.clone()),
           Box::new(rhs.erased),
@@ -590,24 +531,18 @@ impl_binop_Expr!(Rem, rem, V4<f32>, f32);
 macro_rules! impl_binshift_Expr {
   ($op:ident, $meth_name:ident, $ty:ty) => {
     // expr OP expr
-    impl<S, Q> ops::$op<Expr<Q, u32>> for Expr<S, $ty>
-    where
-      S: CompatibleStage<Q>,
-    {
-      type Output = Expr<S::Intersect, $ty>;
+    impl ops::$op<Expr<u32>> for Expr<$ty> {
+      type Output = Expr<$ty>;
 
-      fn $meth_name(self, rhs: Expr<Q, u32>) -> Self::Output {
+      fn $meth_name(self, rhs: Expr<u32>) -> Self::Output {
         Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
       }
     }
 
-    impl<'a, S, Q> ops::$op<Expr<Q, u32>> for &'a Expr<S, $ty>
-    where
-      S: CompatibleStage<Q>,
-    {
-      type Output = Expr<S::Intersect, $ty>;
+    impl<'a> ops::$op<Expr<u32>> for &'a Expr<$ty> {
+      type Output = Expr<$ty>;
 
-      fn $meth_name(self, rhs: Expr<Q, u32>) -> Self::Output {
+      fn $meth_name(self, rhs: Expr<u32>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased.clone()),
           Box::new(rhs.erased),
@@ -615,13 +550,10 @@ macro_rules! impl_binshift_Expr {
       }
     }
 
-    impl<'a, S, Q> ops::$op<&'a Expr<Q, u32>> for Expr<S, $ty>
-    where
-      S: CompatibleStage<Q>,
-    {
-      type Output = Expr<S::Intersect, $ty>;
+    impl<'a> ops::$op<&'a Expr<u32>> for Expr<$ty> {
+      type Output = Expr<$ty>;
 
-      fn $meth_name(self, rhs: &'a Expr<Q, u32>) -> Self::Output {
+      fn $meth_name(self, rhs: &'a Expr<u32>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased),
           Box::new(rhs.erased.clone()),
@@ -629,13 +561,10 @@ macro_rules! impl_binshift_Expr {
       }
     }
 
-    impl<'a, S, Q> ops::$op<&'a Expr<Q, u32>> for &'a Expr<S, $ty>
-    where
-      S: CompatibleStage<Q>,
-    {
-      type Output = Expr<S::Intersect, $ty>;
+    impl<'a> ops::$op<&'a Expr<u32>> for &'a Expr<$ty> {
+      type Output = Expr<$ty>;
 
-      fn $meth_name(self, rhs: &'a Expr<Q, u32>) -> Self::Output {
+      fn $meth_name(self, rhs: &'a Expr<u32>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased.clone()),
           Box::new(rhs.erased.clone()),
@@ -644,20 +573,20 @@ macro_rules! impl_binshift_Expr {
     }
 
     // expr OP bits
-    impl<S> ops::$op<u32> for Expr<S, $ty> {
+    impl ops::$op<u32> for Expr<$ty> {
       type Output = Self;
 
       fn $meth_name(self, rhs: u32) -> Self::Output {
-        let rhs: Expr<_, _> = rhs.into();
+        let rhs = Expr::from(rhs);
         Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
       }
     }
 
-    impl<'a, S> ops::$op<u32> for &'a Expr<S, $ty> {
-      type Output = Expr<S, $ty>;
+    impl<'a> ops::$op<u32> for &'a Expr<$ty> {
+      type Output = Expr<$ty>;
 
       fn $meth_name(self, rhs: u32) -> Self::Output {
-        let rhs: Expr<_, _> = rhs.into();
+        let rhs = Expr::from(rhs);
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased.clone()),
           Box::new(rhs.erased),
@@ -692,7 +621,7 @@ impl_binshifts_Expr!(Shr, shr);
 
 macro_rules! impl_From_Expr_scalar {
   ($t:ty, $q:ident) => {
-    impl From<$t> for Expr<L, $t> {
+    impl From<$t> for Expr<$t> {
       fn from(a: $t) -> Self {
         Self::new(ErasedExpr::$q(a))
       }
@@ -707,7 +636,7 @@ impl_From_Expr_scalar!(bool, LitBool);
 
 macro_rules! impl_From_Expr_vn {
   ($t:ty, $q:ident) => {
-    impl From<$t> for Expr<L, $t> {
+    impl From<$t> for Expr<$t> {
       fn from(a: $t) -> Self {
         Self::new(ErasedExpr::$q(a.0))
       }
@@ -734,73 +663,57 @@ impl_From_Expr_vn!(V4<bool>, LitBool4);
 #[macro_export]
 macro_rules! lit {
   ($e:expr) => {
-    $crate::Expr::<$crate::L, _>::from($e)
+    $crate::Expr::from($e)
   };
 
   ($a:expr, $b:expr) => {
-    $crate::Expr::<$crate::L, _>::from(V2::from([$a, $b]))
+    $crate::Expr::from(V2::from([$a, $b]))
   };
 
   ($a:expr, $b:expr, $c:expr) => {
-    $crate::Expr::<$crate::L, _>::from($crate::V3::from([$a, $b, $c]))
+    $crate::Expr::from($crate::V3::from([$a, $b, $c]))
   };
 
   ($a:expr, $b:expr, $c:expr, $d:expr) => {
-    $crate::Expr::<$crate::L, _>::from($crate::V4::from([$a, $b, $c, $d]))
+    $crate::Expr::from($crate::V4::from([$a, $b, $c, $d]))
   };
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Return<S> {
-  erased: ErasedReturn,
-  _phantom: PhantomData<S>,
-}
-
-impl<S> Return<S> {
-  fn new(erased: ErasedReturn) -> Self {
-    Self {
-      erased,
-      _phantom: PhantomData,
-    }
-  }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum ErasedReturn {
+pub enum ErasedReturn {
   Void,
   Expr(Type, ErasedExpr),
 }
 
-impl<S> From<()> for Return<S> {
+impl From<()> for ErasedReturn {
   fn from(_: ()) -> Self {
-    Self::new(ErasedReturn::Void)
+    ErasedReturn::Void
   }
 }
 
-impl<S, Q, T> From<Expr<Q, T>> for Return<S>
+impl<T> From<Expr<T>> for ErasedReturn
 where
-  S: CompatibleStage<Q, Intersect = S>,
   T: ToType,
 {
-  fn from(expr: Expr<Q, T>) -> Self {
-    Self::new(ErasedReturn::Expr(T::TYPE, expr.erased))
+  fn from(expr: Expr<T>) -> Self {
+    ErasedReturn::Expr(T::TYPE, expr.erased)
   }
 }
 
-pub trait ToFun<S, R, A> {
-  fn build_fn(self) -> FunDef<S, R, A>;
+pub trait ToFun<R, A> {
+  fn build_fn(self) -> FunDef<R, A>;
 }
 
-impl<S, F, R> ToFun<S, R, ()> for F
+impl<F, R> ToFun<R, ()> for F
 where
-  Self: Fn(&mut Scope<S, R>) -> R,
-  Return<S>: From<R>,
+  Self: Fn(&mut Scope<R>) -> R,
+  ErasedReturn: From<R>,
 {
-  fn build_fn(self) -> FunDef<S, R, ()> {
+  fn build_fn(self) -> FunDef<R, ()> {
     let mut scope = Scope::new(0);
     let ret = self(&mut scope);
 
-    let erased = ErasedFun::new(Vec::new(), scope.erased, Return::<S>::from(ret).erased);
+    let erased = ErasedFun::new(Vec::new(), scope.erased, ErasedReturn::from(ret));
 
     FunDef::new(erased)
   }
@@ -808,20 +721,20 @@ where
 
 macro_rules! impl_ToFun_args {
   ($($arg:ident , $arg_ident:ident , $arg_rank:expr),*) => {
-    impl<S, F, R, $($arg),*> ToFun<S, R, ($(Expr<S, $arg>),*)> for F
+    impl<F, R, $($arg),*> ToFun<R, ($(Expr<$arg>),*)> for F
     where
-      Self: Fn(&mut Scope<S, R>, $(Expr<S, $arg>),*) -> R,
-      Return<S>: From<R>,
+      Self: Fn(&mut Scope<R>, $(Expr<$arg>),*) -> R,
+      ErasedReturn: From<R>,
       $($arg: ToType),*
     {
-      fn build_fn(self) -> FunDef<S, R, ($(Expr<S, $arg>),*)> {
+      fn build_fn(self) -> FunDef<R, ($(Expr<$arg>),*)> {
         $( let $arg_ident = Expr::new(ErasedExpr::MutVar(ScopedHandle::fun_arg($arg_rank))); )*
           let args = vec![$( $arg::TYPE ),*];
 
         let mut scope = Scope::new(0);
         let ret = self(&mut scope, $($arg_ident),*);
 
-        let erased = ErasedFun::new(args, scope.erased, Return::<S>::from(ret).erased);
+        let erased = ErasedFun::new(args, scope.erased, ErasedReturn::from(ret));
 
         FunDef::new(erased)
       }
@@ -829,19 +742,19 @@ macro_rules! impl_ToFun_args {
   }
 }
 
-impl<S, F, R, A> ToFun<S, R, Expr<S, A>> for F
+impl<F, R, A> ToFun<R, Expr<A>> for F
 where
-  Self: Fn(&mut Scope<S, R>, Expr<S, A>) -> R,
-  Return<S>: From<R>,
+  Self: Fn(&mut Scope<R>, Expr<A>) -> R,
+  ErasedReturn: From<R>,
   A: ToType,
 {
-  fn build_fn(self) -> FunDef<S, R, Expr<S, A>> {
+  fn build_fn(self) -> FunDef<R, Expr<A>> {
     let arg = Expr::new(ErasedExpr::MutVar(ScopedHandle::fun_arg(0)));
 
     let mut scope = Scope::new(0);
     let ret = self(&mut scope, arg);
 
-    let erased = ErasedFun::new(vec![A::TYPE], scope.erased, Return::<S>::from(ret).erased);
+    let erased = ErasedFun::new(vec![A::TYPE], scope.erased, ErasedReturn::from(ret));
 
     FunDef::new(erased)
   }
@@ -894,20 +807,20 @@ impl_ToFun_args!(
 );
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FunHandle<S, R, A> {
+pub struct FunHandle<R, A> {
   erased: ErasedFunHandle,
-  _phantom: PhantomData<(S, R, A)>,
+  _phantom: PhantomData<(R, A)>,
 }
 
-impl<S, R> FunHandle<S, R, ()> {
-  pub fn call(&self) -> Expr<S, R> {
+impl<R> FunHandle<R, ()> {
+  pub fn call(&self) -> Expr<R> {
     Expr::new(ErasedExpr::FunCall(self.erased.clone(), Vec::new()))
   }
 }
 
 #[cfg(feature = "fun-call")]
-impl<S, R> FnOnce<()> for FunHandle<S, R, ()> {
-  type Output = Expr<S, R>;
+impl<R> FnOnce<()> for FunHandle<R, ()> {
+  type Output = Expr<R>;
 
   extern "rust-call" fn call_once(self, _: ()) -> Self::Output {
     self.call()
@@ -915,100 +828,80 @@ impl<S, R> FnOnce<()> for FunHandle<S, R, ()> {
 }
 
 #[cfg(feature = "fun-call")]
-impl<S, R> FnMut<()> for FunHandle<S, R, ()> {
+impl<R> FnMut<()> for FunHandle<R, ()> {
   extern "rust-call" fn call_mut(&mut self, _: ()) -> Self::Output {
     self.call()
   }
 }
 
 #[cfg(feature = "fun-call")]
-impl<S, R> Fn<()> for FunHandle<S, R, ()> {
+impl<R> Fn<()> for FunHandle<R, ()> {
   extern "rust-call" fn call(&self, _: ()) -> Self::Output {
     self.call()
   }
 }
 
-impl<S, R, A, S0> FunHandle<S, R, Expr<S0, A>>
-where
-  S: CompatibleStage<S0>,
-{
-  pub fn call(&self, a: Expr<S0, A>) -> Expr<S::Intersect, R> {
+impl<R, A> FunHandle<R, Expr<A>> {
+  pub fn call(&self, a: Expr<A>) -> Expr<R> {
     Expr::new(ErasedExpr::FunCall(self.erased.clone(), vec![a.erased]))
   }
 }
 
 #[cfg(feature = "fun-call")]
-impl<S, R, A, S0> FnOnce<(Expr<S0, A>,)> for FunHandle<S, R, Expr<S0, A>>
-where
-  S: CompatibleStage<S0>,
-{
-  type Output = Expr<S::Intersect, R>;
+impl<R, A> FnOnce<(Expr<A>,)> for FunHandle<R, Expr<A>> {
+  type Output = Expr<R>;
 
-  extern "rust-call" fn call_once(self, a: (Expr<S0, A>,)) -> Self::Output {
+  extern "rust-call" fn call_once(self, a: (Expr<A>,)) -> Self::Output {
     self.call(a.0)
   }
 }
 
 #[cfg(feature = "fun-call")]
-impl<S, R, A, S0> FnMut<(Expr<S0, A>,)> for FunHandle<S, R, Expr<S0, A>>
-where
-  S: CompatibleStage<S0>,
-{
-  extern "rust-call" fn call_mut(&mut self, a: (Expr<S0, A>,)) -> Self::Output {
+impl<R, A> FnMut<(Expr<A>,)> for FunHandle<R, Expr<A>> {
+  extern "rust-call" fn call_mut(&mut self, a: (Expr<A>,)) -> Self::Output {
     self.call(a.0)
   }
 }
 
 #[cfg(feature = "fun-call")]
-impl<S, R, A, S0> Fn<(Expr<S0, A>,)> for FunHandle<S, R, Expr<S0, A>>
-where
-  S: CompatibleStage<S0>,
-{
-  extern "rust-call" fn call(&self, a: (Expr<S0, A>,)) -> Self::Output {
+impl<R, A> Fn<(Expr<A>,)> for FunHandle<R, Expr<A>> {
+  extern "rust-call" fn call(&self, a: (Expr<A>,)) -> Self::Output {
     self.call(a.0)
   }
 }
 
 // the first stage must be named S0
 macro_rules! impl_FunCall {
-  ( $( ( $arg_name:ident, $arg_ty:ident, $arg_stage:ident ) ),*) => {
-    impl<S, R, $($arg_ty),* , $($arg_stage),*> FunHandle<S, R, ($(Expr<$arg_stage, $arg_ty>),*)>
-    where
-      S: $(CompatibleStage<$arg_stage> + )*
+  ( $( ( $arg_name:ident, $arg_ty:ident ) ),*) => {
+    impl<R, $($arg_ty),*> FunHandle<R, ($(Expr<$arg_ty>),*)>
     {
-      pub fn call(&self, $($arg_name : Expr<$arg_stage, $arg_ty>),*) -> Expr<<S as CompatibleStage<S0>>::Intersect, R> {
+      pub fn call(&self, $($arg_name : Expr<$arg_ty>),*) -> Expr<R> {
         Expr::new(ErasedExpr::FunCall(self.erased.clone(), vec![$($arg_name.erased),*]))
       }
     }
 
     #[cfg(feature = "fun-call")]
-    impl<S, R, $($arg_ty),* , $($arg_stage),*> FnOnce<($(Expr<$arg_stage, $arg_ty>),*)> for FunHandle<S, R, ($(Expr<$arg_stage, $arg_ty>),*)>
-    where
-      S: $(CompatibleStage<$arg_stage> +)*
+    impl<R, $($arg_ty),*> FnOnce<($(Expr<$arg_ty>),*)> for FunHandle<R, ($(Expr<$arg_ty>),*)>
     {
-      type Output = Expr<<S as CompatibleStage<S0>>::Intersect, R>;
+      type Output = Expr<R>;
 
-      extern "rust-call" fn call_once(self, ($($arg_name),*): ($(Expr<$arg_stage, $arg_ty>),*)) -> Self::Output {
+      extern "rust-call" fn call_once(self, ($($arg_name),*): ($(Expr<$arg_ty>),*)) -> Self::Output {
         self.call($($arg_name),*)
       }
     }
 
     #[cfg(feature = "fun-call")]
-    impl<S, R, $($arg_ty),* , $($arg_stage),*> FnMut<($(Expr<$arg_stage, $arg_ty>),*)> for FunHandle<S, R, ($(Expr<$arg_stage, $arg_ty>),*)>
-    where
-      S: $(CompatibleStage<$arg_stage> +)*
+    impl<R, $($arg_ty),*> FnMut<($(Expr<$arg_ty>),*)> for FunHandle<R, ($(Expr<$arg_ty>),*)>
     {
-      extern "rust-call" fn call_mut(&mut self, ($($arg_name),*): ($(Expr<$arg_stage, $arg_ty>),*)) -> Self::Output {
+      extern "rust-call" fn call_mut(&mut self, ($($arg_name),*): ($(Expr<$arg_ty>),*)) -> Self::Output {
         self.call($($arg_name),*)
       }
     }
 
     #[cfg(feature = "fun-call")]
-    impl<S, R, $($arg_ty),* , $($arg_stage),*> Fn<($(Expr<$arg_stage, $arg_ty>),*)> for FunHandle<S, R, ($(Expr<$arg_stage, $arg_ty>),*)>
-    where
-      S: $(CompatibleStage<$arg_stage> +)*
+    impl<R, $($arg_ty),*> Fn<($(Expr<$arg_ty>),*)> for FunHandle<R, ($(Expr<$arg_ty>),*)>
     {
-      extern "rust-call" fn call(&self, ($($arg_name),*): ($(Expr<$arg_stage, $arg_ty>),*)) -> Self::Output {
+      extern "rust-call" fn call(&self, ($($arg_name),*): ($(Expr<$arg_ty>),*)) -> Self::Output {
         self.call($($arg_name),*)
       }
     }
@@ -1017,32 +910,32 @@ macro_rules! impl_FunCall {
 
 // implement function calls for Expr up to 16 arguments
 macro_rules! impl_FunCall_rec {
-  ( ( $a:ident, $b:ident, $c:ident ) , ( $x:ident, $y:ident, $z:ident )) => {
-    impl_FunCall!(($a, $b, $c), ($x, $y, $z));
+  ( ( $a:ident, $b:ident ) , ( $x:ident, $y:ident )) => {
+    impl_FunCall!(($a, $b), ($x, $y));
   };
 
-  ( ( $a:ident, $b:ident, $c:ident ) , ( $x: ident, $y: ident, $z: ident ) , $($r:tt)* ) => {
-    impl_FunCall_rec!(($a, $b, $c), $($r)*);
-    impl_FunCall!(($a, $b, $c), ($x, $y, $z), $($r)*);
+  ( ( $a:ident, $b:ident ) , ( $x: ident, $y: ident ) , $($r:tt)* ) => {
+    impl_FunCall_rec!(($a, $b), $($r)*);
+    impl_FunCall!(($a, $b), ($x, $y), $($r)*);
   };
 }
 impl_FunCall_rec!(
-  (a, A, S0),
-  (b, B, S1),
-  (c, C, S2),
-  (d, D, S3),
-  (e, E, S4),
-  (f, F, S5),
-  (g, G, S6),
-  (h, H, S7),
-  (i, I, S8),
-  (j, J, S9),
-  (k, K, S10),
-  (l, L, S11),
-  (m, M, S12),
-  (n, N, S13),
-  (o, O, S14),
-  (p, P, S15)
+  (a, A),
+  (b, B),
+  (c, C),
+  (d, D),
+  (e, E),
+  (f, F),
+  (g, G),
+  (h, H),
+  (i, I),
+  (j, J),
+  (k, K),
+  (l, L),
+  (m, M),
+  (n, N),
+  (o, O),
+  (p, P)
 );
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1173,12 +1066,12 @@ pub enum ErasedFunHandle {
 }
 
 #[derive(Clone, Debug)]
-pub struct FunDef<S, R, A> {
+pub struct FunDef<R, A> {
   erased: ErasedFun,
-  _phantom: PhantomData<(S, R, A)>,
+  _phantom: PhantomData<(R, A)>,
 }
 
-impl<S, R, A> FunDef<S, R, A> {
+impl<R, A> FunDef<R, A> {
   fn new(erased: ErasedFun) -> Self {
     Self {
       erased,
@@ -1201,14 +1094,14 @@ impl ErasedFun {
 }
 
 #[derive(Clone, Debug)]
-pub struct Scope<S, R> {
+pub struct Scope<R> {
   erased: ErasedScope,
-  _phantom: PhantomData<(S, R)>,
+  _phantom: PhantomData<R>,
 }
 
-impl<S, R> Scope<S, R>
+impl<R> Scope<R>
 where
-  Return<S>: From<R>,
+  ErasedReturn: From<R>,
 {
   fn new(id: u16) -> Self {
     Self {
@@ -1217,16 +1110,12 @@ where
     }
   }
 
-  fn deeper<Q>(&self) -> Scope<S, Q>
-  where
-    Return<S>: From<Q>,
-  {
+  fn deeper(&self) -> Self {
     Scope::new(self.erased.id + 1)
   }
 
-  pub fn var<Q, T>(&mut self, init_value: impl Into<Expr<Q, T>>) -> Var<S, T>
+  pub fn var<T>(&mut self, init_value: impl Into<Expr<T>>) -> Var<T>
   where
-    S: CompatibleStage<Q>,
     T: ToType,
   {
     let n = self.erased.next_var;
@@ -1247,7 +1136,7 @@ where
     self
       .erased
       .instructions
-      .push(ScopeInstr::Return(Return::<S>::from(ret.into()).erased));
+      .push(ScopeInstr::Return(ErasedReturn::from(ret.into())));
   }
 
   pub fn abort(&mut self) {
@@ -1257,14 +1146,11 @@ where
       .push(ScopeInstr::Return(ErasedReturn::Void));
   }
 
-  pub fn when<'a, Q>(
+  pub fn when<'a>(
     &'a mut self,
-    condition: impl Into<Expr<Q, bool>>,
-    body: impl Fn(&mut Scope<S, R>),
-  ) -> When<'a, S, R>
-  where
-    S: CompatibleStage<Q>,
-  {
+    condition: impl Into<Expr<bool>>,
+    body: impl Fn(&mut Scope<R>),
+  ) -> When<'a, R> {
     let mut scope = self.deeper();
     body(&mut scope);
 
@@ -1276,25 +1162,21 @@ where
     When { parent_scope: self }
   }
 
-  pub fn unless<'a, Q>(
+  pub fn unless<'a>(
     &'a mut self,
-    condition: impl Into<Expr<Q, bool>>,
-    body: impl Fn(&mut Scope<S, R>),
-  ) -> When<'a, S, R>
-  where
-    S: CompatibleStage<Q>,
-  {
+    condition: impl Into<Expr<bool>>,
+    body: impl Fn(&mut Scope<R>),
+  ) -> When<'a, R> {
     self.when(!condition.into(), body)
   }
 
-  pub fn loop_for<Q, T>(
+  pub fn loop_for<T>(
     &mut self,
-    init_value: impl Into<Expr<Q, T>>,
-    condition: impl Fn(&Expr<S, T>) -> Expr<S, bool>,
-    iter_fold: impl Fn(&Expr<S, T>) -> Expr<S, T>,
-    body: impl Fn(&mut Scope<S, R>, &Expr<S, T>),
+    init_value: impl Into<Expr<T>>,
+    condition: impl Fn(&Expr<T>) -> Expr<bool>,
+    iter_fold: impl Fn(&Expr<T>) -> Expr<T>,
+    body: impl Fn(&mut Scope<R>, &Expr<T>),
   ) where
-    S: CompatibleStage<Q>,
     T: ToType,
   {
     let mut scope = self.deeper();
@@ -1320,13 +1202,7 @@ where
     });
   }
 
-  pub fn loop_while<Q>(
-    &mut self,
-    condition: impl Into<Expr<Q, bool>>,
-    body: impl Fn(&mut Scope<S, R>),
-  ) where
-    S: CompatibleStage<Q>,
-  {
+  pub fn loop_while(&mut self, condition: impl Into<Expr<bool>>, body: impl Fn(&mut Scope<R>)) {
     let mut scope = self.deeper();
     body(&mut scope);
 
@@ -1344,10 +1220,7 @@ where
     self.erased.instructions.push(ScopeInstr::Break);
   }
 
-  pub fn set<P, Q, T>(&mut self, var: impl Into<Var<P, T>>, value: impl Into<Expr<Q, T>>)
-  where
-    S: CompatibleStage<P> + CompatibleStage<Q>,
-  {
+  pub fn set<T>(&mut self, var: impl Into<Var<T>>, value: impl Into<Expr<T>>) {
     self.erased.instructions.push(ScopeInstr::MutateVar {
       var: var.into().to_expr().erased,
       expr: value.into().erased,
@@ -1372,26 +1245,19 @@ impl ErasedScope {
   }
 }
 
-pub struct When<'a, S, R> {
+pub struct When<'a, R> {
   /// The scope from which this [`When`] expression comes from.
   ///
   /// This will be handy if we want to chain this when with others (corresponding to `else if` and `else`, for
   /// instance).
-  parent_scope: &'a mut Scope<S, R>,
+  parent_scope: &'a mut Scope<R>,
 }
 
-impl<S, R> When<'_, S, R>
+impl<R> When<'_, R>
 where
-  Return<S>: From<R>,
+  ErasedReturn: From<R>,
 {
-  pub fn or_else<Q>(
-    self,
-    condition: impl Into<Expr<Q, bool>>,
-    body: impl Fn(&mut Scope<S, R>),
-  ) -> Self
-  where
-    S: CompatibleStage<Q>,
-  {
+  pub fn or_else(self, condition: impl Into<Expr<bool>>, body: impl Fn(&mut Scope<R>)) -> Self {
     let mut scope = self.parent_scope.deeper();
     body(&mut scope);
 
@@ -1407,7 +1273,7 @@ where
     self
   }
 
-  pub fn or(self, body: impl Fn(&mut Scope<S, R>)) {
+  pub fn or(self, body: impl Fn(&mut Scope<R>)) {
     let mut scope = self.parent_scope.deeper();
     body(&mut scope);
 
@@ -1422,29 +1288,38 @@ where
 }
 
 #[derive(Debug)]
-pub struct Var<S, T>(Expr<S, T>)
+pub struct Var<T>(Expr<T>)
 where
   T: ?Sized;
 
-impl<S, T> From<Var<S, T>> for Expr<S, T>
+impl<'a, T> From<&'a Var<T>> for Var<T>
 where
   T: ?Sized,
 {
-  fn from(v: Var<S, T>) -> Self {
+  fn from(v: &'a Self) -> Self {
+    Var(v.0.clone())
+  }
+}
+
+impl<T> From<Var<T>> for Expr<T>
+where
+  T: ?Sized,
+{
+  fn from(v: Var<T>) -> Self {
     v.0
   }
 }
 
-impl<'a, S, T> From<&'a Var<S, T>> for Expr<S, T>
+impl<'a, T> From<&'a Var<T>> for Expr<T>
 where
   T: ?Sized,
 {
-  fn from(v: &'a Var<S, T>) -> Self {
+  fn from(v: &'a Var<T>) -> Self {
     v.0.clone()
   }
 }
 
-impl<S, T> Var<S, T>
+impl<T> Var<T>
 where
   T: ?Sized,
 {
@@ -1452,16 +1327,16 @@ where
     Self(Expr::new(ErasedExpr::MutVar(handle)))
   }
 
-  pub fn to_expr(&self) -> Expr<S, T> {
+  pub fn to_expr(&self) -> Expr<T> {
     self.0.clone()
   }
 }
 
-impl<S, T> ops::Deref for Var<S, T>
+impl<T> ops::Deref for Var<T>
 where
   T: ?Sized,
 {
-  type Target = Expr<S, T>;
+  type Target = Expr<T>;
 
   fn deref(&self) -> &Self::Target {
     &self.0
@@ -1628,7 +1503,7 @@ pub trait Swizzlable<S> {
 }
 
 // 2D
-impl<S, T> Swizzlable<SwizzleSelector> for Expr<S, V2<T>> {
+impl<T> Swizzlable<SwizzleSelector> for Expr<V2<T>> {
   fn swizzle(&self, x: SwizzleSelector) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1637,7 +1512,7 @@ impl<S, T> Swizzlable<SwizzleSelector> for Expr<S, V2<T>> {
   }
 }
 
-impl<S, T> Swizzlable<[SwizzleSelector; 2]> for Expr<S, V2<T>> {
+impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<V2<T>> {
   fn swizzle(&self, [x, y]: [SwizzleSelector; 2]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1647,7 +1522,7 @@ impl<S, T> Swizzlable<[SwizzleSelector; 2]> for Expr<S, V2<T>> {
 }
 
 // 3D
-impl<S, T> Swizzlable<SwizzleSelector> for Expr<S, V3<T>> {
+impl<T> Swizzlable<SwizzleSelector> for Expr<V3<T>> {
   fn swizzle(&self, x: SwizzleSelector) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1656,7 +1531,7 @@ impl<S, T> Swizzlable<SwizzleSelector> for Expr<S, V3<T>> {
   }
 }
 
-impl<S, T> Swizzlable<[SwizzleSelector; 2]> for Expr<S, V3<T>> {
+impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<V3<T>> {
   fn swizzle(&self, [x, y]: [SwizzleSelector; 2]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1665,7 +1540,7 @@ impl<S, T> Swizzlable<[SwizzleSelector; 2]> for Expr<S, V3<T>> {
   }
 }
 
-impl<S, T> Swizzlable<[SwizzleSelector; 3]> for Expr<S, V3<T>> {
+impl<T> Swizzlable<[SwizzleSelector; 3]> for Expr<V3<T>> {
   fn swizzle(&self, [x, y, z]: [SwizzleSelector; 3]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1675,7 +1550,7 @@ impl<S, T> Swizzlable<[SwizzleSelector; 3]> for Expr<S, V3<T>> {
 }
 
 // 4D
-impl<S, T> Swizzlable<SwizzleSelector> for Expr<S, V4<T>> {
+impl<T> Swizzlable<SwizzleSelector> for Expr<V4<T>> {
   fn swizzle(&self, x: SwizzleSelector) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1684,7 +1559,7 @@ impl<S, T> Swizzlable<SwizzleSelector> for Expr<S, V4<T>> {
   }
 }
 
-impl<S, T> Swizzlable<[SwizzleSelector; 2]> for Expr<S, V4<T>> {
+impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<V4<T>> {
   fn swizzle(&self, [x, y]: [SwizzleSelector; 2]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1693,7 +1568,7 @@ impl<S, T> Swizzlable<[SwizzleSelector; 2]> for Expr<S, V4<T>> {
   }
 }
 
-impl<S, T> Swizzlable<[SwizzleSelector; 3]> for Expr<S, V4<T>> {
+impl<T> Swizzlable<[SwizzleSelector; 3]> for Expr<V4<T>> {
   fn swizzle(&self, [x, y, z]: [SwizzleSelector; 3]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1702,7 +1577,7 @@ impl<S, T> Swizzlable<[SwizzleSelector; 3]> for Expr<S, V4<T>> {
   }
 }
 
-impl<S, T> Swizzlable<[SwizzleSelector; 4]> for Expr<S, V4<T>> {
+impl<T> Swizzlable<[SwizzleSelector; 4]> for Expr<V4<T>> {
   fn swizzle(&self, [x, y, z, w]: [SwizzleSelector; 4]) -> Self {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
@@ -1773,8 +1648,8 @@ macro_rules! sw_extract {
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum BuiltIn {
   Vertex(VertexBuiltIn),
-  TessellationControl(TessellationControlBuiltIn),
-  TessellationEvaluation(TessellationEvaluationBuiltIn),
+  TessCtrl(TessCtrlBuiltIn),
+  TessEval(TessEvalBuiltIn),
   Geometry(GeometryBuiltIn),
   Fragment(FragmentBuiltIn),
 }
@@ -1791,7 +1666,7 @@ pub enum VertexBuiltIn {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum TessellationControlBuiltIn {
+pub enum TessCtrlBuiltIn {
   MaxPatchVerticesIn,
   PatchVerticesIn,
   PrimitiveID,
@@ -1803,10 +1678,11 @@ pub enum TessellationControlBuiltIn {
   Position,
   PointSize,
   ClipDistance,
+  CullDistance,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum TessellationEvaluationBuiltIn {
+pub enum TessEvalBuiltIn {
   TessCoord,
   MaxPatchVerticesIn,
   PatchVerticesIn,
@@ -1818,6 +1694,7 @@ pub enum TessellationEvaluationBuiltIn {
   Position,
   PointSize,
   ClipDistance,
+  CullDistance,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -1827,6 +1704,7 @@ pub enum GeometryBuiltIn {
   Position,
   PointSize,
   ClipDistance,
+  CullDistance,
   PrimitiveID,
   PrimitiveIDIn,
   InvocationID,
@@ -1843,78 +1721,139 @@ pub enum FragmentBuiltIn {
   SamplePosition,
   SampleMaskIn,
   ClipDistance,
+  CullDistance,
   PrimitiveID,
   Layer,
   ViewportIndex,
   FragDepth,
   SampleMask,
+  HelperInvocation,
 }
 
-// vertex shader built-ins; inputs
-pub const VERTEX_ID: Expr<V, i32> =
-  Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::VertexID));
-pub const INSTANCE_ID: Expr<V, i32> =
-  Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::InstanceID));
-pub const BASE_VERTEX: Expr<V, i32> =
-  Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::BaseVertex));
-pub const BASE_INSTANCE: Expr<V, i32> =
-  Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::BaseInstance));
+// vertex shader built-ins
+pub struct VertexShaderEnv {
+  // inputs
+  pub vertex_id: Expr<i32>,
+  pub instance_id: Expr<i32>,
+  pub base_vertex: Expr<i32>,
+  pub base_instance: Expr<i32>,
+  // outputs
+  pub position: Var<V4<f32>>,
+  pub point_size: Var<f32>,
+  pub clip_distance: Var<[f32]>,
+}
 
-// vertex shader built-ins; outputs
-pub const POSITION: Var<V, V4<f32>> =
-  Var(Expr::new_builtin(BuiltIn::Vertex(VertexBuiltIn::Position)));
-pub const POINT_SIZE: Var<V, f32> =
-  Var(Expr::new_builtin(BuiltIn::Vertex(VertexBuiltIn::PointSize)));
-pub const CLIP_DISTANCE: Var<V, [f32]> = Var(Expr::new_builtin(BuiltIn::Vertex(
-  VertexBuiltIn::ClipDistance,
-)));
+impl VertexShaderEnv {
+  fn new() -> Self {
+    let vertex_id = Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::VertexID));
+    let instance_id = Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::InstanceID));
+    let base_vertex = Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::BaseVertex));
+    let base_instance = Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::BaseInstance));
+    let position = Var(Expr::new_builtin(BuiltIn::Vertex(VertexBuiltIn::Position)));
+    let point_size = Var(Expr::new_builtin(BuiltIn::Vertex(VertexBuiltIn::PointSize)));
+    let clip_distance = Var(Expr::new_builtin(BuiltIn::Vertex(
+      VertexBuiltIn::ClipDistance,
+    )));
 
-// tessellation control shader built-ins; inputs
-pub const MAX_PATCH_VERTICES_IN: Expr<TC, i32> = Expr::new_immut_builtin(
-  BuiltIn::TessellationControl(TessellationControlBuiltIn::MaxPatchVerticesIn),
-);
-pub const CTRL_PATCH_VERTICES_IN: Expr<TC, i32> = Expr::new_immut_builtin(
-  BuiltIn::TessellationControl(TessellationControlBuiltIn::PatchVerticesIn),
-);
-pub const CTRL_PRIMITIVE_ID: Expr<TC, i32> = Expr::new_immut_builtin(BuiltIn::TessellationControl(
-  TessellationControlBuiltIn::PrimitiveID,
-));
-pub const CTRL_INVOCATION_ID: Expr<TC, i32> = Expr::new_immut_builtin(
-  BuiltIn::TessellationControl(TessellationControlBuiltIn::InvocationID),
-);
-pub const CTRL_IN: Expr<TC, [TessControlPerVertexIn]> =
-  Expr::new_immut_builtin(BuiltIn::TessellationControl(TessellationControlBuiltIn::In));
+    Self {
+      vertex_id,
+      instance_id,
+      base_vertex,
+      base_instance,
+      position,
+      point_size,
+      clip_distance,
+    }
+  }
+}
+
+// tessellation control shader built-ins
+pub struct TessCtrlShaderEnv {
+  // inputs
+  pub max_patch_vertices_in: Expr<i32>,
+  pub patch_vertices_in: Expr<i32>,
+  pub primitive_id: Expr<i32>,
+  pub invocation_id: Expr<i32>,
+  pub input: Expr<[TessControlPerVertexIn]>,
+  // outputs
+  pub tess_level_outer: Var<[f32; 4]>,
+  pub tess_level_inner: Var<[f32; 2]>,
+  pub output: Var<[TessControlPerVertexOut]>,
+}
+
+impl TessCtrlShaderEnv {
+  fn new() -> Self {
+    let max_patch_vertices_in =
+      Expr::new_immut_builtin(BuiltIn::TessCtrl(TessCtrlBuiltIn::MaxPatchVerticesIn));
+    let patch_vertices_in =
+      Expr::new_immut_builtin(BuiltIn::TessCtrl(TessCtrlBuiltIn::PatchVerticesIn));
+    let primitive_id = Expr::new_immut_builtin(BuiltIn::TessCtrl(TessCtrlBuiltIn::PrimitiveID));
+    let invocation_id = Expr::new_immut_builtin(BuiltIn::TessCtrl(TessCtrlBuiltIn::InvocationID));
+    let input = Expr::new_immut_builtin(BuiltIn::TessCtrl(TessCtrlBuiltIn::In));
+    let tess_level_outer = Var::new(ScopedHandle::BuiltIn(BuiltIn::TessCtrl(
+      TessCtrlBuiltIn::TessellationLevelOuter,
+    )));
+    let tess_level_inner = Var::new(ScopedHandle::BuiltIn(BuiltIn::TessCtrl(
+      TessCtrlBuiltIn::TessellationLevelInner,
+    )));
+    let output = Var::new(ScopedHandle::BuiltIn(BuiltIn::TessCtrl(
+      TessCtrlBuiltIn::Out,
+    )));
+
+    Self {
+      max_patch_vertices_in,
+      patch_vertices_in,
+      primitive_id,
+      invocation_id,
+      input,
+      tess_level_outer,
+      tess_level_inner,
+      output,
+    }
+  }
+}
 
 pub struct TessControlPerVertexIn;
 
-impl Expr<TC, TessControlPerVertexIn> {
-  pub fn position(&self) -> Expr<TC, V4<f32>> {
+impl Expr<TessControlPerVertexIn> {
+  pub fn position(&self) -> Expr<V4<f32>> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationControl(
-        TessellationControlBuiltIn::Position,
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+        TessCtrlBuiltIn::Position,
       ))),
     };
 
     Expr::new(erased)
   }
 
-  pub fn point_size(&self) -> Expr<TC, f32> {
+  pub fn point_size(&self) -> Expr<f32> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationControl(
-        TessellationControlBuiltIn::PointSize,
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+        TessCtrlBuiltIn::PointSize,
       ))),
     };
 
     Expr::new(erased)
   }
 
-  pub fn clip_distance(&self) -> Expr<TC, [f32]> {
+  pub fn clip_distance(&self) -> Expr<[f32]> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationControl(
-        TessellationControlBuiltIn::ClipDistance,
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+        TessCtrlBuiltIn::ClipDistance,
+      ))),
+    };
+
+    Expr::new(erased)
+  }
+
+  pub fn cull_distance(&self) -> Expr<[f32]> {
+    let erased = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+        TessCtrlBuiltIn::CullDistance,
       ))),
     };
 
@@ -1922,149 +1861,151 @@ impl Expr<TC, TessControlPerVertexIn> {
   }
 }
 
-// tessellation control shader built-ins; outputs
-pub const CTRL_TESS_LEVEL_OUTER: Expr<TC, [f32; 4]> = Expr::new_builtin(
-  BuiltIn::TessellationControl(TessellationControlBuiltIn::TessellationLevelOuter),
-);
-pub const CTRL_TESS_LEVEL_INNER: Expr<TC, [f32; 2]> = Expr::new_builtin(
-  BuiltIn::TessellationControl(TessellationControlBuiltIn::TessellationLevelInner),
-);
-pub const CTRL_OUT: Expr<TC, [TessControlPerVertexOut]> = Expr::new_immut_builtin(
-  BuiltIn::TessellationControl(TessellationControlBuiltIn::Out),
-);
+pub struct TessControlPerVertexOut(());
 
-pub struct TessControlPerVertexOut;
-
-impl Expr<TC, TessControlPerVertexOut> {
-  pub fn position(&self) -> Expr<TC, V4<f32>> {
-    let erased = ErasedExpr::Field {
+impl Expr<TessControlPerVertexOut> {
+  pub fn position(&self) -> Var<V4<f32>> {
+    let expr = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationControl(
-        TessellationControlBuiltIn::Position,
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+        TessCtrlBuiltIn::Position,
       ))),
     };
 
-    Expr::new(erased)
+    Var(Expr::new(expr))
   }
 
-  pub fn point_size(&self) -> Expr<TC, f32> {
-    let erased = ErasedExpr::Field {
+  pub fn point_size(&self) -> Var<f32> {
+    let expr = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationControl(
-        TessellationControlBuiltIn::PointSize,
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+        TessCtrlBuiltIn::PointSize,
       ))),
     };
 
-    Expr::new(erased)
+    Var(Expr::new(expr))
   }
 
-  pub fn clip_distance(&self) -> Expr<TC, [f32]> {
-    let erased = ErasedExpr::Field {
+  pub fn clip_distance(&self) -> Var<[f32]> {
+    let expr = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationControl(
-        TessellationControlBuiltIn::ClipDistance,
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+        TessCtrlBuiltIn::ClipDistance,
       ))),
     };
 
-    Expr::new(erased)
+    Var(Expr::new(expr))
+  }
+
+  pub fn cull_distance(&self) -> Var<[f32]> {
+    let expr = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+        TessCtrlBuiltIn::CullDistance,
+      ))),
+    };
+
+    Var(Expr::new(expr))
   }
 }
 
 // tessellation evalution shader built-ins; inputs
-pub const TESS_COORD: Expr<TE, V3<f32>> = Expr::new_immut_builtin(BuiltIn::TessellationEvaluation(
-  TessellationEvaluationBuiltIn::TessCoord,
-));
-pub const EVAL_MAX_PATCH_VERTICES_IN: Expr<TE, i32> = Expr::new_immut_builtin(
-  BuiltIn::TessellationEvaluation(TessellationEvaluationBuiltIn::MaxPatchVerticesIn),
-);
-pub const EVAL_PATCH_VERTICES_IN: Expr<TE, i32> = Expr::new_immut_builtin(
-  BuiltIn::TessellationEvaluation(TessellationEvaluationBuiltIn::PatchVerticesIn),
-);
-pub const EVAL_PRIMITIVE_ID: Expr<TE, i32> = Expr::new_immut_builtin(
-  BuiltIn::TessellationEvaluation(TessellationEvaluationBuiltIn::PrimitiveID),
-);
-pub const EVAL_TESS_LEVEL_OUTER: Expr<TE, [f32; 4]> = Expr::new_builtin(
-  BuiltIn::TessellationEvaluation(TessellationEvaluationBuiltIn::TessellationLevelOuter),
-);
-pub const EVAL_TESS_LEVEL_INNER: Expr<TE, [f32; 2]> = Expr::new_builtin(
-  BuiltIn::TessellationEvaluation(TessellationEvaluationBuiltIn::TessellationLevelInner),
-);
-pub const EVAL_IN: Expr<TE, [TessEvaluationPerVertexIn]> = Expr::new_immut_builtin(
-  BuiltIn::TessellationEvaluation(TessellationEvaluationBuiltIn::In),
-);
+pub struct TessEvalShaderEnv {
+  // inputs
+  pub patch_vertices_in: Expr<i32>,
+  pub primitive_id: Expr<i32>,
+  pub tess_coord: Expr<V3<f32>>,
+  pub tess_level_outer: Expr<[f32; 4]>,
+  pub tess_level_inner: Expr<[f32; 2]>,
+  pub input: Expr<[TessEvaluationPerVertexIn]>,
+  // outputs
+  pub position: Var<V4<f32>>,
+  pub point_size: Var<f32>,
+  pub clip_distance: Var<[f32]>,
+  pub cull_distance: Var<[f32]>,
+}
 
-pub struct TessEvaluationPerVertexIn;
+impl TessEvalShaderEnv {
+  fn new() -> Self {
+    let patch_vertices_in =
+      Expr::new_immut_builtin(BuiltIn::TessEval(TessEvalBuiltIn::PatchVerticesIn));
+    let primitive_id = Expr::new_immut_builtin(BuiltIn::TessEval(TessEvalBuiltIn::PrimitiveID));
+    let tess_coord = Expr::new_immut_builtin(BuiltIn::TessEval(TessEvalBuiltIn::TessCoord));
+    let tess_level_outer =
+      Expr::new_immut_builtin(BuiltIn::TessEval(TessEvalBuiltIn::TessellationLevelOuter));
+    let tess_level_inner =
+      Expr::new_immut_builtin(BuiltIn::TessEval(TessEvalBuiltIn::TessellationLevelInner));
+    let input = Expr::new_immut_builtin(BuiltIn::TessEval(TessEvalBuiltIn::In));
 
-impl Expr<TE, TessEvaluationPerVertexIn> {
-  pub fn position(&self) -> Expr<TE, V4<f32>> {
-    let erased = ErasedExpr::Field {
-      object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationEvaluation(
-        TessellationEvaluationBuiltIn::Position,
-      ))),
-    };
+    let position = Var::new(ScopedHandle::BuiltIn(BuiltIn::TessEval(
+      TessEvalBuiltIn::Position,
+    )));
+    let point_size = Var::new(ScopedHandle::BuiltIn(BuiltIn::TessEval(
+      TessEvalBuiltIn::PointSize,
+    )));
+    let clip_distance = Var::new(ScopedHandle::BuiltIn(BuiltIn::TessEval(
+      TessEvalBuiltIn::ClipDistance,
+    )));
+    let cull_distance = Var::new(ScopedHandle::BuiltIn(BuiltIn::TessEval(
+      TessEvalBuiltIn::ClipDistance,
+    )));
 
-    Expr::new(erased)
-  }
-
-  pub fn point_size(&self) -> Expr<TE, f32> {
-    let erased = ErasedExpr::Field {
-      object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationEvaluation(
-        TessellationEvaluationBuiltIn::PointSize,
-      ))),
-    };
-
-    Expr::new(erased)
-  }
-
-  pub fn clip_distance(&self) -> Expr<TE, [f32]> {
-    let erased = ErasedExpr::Field {
-      object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationEvaluation(
-        TessellationEvaluationBuiltIn::ClipDistance,
-      ))),
-    };
-
-    Expr::new(erased)
+    Self {
+      patch_vertices_in,
+      primitive_id,
+      tess_coord,
+      tess_level_outer,
+      tess_level_inner,
+      input,
+      position,
+      point_size,
+      clip_distance,
+      cull_distance,
+    }
   }
 }
 
-// tessellation evaluation shader built-ins; outputs
-pub const EVAL_OUT: Expr<TE, [TessEvaluationPerVertexOut]> = Expr::new_immut_builtin(
-  BuiltIn::TessellationEvaluation(TessellationEvaluationBuiltIn::Out),
-);
+pub struct TessEvaluationPerVertexIn;
 
-pub struct TessEvaluationPerVertexOut;
-
-impl Expr<TE, TessEvaluationPerVertexOut> {
-  pub fn position(&self) -> Expr<TE, V4<f32>> {
+impl Expr<TessEvaluationPerVertexIn> {
+  pub fn position(&self) -> Expr<V4<f32>> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationEvaluation(
-        TessellationEvaluationBuiltIn::Position,
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessEval(
+        TessEvalBuiltIn::Position,
       ))),
     };
 
     Expr::new(erased)
   }
 
-  pub fn point_size(&self) -> Expr<TE, f32> {
+  pub fn point_size(&self) -> Expr<f32> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationEvaluation(
-        TessellationEvaluationBuiltIn::PointSize,
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessEval(
+        TessEvalBuiltIn::PointSize,
       ))),
     };
 
     Expr::new(erased)
   }
 
-  pub fn clip_distance(&self) -> Expr<TE, [f32]> {
+  pub fn clip_distance(&self) -> Expr<[f32]> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationEvaluation(
-        TessellationEvaluationBuiltIn::ClipDistance,
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessEval(
+        TessEvalBuiltIn::ClipDistance,
+      ))),
+    };
+
+    Expr::new(erased)
+  }
+
+  pub fn cull_distance(&self) -> Expr<[f32]> {
+    let erased = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessEval(
+        TessEvalBuiltIn::CullDistance,
       ))),
     };
 
@@ -2073,13 +2014,69 @@ impl Expr<TE, TessEvaluationPerVertexOut> {
 }
 
 // geometry shader built-ins; inputs
-pub const GEO_IN: Expr<G, [GeometryPerVertexIn]> =
-  Expr::new_immut_builtin(BuiltIn::Geometry(GeometryBuiltIn::In));
+pub struct GeometryShaderEnv {
+  // inputs
+  pub primitive_id_in: Expr<i32>,
+  pub invocation_id: Expr<i32>,
+  pub input: Expr<[GeometryPerVertexIn]>,
+  // outputs
+  pub position: Var<V4<f32>>,
+  pub point_size: Var<f32>,
+  pub clip_distance: Var<[f32]>,
+  pub cull_distance: Var<[f32]>,
+  pub primitive_id: Var<i32>,
+  pub layer: Var<i32>,
+  pub viewport_index: Var<i32>,
+}
+
+impl GeometryShaderEnv {
+  fn new() -> Self {
+    let primitive_id_in =
+      Expr::new_immut_builtin(BuiltIn::Geometry(GeometryBuiltIn::PrimitiveIDIn));
+    let invocation_id = Expr::new_immut_builtin(BuiltIn::Geometry(GeometryBuiltIn::InvocationID));
+    let input = Expr::new_immut_builtin(BuiltIn::Geometry(GeometryBuiltIn::In));
+
+    let position = Var::new(ScopedHandle::BuiltIn(BuiltIn::Geometry(
+      GeometryBuiltIn::Position,
+    )));
+    let point_size = Var::new(ScopedHandle::BuiltIn(BuiltIn::Geometry(
+      GeometryBuiltIn::PointSize,
+    )));
+    let clip_distance = Var::new(ScopedHandle::BuiltIn(BuiltIn::Geometry(
+      GeometryBuiltIn::ClipDistance,
+    )));
+    let cull_distance = Var::new(ScopedHandle::BuiltIn(BuiltIn::Geometry(
+      GeometryBuiltIn::CullDistance,
+    )));
+    let primitive_id = Var::new(ScopedHandle::BuiltIn(BuiltIn::Geometry(
+      GeometryBuiltIn::PrimitiveID,
+    )));
+    let layer = Var::new(ScopedHandle::BuiltIn(BuiltIn::Geometry(
+      GeometryBuiltIn::Layer,
+    )));
+    let viewport_index = Var::new(ScopedHandle::BuiltIn(BuiltIn::Geometry(
+      GeometryBuiltIn::ViewportIndex,
+    )));
+
+    Self {
+      primitive_id_in,
+      invocation_id,
+      input,
+      position,
+      point_size,
+      clip_distance,
+      cull_distance,
+      primitive_id,
+      layer,
+      viewport_index,
+    }
+  }
+}
 
 pub struct GeometryPerVertexIn;
 
-impl Expr<G, GeometryPerVertexIn> {
-  pub fn position(&self) -> Expr<G, V4<f32>> {
+impl Expr<GeometryPerVertexIn> {
+  pub fn position(&self) -> Expr<V4<f32>> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
       field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::Geometry(
@@ -2090,7 +2087,7 @@ impl Expr<G, GeometryPerVertexIn> {
     Expr::new(erased)
   }
 
-  pub fn point_size(&self) -> Expr<G, f32> {
+  pub fn point_size(&self) -> Expr<f32> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
       field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::Geometry(
@@ -2101,7 +2098,7 @@ impl Expr<G, GeometryPerVertexIn> {
     Expr::new(erased)
   }
 
-  pub fn clip_distance(&self) -> Expr<G, [f32]> {
+  pub fn clip_distance(&self) -> Expr<[f32]> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
       field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::Geometry(
@@ -2111,53 +2108,79 @@ impl Expr<G, GeometryPerVertexIn> {
 
     Expr::new(erased)
   }
+
+  pub fn cull_distance(&self) -> Expr<[f32]> {
+    let erased = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::Geometry(
+        GeometryBuiltIn::CullDistance,
+      ))),
+    };
+
+    Expr::new(erased)
+  }
 }
 
-pub const PRIMITIVE_ID_IN: Expr<G, i32> =
-  Expr::new_immut_builtin(BuiltIn::Geometry(GeometryBuiltIn::PrimitiveIDIn));
-pub const GEO_INVOCATION_ID: Expr<G, i32> =
-  Expr::new_immut_builtin(BuiltIn::Geometry(GeometryBuiltIn::InvocationID));
+// fragment shader built-ins
+pub struct FragmentShaderEnv {
+  // inputs
+  pub frag_coord: Expr<V4<f32>>,
+  pub front_facing: Expr<bool>,
+  pub clip_distance: Expr<[f32]>,
+  pub cull_distance: Expr<[f32]>,
+  pub point_coord: Expr<V2<f32>>,
+  pub primitive_id: Expr<i32>,
+  pub sample_id: Expr<i32>,
+  pub sample_position: Expr<V2<f32>>,
+  pub sample_mask_in: Expr<i32>,
+  pub layer: Expr<i32>,
+  pub viewport_index: Expr<i32>,
+  pub helper_invocation: Expr<bool>,
+  // outputs
+  pub frag_depth: Var<f32>,
+  pub sample_mask: Var<[i32]>,
+}
 
-// geometry shader outputs
-pub const GEO_POSITION: Expr<G, V4<f32>> =
-  Expr::new_builtin(BuiltIn::Geometry(GeometryBuiltIn::Position));
-pub const GEO_POINT_SIZE: Expr<G, f32> =
-  Expr::new_builtin(BuiltIn::Geometry(GeometryBuiltIn::PointSize));
-pub const GEO_CLIP_DISTANCE: Expr<G, [f32]> =
-  Expr::new_builtin(BuiltIn::Geometry(GeometryBuiltIn::ClipDistance));
-pub const GEO_PRIMITIVE_ID: Expr<G, i32> =
-  Expr::new_builtin(BuiltIn::Geometry(GeometryBuiltIn::PrimitiveID));
-pub const LAYER: Expr<G, i32> = Expr::new_builtin(BuiltIn::Geometry(GeometryBuiltIn::Layer));
-pub const VIEWPORT_INDEX: Expr<G, i32> =
-  Expr::new_builtin(BuiltIn::Geometry(GeometryBuiltIn::ViewportIndex));
+impl FragmentShaderEnv {
+  fn new() -> Self {
+    let frag_coord = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::FragCoord));
+    let front_facing = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::FrontFacing));
+    let clip_distance = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::ClipDistance));
+    let cull_distance = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::CullDistance));
+    let point_coord = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::PointCoord));
+    let primitive_id = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::PrimitiveID));
+    let sample_id = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::SampleID));
+    let sample_position = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::SamplePosition));
+    let sample_mask_in = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::SampleMaskIn));
+    let layer = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::Layer));
+    let viewport_index = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::ViewportIndex));
+    let helper_invocation = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::HelperInvocation));
 
-// fragment shader built-ins; inputs
-pub const FRAG_COORD: Expr<F, V4<f32>> =
-  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::FragCoord));
-pub const FRONT_FACING: Expr<F, bool> =
-  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::FrontFacing));
-pub const POINT_COORD: Expr<F, V2<f32>> =
-  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::PointCoord));
-pub const SAMPLE_ID: Expr<F, i32> =
-  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::SampleID));
-pub const SAMPLE_POSITION: Expr<F, V2<f32>> =
-  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::SamplePosition));
-pub const SAMPLE_MASK_IN: Expr<F, [i32]> =
-  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::SampleMaskIn));
-pub const FRAG_CLIP_DISTANCE: Expr<F, [f32]> =
-  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::ClipDistance));
-pub const FRAG_PRIMITIVE_ID: Expr<F, i32> =
-  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::PrimitiveID));
-pub const FRAG_LAYER: Expr<F, i32> =
-  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::Layer));
-pub const FRAG_VIEWPORT_INDEX: Expr<F, i32> =
-  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::ViewportIndex));
+    let frag_depth = Var::new(ScopedHandle::BuiltIn(BuiltIn::Fragment(
+      FragmentBuiltIn::FragDepth,
+    )));
+    let sample_mask = Var::new(ScopedHandle::BuiltIn(BuiltIn::Fragment(
+      FragmentBuiltIn::SampleMask,
+    )));
 
-// fragment shader built-ins; outputs
-pub const FRAG_DEPTH: Expr<F, f32> =
-  Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::FragDepth));
-pub const SAMPLE_MASK: Expr<F, [i32]> =
-  Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::SampleMask));
+    Self {
+      frag_coord,
+      front_facing,
+      clip_distance,
+      cull_distance,
+      point_coord,
+      primitive_id,
+      sample_id,
+      sample_position,
+      sample_mask_in,
+      layer,
+      viewport_index,
+      helper_invocation,
+      frag_depth,
+      sample_mask,
+    }
+  }
+}
 
 // standard library
 
@@ -2193,7 +2216,7 @@ pub trait Trigonometry {
 
 macro_rules! impl_Trigonometry {
   ($t:ty) => {
-    impl<S> Trigonometry for Expr<S, $t> {
+    impl Trigonometry for Expr<$t> {
       fn radians(&self) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Radians,
@@ -2300,10 +2323,8 @@ impl_Trigonometry!(V2<f32>);
 impl_Trigonometry!(V3<f32>);
 impl_Trigonometry!(V4<f32>);
 
-pub trait Exponential<S, T> {
-  fn pow<Q>(&self, p: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, T>
-  where
-    S: CompatibleStage<Q>;
+pub trait Exponential: Sized {
+  fn pow(&self, p: impl Into<Self>) -> Self;
 
   fn exp(&self) -> Self;
 
@@ -2320,11 +2341,8 @@ pub trait Exponential<S, T> {
 
 macro_rules! impl_Exponential {
   ($t:ty) => {
-    impl<S> Exponential<S, $t> for Expr<S, $t> {
-      fn pow<Q>(&self, p: impl Into<Expr<Q, $t>>) -> Expr<S::Intersect, $t>
-      where
-        S: CompatibleStage<Q>,
-      {
+    impl Exponential for Expr<$t> {
+      fn pow(&self, p: impl Into<Self>) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Pow,
           vec![self.erased.clone(), p.into().erased],
@@ -2389,7 +2407,7 @@ pub trait Relative {
 
 macro_rules! impl_Relative {
   ($t:ty) => {
-    impl<S> Relative for Expr<S, $t> {
+    impl Relative for Expr<$t> {
       fn abs(&self) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Abs,
@@ -2416,7 +2434,7 @@ impl_Relative!(V2<f32>);
 impl_Relative!(V3<f32>);
 impl_Relative!(V4<f32>);
 
-pub trait Floating<S> {
+pub trait Floating {
   fn floor(&self) -> Self;
 
   fn trunc(&self) -> Self;
@@ -2430,7 +2448,7 @@ pub trait Floating<S> {
 
 macro_rules! impl_Floating {
   ($t:ty) => {
-    impl<S> Floating<S> for Expr<S, $t> {
+    impl Floating for Expr<$t> {
       fn floor(&self) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Floor,
@@ -2474,59 +2492,32 @@ impl_Floating!(V2<f32>);
 impl_Floating!(V3<f32>);
 impl_Floating!(V4<f32>);
 
-trait Bounded<S, T> {
-  fn min<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, T>
-  where
-    S: CompatibleStage<Q>;
+trait Bounded: Sized {
+  fn min(&self, rhs: impl Into<Self>) -> Self;
 
-  fn max<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, T>
-  where
-    S: CompatibleStage<Q>;
+  fn max(&self, rhs: impl Into<Self>) -> Self;
 
-  fn clamp<Q, R>(
-    &self,
-    min_value: impl Into<Expr<R, T>>,
-    max_value: impl Into<Expr<Q, T>>,
-  ) -> Expr<<S::Intersect as CompatibleStage<R>>::Intersect, T>
-  where
-    S: CompatibleStage<Q>,
-    S::Intersect: CompatibleStage<R>,
-    Expr<S::Intersect, T>: Bounded<S::Intersect, T>;
+  fn clamp(&self, min_value: impl Into<Self>, max_value: impl Into<Self>) -> Self;
 }
 
 macro_rules! impl_Bounded {
   ($t:ty) => {
-    impl<S, T> Bounded<S, T> for Expr<S, $t> {
-      fn min<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, T>
-      where
-        S: CompatibleStage<Q>,
-      {
+    impl Bounded for Expr<$t> {
+      fn min(&self, rhs: impl Into<Self>) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Min,
           vec![self.erased.clone(), rhs.into().erased],
         ))
       }
 
-      fn max<Q>(&self, rhs: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, T>
-      where
-        S: CompatibleStage<Q>,
-      {
+      fn max(&self, rhs: impl Into<Self>) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Max,
           vec![self.erased.clone(), rhs.into().erased],
         ))
       }
 
-      fn clamp<Q, R>(
-        &self,
-        min_value: impl Into<Expr<R, T>>,
-        max_value: impl Into<Expr<Q, T>>,
-      ) -> Expr<<S::Intersect as CompatibleStage<R>>::Intersect, T>
-      where
-        S: CompatibleStage<Q>,
-        S::Intersect: CompatibleStage<R>,
-        Expr<S::Intersect, T>: Bounded<S::Intersect, T>,
-      {
+      fn clamp(&self, min_value: impl Into<Self>, max_value: impl Into<Self>) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Clamp,
           vec![
@@ -2560,63 +2551,32 @@ impl_Bounded!(V2<bool>);
 impl_Bounded!(V3<bool>);
 impl_Bounded!(V4<bool>);
 
-pub trait Mix<S, T> {
-  fn mix<Q, R>(
-    &self,
-    y: impl Into<Expr<Q, T>>,
-    a: impl Into<Expr<R, T>>,
-  ) -> Expr<<S as CompatibleStage<Q>>::Intersect, T>
-  where
-    S: CompatibleStage<Q> + CompatibleStage<R>;
+pub trait Mix: Sized {
+  fn mix(&self, y: impl Into<Self>, a: impl Into<Self>) -> Self;
 
-  fn step<Q>(&self, edge: impl Into<Expr<Q, T>>) -> Expr<S::Intersect, T>
-  where
-    S: CompatibleStage<Q>;
+  fn step(&self, edge: impl Into<Self>) -> Self;
 
-  fn smooth_step<Q, R>(
-    &self,
-    edge_a: impl Into<Expr<Q, T>>,
-    edge_b: impl Into<Expr<R, T>>,
-  ) -> Expr<<S as CompatibleStage<Q>>::Intersect, T>
-  where
-    S: CompatibleStage<Q> + CompatibleStage<R>;
+  fn smooth_step(&self, edge_a: impl Into<Self>, edge_b: impl Into<Self>) -> Self;
 }
 
 macro_rules! impl_Mix {
   ($t:ty) => {
-    impl<S> Mix<S, $t> for Expr<S, $t> {
-      fn mix<Q, R>(
-        &self,
-        y: impl Into<Expr<Q, $t>>,
-        a: impl Into<Expr<R, $t>>,
-      ) -> Expr<<S as CompatibleStage<Q>>::Intersect, $t>
-      where
-        S: CompatibleStage<Q> + CompatibleStage<R>,
-      {
+    impl Mix for Expr<$t> {
+      fn mix(&self, y: impl Into<Self>, a: impl Into<Self>) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Mix,
           vec![self.erased.clone(), y.into().erased, a.into().erased],
         ))
       }
 
-      fn step<Q>(&self, edge: impl Into<Expr<Q, $t>>) -> Expr<S::Intersect, $t>
-      where
-        S: CompatibleStage<Q>,
-      {
+      fn step(&self, edge: impl Into<Self>) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Step,
           vec![self.erased.clone(), edge.into().erased],
         ))
       }
 
-      fn smooth_step<Q, R>(
-        &self,
-        edge_a: impl Into<Expr<Q, $t>>,
-        edge_b: impl Into<Expr<R, $t>>,
-      ) -> Expr<<S as CompatibleStage<Q>>::Intersect, $t>
-      where
-        S: CompatibleStage<Q> + CompatibleStage<R>,
-      {
+      fn smooth_step(&self, edge_a: impl Into<Self>, edge_b: impl Into<Self>) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::SmoothStep,
           vec![
@@ -2635,7 +2595,7 @@ impl_Mix!(V2<f32>);
 impl_Mix!(V3<f32>);
 impl_Mix!(V4<f32>);
 
-pub trait FloatingExt<S> {
+pub trait FloatingExt {
   type BoolExpr;
 
   fn is_nan(&self) -> Self::BoolExpr;
@@ -2645,8 +2605,8 @@ pub trait FloatingExt<S> {
 
 macro_rules! impl_FloatingExt {
   ($t:ty, $bool_expr:ty) => {
-    impl<S> FloatingExt<S> for Expr<S, $t> {
-      type BoolExpr = Expr<S, $bool_expr>;
+    impl FloatingExt for Expr<$t> {
+      type BoolExpr = Expr<$bool_expr>;
 
       fn is_nan(&self) -> Self::BoolExpr {
         Expr::new(ErasedExpr::FunCall(
@@ -2682,11 +2642,11 @@ mod tests {
 
   #[test]
   fn expr_unary() {
-    let mut scope = Scope::<L, ()>::new(0);
+    let mut scope = Scope::<()>::new(0);
 
     let a = !lit!(true);
     let b = -lit!(3i32);
-    let Var(c) = scope.var(17);
+    let c = scope.var(17);
 
     assert_eq!(
       a.erased,
@@ -2786,11 +2746,11 @@ mod tests {
 
   #[test]
   fn expr_var() {
-    let mut scope = Scope::<L, ()>::new(0);
+    let mut scope = Scope::<()>::new(0);
 
-    let Var(x) = scope.var(0);
-    let Var(y) = scope.var(1u32);
-    let Var(z) = scope.var(lit![false, true, false]);
+    let x = scope.var(0);
+    let y = scope.var(1u32);
+    let z = scope.var(lit![false, true, false]);
 
     assert_eq!(x.erased, ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0)));
     assert_eq!(y.erased, ErasedExpr::MutVar(ScopedHandle::fun_var(0, 1)));
@@ -2872,7 +2832,7 @@ mod tests {
   #[test]
   fn fun0() {
     let mut shader = Shader::new();
-    let fun = shader.fun(|s: &mut Scope<L, ()>| {
+    let fun = shader.fun(|s: &mut Scope<()>| {
       let _x = s.var(3);
     });
 
@@ -2902,9 +2862,9 @@ mod tests {
   #[test]
   fn fun1() {
     let mut shader = Shader::new();
-    let fun = shader.fun(|f: &mut Scope<V, Expr<V, i32>>, _arg: Expr<V, i32>| {
-      let Var(x) = f.var(lit!(3i32));
-      x
+    let fun = shader.fun(|f: &mut Scope<Expr<i32>>, _arg: Expr<i32>| {
+      let x = f.var(lit!(3i32));
+      x.into()
     });
 
     assert_eq!(fun.erased, ErasedFunHandle::UserDefined(0));
@@ -2941,8 +2901,8 @@ mod tests {
 
   #[test]
   fn swizzling() {
-    let mut scope = Scope::<L, ()>::new(0);
-    let Var(foo) = scope.var(lit![1, 2]);
+    let mut scope = Scope::<()>::new(0);
+    let foo = scope.var(lit![1, 2]);
     let foo_xy = sw!(foo, .x.y);
     let foo_xx = sw!(foo, .x.x);
 
@@ -2965,11 +2925,11 @@ mod tests {
 
   #[test]
   fn when() {
-    let mut s = Scope::<L, Expr<L, V4<f32>>>::new(0);
+    let mut s = Scope::<Expr<V4<f32>>>::new(0);
 
-    let Var(x) = s.var(1);
+    let x = s.var(1);
     s.when(x.eq(lit!(2)), |s| {
-      let Var(y) = s.var(lit![1., 2., 3., 4.]);
+      let y = s.var(lit![1., 2., 3., 4.]);
       s.leave(y);
     })
     .or_else(x.eq(lit!(0)), |s| s.leave(lit![0., 0., 0., 0.]))
@@ -3003,7 +2963,7 @@ mod tests {
     scope
       .instructions
       .push(ScopeInstr::Return(ErasedReturn::Expr(
-        i32::TYPE,
+        V4::<f32>::TYPE,
         ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0)),
       )));
 
@@ -3023,7 +2983,7 @@ mod tests {
     scope
       .instructions
       .push(ScopeInstr::Return(ErasedReturn::Expr(
-        i32::TYPE,
+        V4::<f32>::TYPE,
         ErasedExpr::LitFloat4([0., 0., 0., 0.]),
       )));
 
@@ -3049,7 +3009,7 @@ mod tests {
 
   #[test]
   fn for_loop() {
-    let mut scope: Scope<L, Expr<L, i32>> = Scope::new(0);
+    let mut scope: Scope<Expr<i32>> = Scope::new(0);
 
     scope.loop_for(
       0,
@@ -3100,7 +3060,7 @@ mod tests {
 
   #[test]
   fn while_loop() {
-    let mut scope: Scope<L, Expr<L, i32>> = Scope::new(0);
+    let mut scope: Scope<Expr<i32>> = Scope::new(0);
 
     scope.loop_while(lit!(1).lt(lit!(2)), Scope::loop_continue);
 
@@ -3122,19 +3082,22 @@ mod tests {
 
   #[test]
   fn vertex_id_commutative() {
+    let vertex = VertexShaderEnv::new();
+
     let x = lit!(1);
-    let _ = VERTEX_ID + &x;
-    let _ = x + VERTEX_ID;
+    let _ = &vertex.vertex_id + &x;
+    let _ = x + vertex.vertex_id;
   }
 
   #[test]
   fn array_lookup() {
-    let x = CLIP_DISTANCE.at(1);
+    let vertex = VertexShaderEnv::new();
+    let clip_dist_expr = vertex.clip_distance.at(1);
 
     assert_eq!(
-      x.erased,
+      clip_dist_expr.erased,
       ErasedExpr::ArrayLookup {
-        object: Box::new(CLIP_DISTANCE.erased.clone()),
+        object: Box::new(vertex.clip_distance.erased.clone()),
         index: Box::new(ErasedExpr::LitInt(1)),
       }
     );
