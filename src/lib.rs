@@ -812,14 +812,14 @@ pub struct FunHandle<R, A> {
   _phantom: PhantomData<(R, A)>,
 }
 
-impl<R> FunHandle<R, ()> {
+impl<R> FunHandle<Expr<R>, ()> {
   pub fn call(&self) -> Expr<R> {
     Expr::new(ErasedExpr::FunCall(self.erased.clone(), Vec::new()))
   }
 }
 
 #[cfg(feature = "fun-call")]
-impl<R> FnOnce<()> for FunHandle<R, ()> {
+impl<R> FnOnce<()> for FunHandle<Expr<R>, ()> {
   type Output = Expr<R>;
 
   extern "rust-call" fn call_once(self, _: ()) -> Self::Output {
@@ -828,27 +828,27 @@ impl<R> FnOnce<()> for FunHandle<R, ()> {
 }
 
 #[cfg(feature = "fun-call")]
-impl<R> FnMut<()> for FunHandle<R, ()> {
+impl<R> FnMut<()> for FunHandle<Expr<R>, ()> {
   extern "rust-call" fn call_mut(&mut self, _: ()) -> Self::Output {
     self.call()
   }
 }
 
 #[cfg(feature = "fun-call")]
-impl<R> Fn<()> for FunHandle<R, ()> {
+impl<R> Fn<()> for FunHandle<Expr<R>, ()> {
   extern "rust-call" fn call(&self, _: ()) -> Self::Output {
     self.call()
   }
 }
 
-impl<R, A> FunHandle<R, Expr<A>> {
+impl<R, A> FunHandle<Expr<R>, Expr<A>> {
   pub fn call(&self, a: Expr<A>) -> Expr<R> {
     Expr::new(ErasedExpr::FunCall(self.erased.clone(), vec![a.erased]))
   }
 }
 
 #[cfg(feature = "fun-call")]
-impl<R, A> FnOnce<(Expr<A>,)> for FunHandle<R, Expr<A>> {
+impl<R, A> FnOnce<(Expr<A>,)> for FunHandle<Expr<R>, Expr<A>> {
   type Output = Expr<R>;
 
   extern "rust-call" fn call_once(self, a: (Expr<A>,)) -> Self::Output {
@@ -857,14 +857,14 @@ impl<R, A> FnOnce<(Expr<A>,)> for FunHandle<R, Expr<A>> {
 }
 
 #[cfg(feature = "fun-call")]
-impl<R, A> FnMut<(Expr<A>,)> for FunHandle<R, Expr<A>> {
+impl<R, A> FnMut<(Expr<A>,)> for FunHandle<Expr<R>, Expr<A>> {
   extern "rust-call" fn call_mut(&mut self, a: (Expr<A>,)) -> Self::Output {
     self.call(a.0)
   }
 }
 
 #[cfg(feature = "fun-call")]
-impl<R, A> Fn<(Expr<A>,)> for FunHandle<R, Expr<A>> {
+impl<R, A> Fn<(Expr<A>,)> for FunHandle<Expr<R>, Expr<A>> {
   extern "rust-call" fn call(&self, a: (Expr<A>,)) -> Self::Output {
     self.call(a.0)
   }
@@ -873,7 +873,7 @@ impl<R, A> Fn<(Expr<A>,)> for FunHandle<R, Expr<A>> {
 // the first stage must be named S0
 macro_rules! impl_FunCall {
   ( $( ( $arg_name:ident, $arg_ty:ident ) ),*) => {
-    impl<R, $($arg_ty),*> FunHandle<R, ($(Expr<$arg_ty>),*)>
+    impl<R, $($arg_ty),*> FunHandle<Expr<R>, ($(Expr<$arg_ty>),*)>
     {
       pub fn call(&self, $($arg_name : Expr<$arg_ty>),*) -> Expr<R> {
         Expr::new(ErasedExpr::FunCall(self.erased.clone(), vec![$($arg_name.erased),*]))
@@ -881,7 +881,7 @@ macro_rules! impl_FunCall {
     }
 
     #[cfg(feature = "fun-call")]
-    impl<R, $($arg_ty),*> FnOnce<($(Expr<$arg_ty>),*)> for FunHandle<R, ($(Expr<$arg_ty>),*)>
+    impl<R, $($arg_ty),*> FnOnce<($(Expr<$arg_ty>),*)> for FunHandle<Expr<R>, ($(Expr<$arg_ty>),*)>
     {
       type Output = Expr<R>;
 
@@ -891,7 +891,7 @@ macro_rules! impl_FunCall {
     }
 
     #[cfg(feature = "fun-call")]
-    impl<R, $($arg_ty),*> FnMut<($(Expr<$arg_ty>),*)> for FunHandle<R, ($(Expr<$arg_ty>),*)>
+    impl<R, $($arg_ty),*> FnMut<($(Expr<$arg_ty>),*)> for FunHandle<Expr<R>, ($(Expr<$arg_ty>),*)>
     {
       extern "rust-call" fn call_mut(&mut self, ($($arg_name),*): ($(Expr<$arg_ty>),*)) -> Self::Output {
         self.call($($arg_name),*)
@@ -899,7 +899,7 @@ macro_rules! impl_FunCall {
     }
 
     #[cfg(feature = "fun-call")]
-    impl<R, $($arg_ty),*> Fn<($(Expr<$arg_ty>),*)> for FunHandle<R, ($(Expr<$arg_ty>),*)>
+    impl<R, $($arg_ty),*> Fn<($(Expr<$arg_ty>),*)> for FunHandle<Expr<R>, ($(Expr<$arg_ty>),*)>
     {
       extern "rust-call" fn call(&self, ($($arg_name),*): ($(Expr<$arg_ty>),*)) -> Self::Output {
         self.call($($arg_name),*)
@@ -1329,6 +1329,12 @@ where
 
   pub fn to_expr(&self) -> Expr<T> {
     self.0.clone()
+  }
+}
+
+impl<T> Var<[T]> {
+  pub fn at(&self, index: impl Into<Expr<i32>>) -> Var<T> {
+    Var(self.to_expr().at(index))
   }
 }
 
