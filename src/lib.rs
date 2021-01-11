@@ -12,7 +12,37 @@ pub struct Shader {
 }
 
 impl Shader {
-  pub fn new() -> Self {
+  pub fn new_vertex_shader(f: impl FnOnce(&mut Self, VertexShaderEnv)) -> Self {
+    let mut shader = Self::new();
+    f(&mut shader, VertexShaderEnv::new());
+    shader
+  }
+
+  pub fn new_tess_ctrl_shader(f: impl FnOnce(&mut Self, TessCtrlShaderEnv)) -> Self {
+    let mut shader = Self::new();
+    f(&mut shader, TessCtrlShaderEnv::new());
+    shader
+  }
+
+  pub fn new_tess_eval_shader(f: impl FnOnce(&mut Self, TessEvalShaderEnv)) -> Self {
+    let mut shader = Self::new();
+    f(&mut shader, TessEvalShaderEnv::new());
+    shader
+  }
+
+  pub fn new_geometry_shader(f: impl FnOnce(&mut Self, GeometryShaderEnv)) -> Self {
+    let mut shader = Self::new();
+    f(&mut shader, GeometryShaderEnv::new());
+    shader
+  }
+
+  pub fn new_fragment_shader(f: impl FnOnce(&mut Self, FragmentShaderEnv)) -> Self {
+    let mut shader = Self::new();
+    f(&mut shader, FragmentShaderEnv::new());
+    shader
+  }
+
+  fn new() -> Self {
     Self {
       decls: Vec::new(),
       next_fun_handle: 0,
@@ -1262,6 +1292,15 @@ pub struct Var<T>(Expr<T>)
 where
   T: ?Sized;
 
+impl<'a, T> From<&'a Var<T>> for Var<T>
+where
+  T: ?Sized,
+{
+  fn from(v: &'a Self) -> Self {
+    Var(v.0.clone())
+  }
+}
+
 impl<T> From<Var<T>> for Expr<T>
 where
   T: ?Sized,
@@ -1609,8 +1648,8 @@ macro_rules! sw_extract {
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum BuiltIn {
   Vertex(VertexBuiltIn),
-  TessellationControl(TessellationControlBuiltIn),
-  TessellationEvaluation(TessellationEvaluationBuiltIn),
+  TessCtrl(TessCtrlBuiltIn),
+  TessEval(TessEvalBuiltIn),
   Geometry(GeometryBuiltIn),
   Fragment(FragmentBuiltIn),
 }
@@ -1627,7 +1666,7 @@ pub enum VertexBuiltIn {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum TessellationControlBuiltIn {
+pub enum TessCtrlBuiltIn {
   MaxPatchVerticesIn,
   PatchVerticesIn,
   PrimitiveID,
@@ -1639,10 +1678,11 @@ pub enum TessellationControlBuiltIn {
   Position,
   PointSize,
   ClipDistance,
+  CullDistance,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum TessellationEvaluationBuiltIn {
+pub enum TessEvalBuiltIn {
   TessCoord,
   MaxPatchVerticesIn,
   PatchVerticesIn,
@@ -1654,6 +1694,7 @@ pub enum TessellationEvaluationBuiltIn {
   Position,
   PointSize,
   ClipDistance,
+  CullDistance,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -1663,6 +1704,7 @@ pub enum GeometryBuiltIn {
   Position,
   PointSize,
   ClipDistance,
+  CullDistance,
   PrimitiveID,
   PrimitiveIDIn,
   InvocationID,
@@ -1679,44 +1721,97 @@ pub enum FragmentBuiltIn {
   SamplePosition,
   SampleMaskIn,
   ClipDistance,
+  CullDistance,
   PrimitiveID,
   Layer,
   ViewportIndex,
   FragDepth,
   SampleMask,
+  HelperInvocation,
 }
 
-// vertex shader built-ins; inputs
-pub const VERTEX_ID: Expr<i32> = Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::VertexID));
-pub const INSTANCE_ID: Expr<i32> =
-  Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::InstanceID));
-pub const BASE_VERTEX: Expr<i32> =
-  Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::BaseVertex));
-pub const BASE_INSTANCE: Expr<i32> =
-  Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::BaseInstance));
+// vertex shader built-ins
+pub struct VertexShaderEnv {
+  // inputs
+  pub vertex_id: Expr<i32>,
+  pub instance_id: Expr<i32>,
+  pub base_vertex: Expr<i32>,
+  pub base_instance: Expr<i32>,
+  // outputs
+  pub position: Var<V4<f32>>,
+  pub point_size: Var<f32>,
+  pub clip_distance: Var<[f32]>,
+}
 
-// vertex shader built-ins; outputs
-pub const POSITION: Var<V4<f32>> = Var(Expr::new_builtin(BuiltIn::Vertex(VertexBuiltIn::Position)));
-pub const POINT_SIZE: Var<f32> = Var(Expr::new_builtin(BuiltIn::Vertex(VertexBuiltIn::PointSize)));
-pub const CLIP_DISTANCE: Var<[f32]> = Var(Expr::new_builtin(BuiltIn::Vertex(
-  VertexBuiltIn::ClipDistance,
-)));
+impl VertexShaderEnv {
+  fn new() -> Self {
+    let vertex_id = Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::VertexID));
+    let instance_id = Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::InstanceID));
+    let base_vertex = Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::BaseVertex));
+    let base_instance = Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::BaseInstance));
+    let position = Var(Expr::new_builtin(BuiltIn::Vertex(VertexBuiltIn::Position)));
+    let point_size = Var(Expr::new_builtin(BuiltIn::Vertex(VertexBuiltIn::PointSize)));
+    let clip_distance = Var(Expr::new_builtin(BuiltIn::Vertex(
+      VertexBuiltIn::ClipDistance,
+    )));
 
-// tessellation control shader built-ins; inputs
-pub const MAX_PATCH_VERTICES_IN: Expr<i32> = Expr::new_immut_builtin(BuiltIn::TessellationControl(
-  TessellationControlBuiltIn::MaxPatchVerticesIn,
-));
-pub const CTRL_PATCH_VERTICES_IN: Expr<i32> = Expr::new_immut_builtin(
-  BuiltIn::TessellationControl(TessellationControlBuiltIn::PatchVerticesIn),
-);
-pub const CTRL_PRIMITIVE_ID: Expr<i32> = Expr::new_immut_builtin(BuiltIn::TessellationControl(
-  TessellationControlBuiltIn::PrimitiveID,
-));
-pub const CTRL_INVOCATION_ID: Expr<i32> = Expr::new_immut_builtin(BuiltIn::TessellationControl(
-  TessellationControlBuiltIn::InvocationID,
-));
-pub const CTRL_IN: Expr<[TessControlPerVertexIn]> =
-  Expr::new_immut_builtin(BuiltIn::TessellationControl(TessellationControlBuiltIn::In));
+    Self {
+      vertex_id,
+      instance_id,
+      base_vertex,
+      base_instance,
+      position,
+      point_size,
+      clip_distance,
+    }
+  }
+}
+
+// tessellation control shader built-ins
+pub struct TessCtrlShaderEnv {
+  // inputs
+  pub max_patch_vertices_in: Expr<i32>,
+  pub patch_vertices_in: Expr<i32>,
+  pub primitive_id: Expr<i32>,
+  pub invocation_id: Expr<i32>,
+  pub input: Expr<[TessControlPerVertexIn]>,
+  // outputs
+  pub tess_level_outer: Var<[f32; 4]>,
+  pub tess_level_inner: Var<[f32; 2]>,
+  pub output: Var<[TessControlPerVertexOut]>,
+}
+
+impl TessCtrlShaderEnv {
+  fn new() -> Self {
+    let max_patch_vertices_in =
+      Expr::new_immut_builtin(BuiltIn::TessCtrl(TessCtrlBuiltIn::MaxPatchVerticesIn));
+    let patch_vertices_in =
+      Expr::new_immut_builtin(BuiltIn::TessCtrl(TessCtrlBuiltIn::PatchVerticesIn));
+    let primitive_id = Expr::new_immut_builtin(BuiltIn::TessCtrl(TessCtrlBuiltIn::PrimitiveID));
+    let invocation_id = Expr::new_immut_builtin(BuiltIn::TessCtrl(TessCtrlBuiltIn::InvocationID));
+    let input = Expr::new_immut_builtin(BuiltIn::TessCtrl(TessCtrlBuiltIn::In));
+    let tess_level_outer = Var::new(ScopedHandle::BuiltIn(BuiltIn::TessCtrl(
+      TessCtrlBuiltIn::TessellationLevelOuter,
+    )));
+    let tess_level_inner = Var::new(ScopedHandle::BuiltIn(BuiltIn::TessCtrl(
+      TessCtrlBuiltIn::TessellationLevelInner,
+    )));
+    let output = Var::new(ScopedHandle::BuiltIn(BuiltIn::TessCtrl(
+      TessCtrlBuiltIn::Out,
+    )));
+
+    Self {
+      max_patch_vertices_in,
+      patch_vertices_in,
+      primitive_id,
+      invocation_id,
+      input,
+      tess_level_outer,
+      tess_level_inner,
+      output,
+    }
+  }
+}
 
 pub struct TessControlPerVertexIn;
 
@@ -1724,8 +1819,8 @@ impl Expr<TessControlPerVertexIn> {
   pub fn position(&self) -> Expr<V4<f32>> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationControl(
-        TessellationControlBuiltIn::Position,
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+        TessCtrlBuiltIn::Position,
       ))),
     };
 
@@ -1735,8 +1830,8 @@ impl Expr<TessControlPerVertexIn> {
   pub fn point_size(&self) -> Expr<f32> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationControl(
-        TessellationControlBuiltIn::PointSize,
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+        TessCtrlBuiltIn::PointSize,
       ))),
     };
 
@@ -1746,8 +1841,19 @@ impl Expr<TessControlPerVertexIn> {
   pub fn clip_distance(&self) -> Expr<[f32]> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationControl(
-        TessellationControlBuiltIn::ClipDistance,
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+        TessCtrlBuiltIn::ClipDistance,
+      ))),
+    };
+
+    Expr::new(erased)
+  }
+
+  pub fn cull_distance(&self) -> Expr<[f32]> {
+    let erased = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+        TessCtrlBuiltIn::CullDistance,
       ))),
     };
 
@@ -1755,76 +1861,109 @@ impl Expr<TessControlPerVertexIn> {
   }
 }
 
-// tessellation control shader built-ins; outputs
-pub const CTRL_TESS_LEVEL_OUTER: Expr<[f32; 4]> = Expr::new_builtin(BuiltIn::TessellationControl(
-  TessellationControlBuiltIn::TessellationLevelOuter,
-));
-pub const CTRL_TESS_LEVEL_INNER: Expr<[f32; 2]> = Expr::new_builtin(BuiltIn::TessellationControl(
-  TessellationControlBuiltIn::TessellationLevelInner,
-));
-pub const CTRL_OUT: Expr<[TessControlPerVertexOut]> = Expr::new_immut_builtin(
-  BuiltIn::TessellationControl(TessellationControlBuiltIn::Out),
-);
-
-pub struct TessControlPerVertexOut;
+pub struct TessControlPerVertexOut(());
 
 impl Expr<TessControlPerVertexOut> {
-  pub fn position(&self) -> Expr<V4<f32>> {
-    let erased = ErasedExpr::Field {
+  pub fn position(&self) -> Var<V4<f32>> {
+    let expr = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationControl(
-        TessellationControlBuiltIn::Position,
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+        TessCtrlBuiltIn::Position,
       ))),
     };
 
-    Expr::new(erased)
+    Var(Expr::new(expr))
   }
 
-  pub fn point_size(&self) -> Expr<f32> {
-    let erased = ErasedExpr::Field {
+  pub fn point_size(&self) -> Var<f32> {
+    let expr = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationControl(
-        TessellationControlBuiltIn::PointSize,
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+        TessCtrlBuiltIn::PointSize,
       ))),
     };
 
-    Expr::new(erased)
+    Var(Expr::new(expr))
   }
 
-  pub fn clip_distance(&self) -> Expr<[f32]> {
-    let erased = ErasedExpr::Field {
+  pub fn clip_distance(&self) -> Var<[f32]> {
+    let expr = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationControl(
-        TessellationControlBuiltIn::ClipDistance,
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+        TessCtrlBuiltIn::ClipDistance,
       ))),
     };
 
-    Expr::new(erased)
+    Var(Expr::new(expr))
+  }
+
+  pub fn cull_distance(&self) -> Var<[f32]> {
+    let expr = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+        TessCtrlBuiltIn::CullDistance,
+      ))),
+    };
+
+    Var(Expr::new(expr))
   }
 }
 
 // tessellation evalution shader built-ins; inputs
-pub const TESS_COORD: Expr<V3<f32>> = Expr::new_immut_builtin(BuiltIn::TessellationEvaluation(
-  TessellationEvaluationBuiltIn::TessCoord,
-));
-pub const EVAL_MAX_PATCH_VERTICES_IN: Expr<i32> = Expr::new_immut_builtin(
-  BuiltIn::TessellationEvaluation(TessellationEvaluationBuiltIn::MaxPatchVerticesIn),
-);
-pub const EVAL_PATCH_VERTICES_IN: Expr<i32> = Expr::new_immut_builtin(
-  BuiltIn::TessellationEvaluation(TessellationEvaluationBuiltIn::PatchVerticesIn),
-);
-pub const EVAL_PRIMITIVE_ID: Expr<i32> = Expr::new_immut_builtin(BuiltIn::TessellationEvaluation(
-  TessellationEvaluationBuiltIn::PrimitiveID,
-));
-pub const EVAL_TESS_LEVEL_OUTER: Expr<[f32; 4]> = Expr::new_builtin(
-  BuiltIn::TessellationEvaluation(TessellationEvaluationBuiltIn::TessellationLevelOuter),
-);
-pub const EVAL_TESS_LEVEL_INNER: Expr<[f32; 2]> = Expr::new_builtin(
-  BuiltIn::TessellationEvaluation(TessellationEvaluationBuiltIn::TessellationLevelInner),
-);
-pub const EVAL_IN: Expr<[TessEvaluationPerVertexIn]> = Expr::new_immut_builtin(
-  BuiltIn::TessellationEvaluation(TessellationEvaluationBuiltIn::In),
-);
+pub struct TessEvalShaderEnv {
+  // inputs
+  pub patch_vertices_in: Expr<i32>,
+  pub primitive_id: Expr<i32>,
+  pub tess_coord: Expr<V3<f32>>,
+  pub tess_level_outer: Expr<[f32; 4]>,
+  pub tess_level_inner: Expr<[f32; 2]>,
+  pub input: Expr<[TessEvaluationPerVertexIn]>,
+  // outputs
+  pub position: Var<V4<f32>>,
+  pub point_size: Var<f32>,
+  pub clip_distance: Var<[f32]>,
+  pub cull_distance: Var<[f32]>,
+}
+
+impl TessEvalShaderEnv {
+  fn new() -> Self {
+    let patch_vertices_in =
+      Expr::new_immut_builtin(BuiltIn::TessEval(TessEvalBuiltIn::PatchVerticesIn));
+    let primitive_id = Expr::new_immut_builtin(BuiltIn::TessEval(TessEvalBuiltIn::PrimitiveID));
+    let tess_coord = Expr::new_immut_builtin(BuiltIn::TessEval(TessEvalBuiltIn::TessCoord));
+    let tess_level_outer =
+      Expr::new_immut_builtin(BuiltIn::TessEval(TessEvalBuiltIn::TessellationLevelOuter));
+    let tess_level_inner =
+      Expr::new_immut_builtin(BuiltIn::TessEval(TessEvalBuiltIn::TessellationLevelInner));
+    let input = Expr::new_immut_builtin(BuiltIn::TessEval(TessEvalBuiltIn::In));
+
+    let position = Var::new(ScopedHandle::BuiltIn(BuiltIn::TessEval(
+      TessEvalBuiltIn::Position,
+    )));
+    let point_size = Var::new(ScopedHandle::BuiltIn(BuiltIn::TessEval(
+      TessEvalBuiltIn::PointSize,
+    )));
+    let clip_distance = Var::new(ScopedHandle::BuiltIn(BuiltIn::TessEval(
+      TessEvalBuiltIn::ClipDistance,
+    )));
+    let cull_distance = Var::new(ScopedHandle::BuiltIn(BuiltIn::TessEval(
+      TessEvalBuiltIn::ClipDistance,
+    )));
+
+    Self {
+      patch_vertices_in,
+      primitive_id,
+      tess_coord,
+      tess_level_outer,
+      tess_level_inner,
+      input,
+      position,
+      point_size,
+      clip_distance,
+      cull_distance,
+    }
+  }
+}
 
 pub struct TessEvaluationPerVertexIn;
 
@@ -1832,8 +1971,8 @@ impl Expr<TessEvaluationPerVertexIn> {
   pub fn position(&self) -> Expr<V4<f32>> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationEvaluation(
-        TessellationEvaluationBuiltIn::Position,
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessEval(
+        TessEvalBuiltIn::Position,
       ))),
     };
 
@@ -1843,8 +1982,8 @@ impl Expr<TessEvaluationPerVertexIn> {
   pub fn point_size(&self) -> Expr<f32> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationEvaluation(
-        TessellationEvaluationBuiltIn::PointSize,
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessEval(
+        TessEvalBuiltIn::PointSize,
       ))),
     };
 
@@ -1854,50 +1993,19 @@ impl Expr<TessEvaluationPerVertexIn> {
   pub fn clip_distance(&self) -> Expr<[f32]> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationEvaluation(
-        TessellationEvaluationBuiltIn::ClipDistance,
-      ))),
-    };
-
-    Expr::new(erased)
-  }
-}
-
-// tessellation evaluation shader built-ins; outputs
-pub const EVAL_OUT: Expr<[TessEvaluationPerVertexOut]> = Expr::new_immut_builtin(
-  BuiltIn::TessellationEvaluation(TessellationEvaluationBuiltIn::Out),
-);
-
-pub struct TessEvaluationPerVertexOut;
-
-impl Expr<TessEvaluationPerVertexOut> {
-  pub fn position(&self) -> Expr<V4<f32>> {
-    let erased = ErasedExpr::Field {
-      object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationEvaluation(
-        TessellationEvaluationBuiltIn::Position,
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessEval(
+        TessEvalBuiltIn::ClipDistance,
       ))),
     };
 
     Expr::new(erased)
   }
 
-  pub fn point_size(&self) -> Expr<f32> {
+  pub fn cull_distance(&self) -> Expr<[f32]> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationEvaluation(
-        TessellationEvaluationBuiltIn::PointSize,
-      ))),
-    };
-
-    Expr::new(erased)
-  }
-
-  pub fn clip_distance(&self) -> Expr<[f32]> {
-    let erased = ErasedExpr::Field {
-      object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessellationEvaluation(
-        TessellationEvaluationBuiltIn::ClipDistance,
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessEval(
+        TessEvalBuiltIn::CullDistance,
       ))),
     };
 
@@ -1906,8 +2014,64 @@ impl Expr<TessEvaluationPerVertexOut> {
 }
 
 // geometry shader built-ins; inputs
-pub const GEO_IN: Expr<[GeometryPerVertexIn]> =
-  Expr::new_immut_builtin(BuiltIn::Geometry(GeometryBuiltIn::In));
+pub struct GeometryShaderEnv {
+  // inputs
+  pub primitive_id_in: Expr<i32>,
+  pub invocation_id: Expr<i32>,
+  pub input: Expr<[GeometryPerVertexIn]>,
+  // outputs
+  pub position: Var<V4<f32>>,
+  pub point_size: Var<f32>,
+  pub clip_distance: Var<[f32]>,
+  pub cull_distance: Var<[f32]>,
+  pub primitive_id: Var<i32>,
+  pub layer: Var<i32>,
+  pub viewport_index: Var<i32>,
+}
+
+impl GeometryShaderEnv {
+  fn new() -> Self {
+    let primitive_id_in =
+      Expr::new_immut_builtin(BuiltIn::Geometry(GeometryBuiltIn::PrimitiveIDIn));
+    let invocation_id = Expr::new_immut_builtin(BuiltIn::Geometry(GeometryBuiltIn::InvocationID));
+    let input = Expr::new_immut_builtin(BuiltIn::Geometry(GeometryBuiltIn::In));
+
+    let position = Var::new(ScopedHandle::BuiltIn(BuiltIn::Geometry(
+      GeometryBuiltIn::Position,
+    )));
+    let point_size = Var::new(ScopedHandle::BuiltIn(BuiltIn::Geometry(
+      GeometryBuiltIn::PointSize,
+    )));
+    let clip_distance = Var::new(ScopedHandle::BuiltIn(BuiltIn::Geometry(
+      GeometryBuiltIn::ClipDistance,
+    )));
+    let cull_distance = Var::new(ScopedHandle::BuiltIn(BuiltIn::Geometry(
+      GeometryBuiltIn::CullDistance,
+    )));
+    let primitive_id = Var::new(ScopedHandle::BuiltIn(BuiltIn::Geometry(
+      GeometryBuiltIn::PrimitiveID,
+    )));
+    let layer = Var::new(ScopedHandle::BuiltIn(BuiltIn::Geometry(
+      GeometryBuiltIn::Layer,
+    )));
+    let viewport_index = Var::new(ScopedHandle::BuiltIn(BuiltIn::Geometry(
+      GeometryBuiltIn::ViewportIndex,
+    )));
+
+    Self {
+      primitive_id_in,
+      invocation_id,
+      input,
+      position,
+      point_size,
+      clip_distance,
+      cull_distance,
+      primitive_id,
+      layer,
+      viewport_index,
+    }
+  }
+}
 
 pub struct GeometryPerVertexIn;
 
@@ -1944,52 +2108,79 @@ impl Expr<GeometryPerVertexIn> {
 
     Expr::new(erased)
   }
+
+  pub fn cull_distance(&self) -> Expr<[f32]> {
+    let erased = ErasedExpr::Field {
+      object: Box::new(self.erased.clone()),
+      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::Geometry(
+        GeometryBuiltIn::CullDistance,
+      ))),
+    };
+
+    Expr::new(erased)
+  }
 }
 
-pub const PRIMITIVE_ID_IN: Expr<i32> =
-  Expr::new_immut_builtin(BuiltIn::Geometry(GeometryBuiltIn::PrimitiveIDIn));
-pub const GEO_INVOCATION_ID: Expr<i32> =
-  Expr::new_immut_builtin(BuiltIn::Geometry(GeometryBuiltIn::InvocationID));
+// fragment shader built-ins
+pub struct FragmentShaderEnv {
+  // inputs
+  pub frag_coord: Expr<V4<f32>>,
+  pub front_facing: Expr<bool>,
+  pub clip_distance: Expr<[f32]>,
+  pub cull_distance: Expr<[f32]>,
+  pub point_coord: Expr<V2<f32>>,
+  pub primitive_id: Expr<i32>,
+  pub sample_id: Expr<i32>,
+  pub sample_position: Expr<V2<f32>>,
+  pub sample_mask_in: Expr<i32>,
+  pub layer: Expr<i32>,
+  pub viewport_index: Expr<i32>,
+  pub helper_invocation: Expr<bool>,
+  // outputs
+  pub frag_depth: Var<f32>,
+  pub sample_mask: Var<[i32]>,
+}
 
-// geometry shader outputs
-pub const GEO_POSITION: Expr<V4<f32>> =
-  Expr::new_builtin(BuiltIn::Geometry(GeometryBuiltIn::Position));
-pub const GEO_POINT_SIZE: Expr<f32> =
-  Expr::new_builtin(BuiltIn::Geometry(GeometryBuiltIn::PointSize));
-pub const GEO_CLIP_DISTANCE: Expr<[f32]> =
-  Expr::new_builtin(BuiltIn::Geometry(GeometryBuiltIn::ClipDistance));
-pub const GEO_PRIMITIVE_ID: Expr<i32> =
-  Expr::new_builtin(BuiltIn::Geometry(GeometryBuiltIn::PrimitiveID));
-pub const LAYER: Expr<i32> = Expr::new_builtin(BuiltIn::Geometry(GeometryBuiltIn::Layer));
-pub const VIEWPORT_INDEX: Expr<i32> =
-  Expr::new_builtin(BuiltIn::Geometry(GeometryBuiltIn::ViewportIndex));
+impl FragmentShaderEnv {
+  fn new() -> Self {
+    let frag_coord = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::FragCoord));
+    let front_facing = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::FrontFacing));
+    let clip_distance = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::ClipDistance));
+    let cull_distance = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::CullDistance));
+    let point_coord = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::PointCoord));
+    let primitive_id = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::PrimitiveID));
+    let sample_id = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::SampleID));
+    let sample_position = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::SamplePosition));
+    let sample_mask_in = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::SampleMaskIn));
+    let layer = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::Layer));
+    let viewport_index = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::ViewportIndex));
+    let helper_invocation = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::HelperInvocation));
 
-// fragment shader built-ins; inputs
-pub const FRAG_COORD: Expr<V4<f32>> =
-  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::FragCoord));
-pub const FRONT_FACING: Expr<bool> =
-  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::FrontFacing));
-pub const POINT_COORD: Expr<V2<f32>> =
-  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::PointCoord));
-pub const SAMPLE_ID: Expr<i32> =
-  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::SampleID));
-pub const SAMPLE_POSITION: Expr<V2<f32>> =
-  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::SamplePosition));
-pub const SAMPLE_MASK_IN: Expr<[i32]> =
-  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::SampleMaskIn));
-pub const FRAG_CLIP_DISTANCE: Expr<[f32]> =
-  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::ClipDistance));
-pub const FRAG_PRIMITIVE_ID: Expr<i32> =
-  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::PrimitiveID));
-pub const FRAG_LAYER: Expr<i32> =
-  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::Layer));
-pub const FRAG_VIEWPORT_INDEX: Expr<i32> =
-  Expr::new_immut_builtin(BuiltIn::Fragment(FragmentBuiltIn::ViewportIndex));
+    let frag_depth = Var::new(ScopedHandle::BuiltIn(BuiltIn::Fragment(
+      FragmentBuiltIn::FragDepth,
+    )));
+    let sample_mask = Var::new(ScopedHandle::BuiltIn(BuiltIn::Fragment(
+      FragmentBuiltIn::SampleMask,
+    )));
 
-// fragment shader built-ins; outputs
-pub const FRAG_DEPTH: Expr<f32> = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::FragDepth));
-pub const SAMPLE_MASK: Expr<[i32]> =
-  Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::SampleMask));
+    Self {
+      frag_coord,
+      front_facing,
+      clip_distance,
+      cull_distance,
+      point_coord,
+      primitive_id,
+      sample_id,
+      sample_position,
+      sample_mask_in,
+      layer,
+      viewport_index,
+      helper_invocation,
+      frag_depth,
+      sample_mask,
+    }
+  }
+}
 
 // standard library
 
@@ -2891,19 +3082,22 @@ mod tests {
 
   #[test]
   fn vertex_id_commutative() {
+    let vertex = VertexShaderEnv::new();
+
     let x = lit!(1);
-    let _ = VERTEX_ID + &x;
-    let _ = x + VERTEX_ID;
+    let _ = &vertex.vertex_id + &x;
+    let _ = x + vertex.vertex_id;
   }
 
   #[test]
   fn array_lookup() {
-    let x = CLIP_DISTANCE.at(1);
+    let vertex = VertexShaderEnv::new();
+    let clip_dist_expr = vertex.clip_distance.at(1);
 
     assert_eq!(
-      x.erased,
+      clip_dist_expr.erased,
       ErasedExpr::ArrayLookup {
-        object: Box::new(CLIP_DISTANCE.erased.clone()),
+        object: Box::new(vertex.clip_distance.erased.clone()),
         index: Box::new(ErasedExpr::LitInt(1)),
       }
     );

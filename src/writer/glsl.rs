@@ -3,8 +3,7 @@
 use crate::{
   ArraySpec, BuiltIn, Dim, ErasedExpr, ErasedFun, ErasedFunHandle, ErasedReturn, ErasedScope,
   FragmentBuiltIn, GeometryBuiltIn, PrimType, ScopeInstr, ScopedHandle, Shader, ShaderDecl,
-  Swizzle, SwizzleSelector, TessellationControlBuiltIn, TessellationEvaluationBuiltIn, Type,
-  VertexBuiltIn,
+  Swizzle, SwizzleSelector, TessCtrlBuiltIn, TessEvalBuiltIn, Type, VertexBuiltIn,
 };
 use std::fmt;
 
@@ -73,13 +72,13 @@ fn write_fun_def_to_str(
   *output += "(";
   if !fun.args.is_empty() {
     write_type_to_str(output, &fun.args[0])?;
-    *output += " a_0";
+    *output += " arg_0";
 
     for (i, arg) in fun.args.iter().enumerate().skip(1) {
       *output += ", ";
 
       write_type_to_str(output, arg)?;
-      *output += &format!(" a_{}", i);
+      *output += &format!(" arg_{}", i);
     }
   }
   *output += ") {\n";
@@ -669,7 +668,7 @@ fn write_fun_handle_to_str(output: &mut String, f: &ErasedFunHandle) -> Result<(
 }
 
 fn write_fun_handle(output: &mut String, handle: u16) -> Result<(), WriteError> {
-  *output += &format!("f_{}", handle);
+  *output += &format!("fun_{}", handle);
   Ok(())
 }
 
@@ -685,7 +684,7 @@ fn write_scoped_handle_to_str(
     ScopedHandle::BuiltIn(builtin) => write_builtin_to_str(output, builtin)?,
 
     ScopedHandle::Global(handle) => {
-      *output += &format!("g_{}", handle);
+      *output += &format!("glob_{}", handle);
     }
 
     ScopedHandle::FunArg(handle) => {
@@ -703,8 +702,8 @@ fn write_scoped_handle_to_str(
 fn write_builtin_to_str(output: &mut String, builtin: &BuiltIn) -> Result<(), WriteError> {
   match builtin {
     BuiltIn::Vertex(builtin) => write_vert_builtin_to_str(output, builtin),
-    BuiltIn::TessellationControl(builtin) => write_tess_ctrl_builtin_to_str(output, builtin),
-    BuiltIn::TessellationEvaluation(builtin) => write_tess_eval_builtin_to_str(output, builtin),
+    BuiltIn::TessCtrl(builtin) => write_tess_ctrl_builtin_to_str(output, builtin),
+    BuiltIn::TessEval(builtin) => write_tess_eval_builtin_to_str(output, builtin),
     BuiltIn::Geometry(builtin) => write_geo_builtin_to_str(output, builtin),
     BuiltIn::Fragment(builtin) => write_frag_builtin_to_str(output, builtin),
   }
@@ -729,20 +728,21 @@ fn write_vert_builtin_to_str(
 
 fn write_tess_ctrl_builtin_to_str(
   output: &mut String,
-  builtin: &TessellationControlBuiltIn,
+  builtin: &TessCtrlBuiltIn,
 ) -> Result<(), WriteError> {
   match builtin {
-    TessellationControlBuiltIn::MaxPatchVerticesIn => *output += "gl_MaxPatchVerticesIn",
-    TessellationControlBuiltIn::PatchVerticesIn => *output += "gl_PatchVerticesIn",
-    TessellationControlBuiltIn::PrimitiveID => *output += "gl_PrimitiveID",
-    TessellationControlBuiltIn::InvocationID => *output += "gl_InvocationID",
-    TessellationControlBuiltIn::TessellationLevelOuter => *output += "gl_TessellationLevelOuter",
-    TessellationControlBuiltIn::TessellationLevelInner => *output += "gl_TessellationLevelInner",
-    TessellationControlBuiltIn::In => *output += "gl_In",
-    TessellationControlBuiltIn::Out => *output += "gl_Out",
-    TessellationControlBuiltIn::Position => *output += "gl_Position",
-    TessellationControlBuiltIn::PointSize => *output += "gl_PointSize",
-    TessellationControlBuiltIn::ClipDistance => *output += "gl_ClipDistance",
+    TessCtrlBuiltIn::MaxPatchVerticesIn => *output += "gl_MaxPatchVerticesIn",
+    TessCtrlBuiltIn::PatchVerticesIn => *output += "gl_PatchVerticesIn",
+    TessCtrlBuiltIn::PrimitiveID => *output += "gl_PrimitiveID",
+    TessCtrlBuiltIn::InvocationID => *output += "gl_InvocationID",
+    TessCtrlBuiltIn::TessellationLevelOuter => *output += "gl_TessellationLevelOuter",
+    TessCtrlBuiltIn::TessellationLevelInner => *output += "gl_TessellationLevelInner",
+    TessCtrlBuiltIn::In => *output += "gl_In",
+    TessCtrlBuiltIn::Out => *output += "gl_Out",
+    TessCtrlBuiltIn::Position => *output += "gl_Position",
+    TessCtrlBuiltIn::PointSize => *output += "gl_PointSize",
+    TessCtrlBuiltIn::ClipDistance => *output += "gl_ClipDistance",
+    TessCtrlBuiltIn::CullDistance => *output += "gl_CullDistance",
   }
 
   Ok(())
@@ -750,20 +750,21 @@ fn write_tess_ctrl_builtin_to_str(
 
 fn write_tess_eval_builtin_to_str(
   output: &mut String,
-  builtin: &TessellationEvaluationBuiltIn,
+  builtin: &TessEvalBuiltIn,
 ) -> Result<(), WriteError> {
   match builtin {
-    TessellationEvaluationBuiltIn::TessCoord => *output += "gl_TessCoord",
-    TessellationEvaluationBuiltIn::MaxPatchVerticesIn => *output += "gl_MaxPatchVerticesIn",
-    TessellationEvaluationBuiltIn::PatchVerticesIn => *output += "gl_PatchVerticesIn",
-    TessellationEvaluationBuiltIn::PrimitiveID => *output += "gl_PrimitiveID",
-    TessellationEvaluationBuiltIn::TessellationLevelOuter => *output += "gl_TessellationLevelOuter",
-    TessellationEvaluationBuiltIn::TessellationLevelInner => *output += "gl_TessellationLevelInner",
-    TessellationEvaluationBuiltIn::In => *output += "gl_In",
-    TessellationEvaluationBuiltIn::Out => *output += "gl_Out",
-    TessellationEvaluationBuiltIn::Position => *output += "gl_Position",
-    TessellationEvaluationBuiltIn::PointSize => *output += "gl_PointSize",
-    TessellationEvaluationBuiltIn::ClipDistance => *output += "gl_ClipDistance",
+    TessEvalBuiltIn::TessCoord => *output += "gl_TessCoord",
+    TessEvalBuiltIn::MaxPatchVerticesIn => *output += "gl_MaxPatchVerticesIn",
+    TessEvalBuiltIn::PatchVerticesIn => *output += "gl_PatchVerticesIn",
+    TessEvalBuiltIn::PrimitiveID => *output += "gl_PrimitiveID",
+    TessEvalBuiltIn::TessellationLevelOuter => *output += "gl_TessellationLevelOuter",
+    TessEvalBuiltIn::TessellationLevelInner => *output += "gl_TessellationLevelInner",
+    TessEvalBuiltIn::In => *output += "gl_In",
+    TessEvalBuiltIn::Out => *output += "gl_Out",
+    TessEvalBuiltIn::Position => *output += "gl_Position",
+    TessEvalBuiltIn::PointSize => *output += "gl_PointSize",
+    TessEvalBuiltIn::ClipDistance => *output += "gl_ClipDistance",
+    TessEvalBuiltIn::CullDistance => *output += "gl_CullDistance",
   }
 
   Ok(())
@@ -779,6 +780,7 @@ fn write_geo_builtin_to_str(
     GeometryBuiltIn::Position => *output += "gl_Position",
     GeometryBuiltIn::PointSize => *output += "gl_PointSize",
     GeometryBuiltIn::ClipDistance => *output += "gl_ClipDistance",
+    GeometryBuiltIn::CullDistance => *output += "gl_CullDistance",
     GeometryBuiltIn::PrimitiveID => *output += "gl_PrimitiveID",
     GeometryBuiltIn::PrimitiveIDIn => *output += "gl_PrimitiveIDIn",
     GeometryBuiltIn::InvocationID => *output += "gl_InvocationID",
@@ -801,11 +803,13 @@ fn write_frag_builtin_to_str(
     FragmentBuiltIn::SamplePosition => *output += "gl_SamplePosition",
     FragmentBuiltIn::SampleMaskIn => *output += "gl_SampleMaskIn",
     FragmentBuiltIn::ClipDistance => *output += "gl_ClipDistance",
+    FragmentBuiltIn::CullDistance => *output += "gl_CullDistance",
     FragmentBuiltIn::PrimitiveID => *output += "gl_PrimitiveID",
     FragmentBuiltIn::Layer => *output += "gl_Layer",
     FragmentBuiltIn::ViewportIndex => *output += "gl_ViewportIndex",
     FragmentBuiltIn::FragDepth => *output += "gl_FragDepth",
     FragmentBuiltIn::SampleMask => *output += "gl_SampleMask",
+    FragmentBuiltIn::HelperInvocation => *output += "gl_HelperInvocation",
   }
 
   Ok(())
