@@ -1,9 +1,9 @@
 //! GLSL writers.
 
 use crate::{
-  ArraySpec, BuiltIn, Dim, ErasedExpr, ErasedFun, ErasedFunHandle, ErasedReturn, ErasedScope,
-  FragmentBuiltIn, GeometryBuiltIn, PrimType, ScopeInstr, ScopedHandle, Shader, ShaderDecl,
-  Swizzle, SwizzleSelector, TessCtrlBuiltIn, TessEvalBuiltIn, Type, VertexBuiltIn,
+  BuiltIn, Dim, ErasedExpr, ErasedFun, ErasedFunHandle, ErasedReturn, ErasedScope, FragmentBuiltIn,
+  GeometryBuiltIn, PrimType, ScopeInstr, ScopedHandle, Shader, ShaderDecl, Swizzle,
+  SwizzleSelector, TessCtrlBuiltIn, TessEvalBuiltIn, Type, VertexBuiltIn,
 };
 use std::fmt;
 
@@ -291,6 +291,18 @@ fn write_expr_to_str(output: &mut String, expr: &ErasedExpr) -> Result<(), Write
       )
     }
     ErasedExpr::LitBool4([x, y, z, w]) => *output += &format!("bvec4({}, {}, {}, {})", x, y, z, w),
+    ErasedExpr::Array(ty, items) => {
+      write_type_to_str(output, ty)?;
+      *output += "(";
+
+      write_expr_to_str(output, &items[0])?;
+      for item in &items[1..] {
+        *output += ", ";
+        write_expr_to_str(output, item)?;
+      }
+
+      *output += ")";
+    }
 
     ErasedExpr::MutVar(handle) => write_mut_var_to_str(output, handle)?,
 
@@ -839,12 +851,17 @@ fn write_type_to_str(output: &mut String, ty: &Type) -> Result<(), WriteError> {
   };
   *output += ty_str;
 
-  let array_spec_str = match ty.array_spec {
-    Some(ArraySpec::SizedArray(size)) => format!("[{}]", size),
-    Some(ArraySpec::UnsizedArray) => "[]".to_owned(),
-    None => String::new(),
-  };
-  *output += &array_spec_str;
+  // array notation
+  if !ty.array_dims.is_empty() {
+    *output += "[";
+
+    *output += &ty.array_dims[0].to_string();
+    for dim in &ty.array_dims[1..] {
+      *output += &format!("][{}", dim);
+    }
+
+    *output += "]";
+  }
 
   Ok(())
 }
