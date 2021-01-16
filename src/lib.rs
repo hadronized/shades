@@ -81,7 +81,7 @@ impl Shader {
     }
   }
 
-  pub fn constant<T>(&mut self, expr: Expr<T>) -> Var<T>
+  pub fn constant<T>(&mut self, expr: impl Into<Expr<T>>) -> Var<T>
   where
     T: ToType,
   {
@@ -90,7 +90,7 @@ impl Shader {
 
     self
       .decls
-      .push(ShaderDecl::Const(handle, T::ty(), expr.erased));
+      .push(ShaderDecl::Const(handle, T::ty(), expr.into().erased));
 
     Var::new(ScopedHandle::global(handle))
   }
