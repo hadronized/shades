@@ -1,8 +1,9 @@
+#![feature(min_const_generics)]
 #![cfg_attr(feature = "fun-call", feature(unboxed_closures), feature(fn_traits))]
 
 pub mod writer;
 
-use std::{marker::PhantomData, ops};
+use std::{iter::once, marker::PhantomData, ops};
 
 #[derive(Debug)]
 pub struct Shader {
@@ -89,7 +90,7 @@ impl Shader {
 
     self
       .decls
-      .push(ShaderDecl::Const(handle, T::TYPE, expr.erased));
+      .push(ShaderDecl::Const(handle, T::ty(), expr.erased));
 
     Var::new(ScopedHandle::global(handle))
   }
@@ -101,7 +102,7 @@ impl Shader {
     let handle = self.next_global_handle;
     self.next_global_handle += 1;
 
-    self.decls.push(ShaderDecl::In(handle, T::TYPE));
+    self.decls.push(ShaderDecl::In(handle, T::ty()));
 
     Var::new(ScopedHandle::global(handle))
   }
@@ -113,7 +114,7 @@ impl Shader {
     let handle = self.next_global_handle;
     self.next_global_handle += 1;
 
-    self.decls.push(ShaderDecl::Out(handle, T::TYPE));
+    self.decls.push(ShaderDecl::Out(handle, T::ty()));
 
     Var::new(ScopedHandle::global(handle))
   }
@@ -165,6 +166,8 @@ pub enum ErasedExpr {
   LitUInt4([u32; 4]),
   LitFloat4([f32; 4]),
   LitBool4([bool; 4]),
+  // arrays
+  Array(Type, Vec<ErasedExpr>),
   // var
   MutVar(ScopedHandle),
   ImmutBuiltIn(BuiltIn),
@@ -317,6 +320,15 @@ impl Expr<bool> {
 }
 
 impl<T> Expr<[T]> {
+  pub fn at(&self, index: impl Into<Expr<i32>>) -> Expr<T> {
+    Expr::new(ErasedExpr::ArrayLookup {
+      object: Box::new(self.erased.clone()),
+      index: Box::new(index.into().erased),
+    })
+  }
+}
+
+impl<T, const N: usize> Expr<[T; N]> {
   pub fn at(&self, index: impl Into<Expr<i32>>) -> Expr<T> {
     Expr::new(ErasedExpr::ArrayLookup {
       object: Box::new(self.erased.clone()),
@@ -626,6 +638,12 @@ macro_rules! impl_From_Expr_scalar {
         Self::new(ErasedExpr::$q(a))
       }
     }
+
+    impl<'a> From<&'a $t> for Expr<$t> {
+      fn from(a: &'a $t) -> Self {
+        Self::new(ErasedExpr::$q(*a))
+      }
+    }
   };
 }
 
@@ -638,6 +656,12 @@ macro_rules! impl_From_Expr_vn {
   ($t:ty, $q:ident) => {
     impl From<$t> for Expr<$t> {
       fn from(a: $t) -> Self {
+        Self::new(ErasedExpr::$q(a.0))
+      }
+    }
+
+    impl<'a> From<&'a $t> for Expr<$t> {
+      fn from(a: &'a $t) -> Self {
         Self::new(ErasedExpr::$q(a.0))
       }
     }
@@ -656,6 +680,36 @@ impl_From_Expr_vn!(V4<i32>, LitInt4);
 impl_From_Expr_vn!(V4<u32>, LitUInt4);
 impl_From_Expr_vn!(V4<f32>, LitFloat4);
 impl_From_Expr_vn!(V4<bool>, LitBool4);
+
+impl<T, const N: usize> From<[T; N]> for Expr<[T; N]>
+where
+  Expr<T>: From<T>,
+  T: Clone + ToType,
+{
+  fn from(array: [T; N]) -> Self {
+    let array = array
+      .iter()
+      .cloned()
+      .map(|t| Expr::from(t).erased)
+      .collect();
+    Self::new(ErasedExpr::Array(<[T; N] as ToType>::ty(), array))
+  }
+}
+
+impl<'a, T, const N: usize> From<&'a [T; N]> for Expr<[T; N]>
+where
+  Expr<T>: From<T>,
+  T: Clone + ToType,
+{
+  fn from(array: &'a [T; N]) -> Self {
+    let array = array
+      .iter()
+      .cloned()
+      .map(|t| Expr::from(t).erased)
+      .collect();
+    Self::new(ErasedExpr::Array(<[T; N] as ToType>::ty(), array))
+  }
+}
 
 /// Easily create literal expressions.
 ///
@@ -696,7 +750,7 @@ where
   T: ToType,
 {
   fn from(expr: Expr<T>) -> Self {
-    ErasedReturn::Expr(T::TYPE, expr.erased)
+    ErasedReturn::Expr(T::ty(), expr.erased)
   }
 }
 
@@ -729,7 +783,7 @@ macro_rules! impl_ToFun_args {
     {
       fn build_fn(self) -> FunDef<R, ($(Expr<$arg>),*)> {
         $( let $arg_ident = Expr::new(ErasedExpr::MutVar(ScopedHandle::fun_arg($arg_rank))); )*
-          let args = vec![$( $arg::TYPE ),*];
+          let args = vec![$( $arg::ty() ),*];
 
         let mut scope = Scope::new(0);
         let ret = self(&mut scope, $($arg_ident),*);
@@ -754,7 +808,7 @@ where
     let mut scope = Scope::new(0);
     let ret = self(&mut scope, arg);
 
-    let erased = ErasedFun::new(vec![A::TYPE], scope.erased, ErasedReturn::from(ret));
+    let erased = ErasedFun::new(vec![A::ty()], scope.erased, ErasedReturn::from(ret));
 
     FunDef::new(erased)
   }
@@ -1124,7 +1178,7 @@ where
     self.erased.next_var += 1;
 
     self.erased.instructions.push(ScopeInstr::VarDecl {
-      ty: T::TYPE,
+      ty: T::ty(),
       handle,
       init_value: init_value.into().erased,
     });
@@ -1193,7 +1247,7 @@ where
     body(&mut scope, &init_var);
 
     self.erased.instructions.push(ScopeInstr::For {
-      init_ty: T::TYPE,
+      init_ty: T::ty(),
       init_handle: ScopedHandle::fun_var(scope.erased.id, 0),
       init_expr: init_var.to_expr().erased,
       condition: condition.erased,
@@ -1424,12 +1478,6 @@ enum ScopeInstr {
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub enum ArraySpec {
-  SizedArray(u16),
-  UnsizedArray,
-}
-
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Dim {
   Scalar,
   D2,
@@ -1440,7 +1488,10 @@ pub enum Dim {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Type {
   prim_ty: PrimType,
-  array_spec: Option<ArraySpec>,
+  /// Array dimensions, if any.
+  ///
+  /// Dimensions are sorted from outer to inner; i.e. `[[i32; N]; M]`’s dimensions is encoded as `vec![M, N]`.
+  array_dims: Vec<usize>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -1451,37 +1502,68 @@ pub enum PrimType {
   Bool(Dim),
 }
 
-pub trait ToType {
-  const TYPE: Type;
+pub trait ToPrimType {
+  const PRIM_TYPE: PrimType;
 }
 
-macro_rules! impl_ToType {
+macro_rules! impl_ToPrimType {
   ($t:ty, $q:ident, $d:ident) => {
-    impl ToType for $t {
-      const TYPE: Type = Type {
-        prim_ty: PrimType::$q(Dim::$d),
-        array_spec: None,
-      };
+    impl ToPrimType for $t {
+      const PRIM_TYPE: PrimType = PrimType::$q(Dim::$d);
     }
   };
 }
 
-impl_ToType!(i32, Int, Scalar);
-impl_ToType!(u32, UInt, Scalar);
-impl_ToType!(f32, Float, Scalar);
-impl_ToType!(bool, Bool, Scalar);
-impl_ToType!(V2<i32>, Int, D2);
-impl_ToType!(V2<u32>, UInt, D2);
-impl_ToType!(V2<f32>, Float, D2);
-impl_ToType!(V2<bool>, Bool, D2);
-impl_ToType!(V3<i32>, Int, D3);
-impl_ToType!(V3<u32>, UInt, D3);
-impl_ToType!(V3<f32>, Float, D3);
-impl_ToType!(V3<bool>, Bool, D3);
-impl_ToType!(V4<i32>, Int, D4);
-impl_ToType!(V4<u32>, UInt, D4);
-impl_ToType!(V4<f32>, Float, D4);
-impl_ToType!(V4<bool>, Bool, D4);
+impl_ToPrimType!(i32, Int, Scalar);
+impl_ToPrimType!(u32, UInt, Scalar);
+impl_ToPrimType!(f32, Float, Scalar);
+impl_ToPrimType!(bool, Bool, Scalar);
+impl_ToPrimType!(V2<i32>, Int, D2);
+impl_ToPrimType!(V2<u32>, UInt, D2);
+impl_ToPrimType!(V2<f32>, Float, D2);
+impl_ToPrimType!(V2<bool>, Bool, D2);
+impl_ToPrimType!(V3<i32>, Int, D3);
+impl_ToPrimType!(V3<u32>, UInt, D3);
+impl_ToPrimType!(V3<f32>, Float, D3);
+impl_ToPrimType!(V3<bool>, Bool, D3);
+impl_ToPrimType!(V4<i32>, Int, D4);
+impl_ToPrimType!(V4<u32>, UInt, D4);
+impl_ToPrimType!(V4<f32>, Float, D4);
+impl_ToPrimType!(V4<bool>, Bool, D4);
+
+pub trait ToType {
+  fn ty() -> Type;
+}
+
+impl<T> ToType for T
+where
+  T: ToPrimType,
+{
+  fn ty() -> Type {
+    Type {
+      prim_ty: T::PRIM_TYPE,
+      array_dims: Vec::new(),
+    }
+  }
+}
+
+impl<T, const N: usize> ToType for [T; N]
+where
+  T: ToType,
+{
+  fn ty() -> Type {
+    let Type {
+      prim_ty,
+      array_dims,
+    } = T::ty();
+    let array_dims = once(N).chain(array_dims).collect();
+
+    Type {
+      prim_ty,
+      array_dims,
+    }
+  }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SwizzleSelector {
@@ -2770,7 +2852,7 @@ mod tests {
       ScopeInstr::VarDecl {
         ty: Type {
           prim_ty: PrimType::Int(Dim::Scalar),
-          array_spec: None,
+          array_dims: Vec::new(),
         },
         handle: ScopedHandle::fun_var(0, 0),
         init_value: ErasedExpr::LitInt(0),
@@ -2781,7 +2863,7 @@ mod tests {
       ScopeInstr::VarDecl {
         ty: Type {
           prim_ty: PrimType::UInt(Dim::Scalar),
-          array_spec: None,
+          array_dims: Vec::new(),
         },
         handle: ScopedHandle::fun_var(0, 1),
         init_value: ErasedExpr::LitUInt(1),
@@ -2792,7 +2874,7 @@ mod tests {
       ScopeInstr::VarDecl {
         ty: Type {
           prim_ty: PrimType::Bool(Dim::D3),
-          array_spec: None,
+          array_dims: Vec::new(),
         },
         handle: ScopedHandle::fun_var(0, 2),
         init_value: ErasedExpr::LitBool3([false, true, false]),
@@ -2854,7 +2936,7 @@ mod tests {
           ScopeInstr::VarDecl {
             ty: Type {
               prim_ty: PrimType::Int(Dim::Scalar),
-              array_spec: None,
+              array_dims: Vec::new(),
             },
             handle: ScopedHandle::fun_var(0, 0),
             init_value: ErasedExpr::LitInt(3),
@@ -2879,13 +2961,13 @@ mod tests {
       ShaderDecl::FunDef(0, ref fun) => {
         assert_eq!(
           fun.ret,
-          ErasedReturn::Expr(i32::TYPE, ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0)))
+          ErasedReturn::Expr(i32::ty(), ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0)))
         );
         assert_eq!(
           fun.args,
           vec![Type {
             prim_ty: PrimType::Int(Dim::Scalar),
-            array_spec: None,
+            array_dims: Vec::new(),
           }]
         );
         assert_eq!(fun.scope.instructions.len(), 1);
@@ -2894,7 +2976,7 @@ mod tests {
           ScopeInstr::VarDecl {
             ty: Type {
               prim_ty: PrimType::Int(Dim::Scalar),
-              array_spec: None,
+              array_dims: Vec::new(),
             },
             handle: ScopedHandle::fun_var(0, 0),
             init_value: ErasedExpr::LitInt(3),
@@ -2948,7 +3030,7 @@ mod tests {
       ScopeInstr::VarDecl {
         ty: Type {
           prim_ty: PrimType::Int(Dim::Scalar),
-          array_spec: None,
+          array_dims: Vec::new(),
         },
         handle: ScopedHandle::fun_var(0, 0),
         init_value: ErasedExpr::LitInt(1),
@@ -2961,7 +3043,7 @@ mod tests {
     scope.instructions.push(ScopeInstr::VarDecl {
       ty: Type {
         prim_ty: PrimType::Float(Dim::D4),
-        array_spec: None,
+        array_dims: Vec::new(),
       },
       handle: ScopedHandle::fun_var(1, 0),
       init_value: ErasedExpr::LitFloat4([1., 2., 3., 4.]),
@@ -2969,7 +3051,7 @@ mod tests {
     scope
       .instructions
       .push(ScopeInstr::Return(ErasedReturn::Expr(
-        V4::<f32>::TYPE,
+        V4::<f32>::ty(),
         ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0)),
       )));
 
@@ -2989,7 +3071,7 @@ mod tests {
     scope
       .instructions
       .push(ScopeInstr::Return(ErasedReturn::Expr(
-        V4::<f32>::TYPE,
+        V4::<f32>::ty(),
         ErasedExpr::LitFloat4([0., 0., 0., 0.]),
       )));
 
@@ -3033,7 +3115,7 @@ mod tests {
     loop_scope.instructions.push(ScopeInstr::VarDecl {
       ty: Type {
         prim_ty: PrimType::Int(Dim::Scalar),
-        array_spec: None,
+        array_dims: Vec::new(),
       },
       handle: ScopedHandle::fun_var(1, 0),
       init_value: ErasedExpr::LitInt(0),
@@ -3041,14 +3123,14 @@ mod tests {
     loop_scope
       .instructions
       .push(ScopeInstr::Return(ErasedReturn::Expr(
-        i32::TYPE,
+        i32::ty(),
         ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0)),
       )));
 
     assert_eq!(
       scope.erased.instructions[0],
       ScopeInstr::For {
-        init_ty: i32::TYPE,
+        init_ty: i32::ty(),
         init_handle: ScopedHandle::fun_var(1, 0),
         init_expr: ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0)),
         condition: ErasedExpr::Lt(
@@ -3106,6 +3188,30 @@ mod tests {
         object: Box::new(vertex.clip_distance.erased.clone()),
         index: Box::new(ErasedExpr::LitInt(1)),
       }
+    );
+  }
+
+  #[test]
+  fn array_creation() {
+    let _ = Expr::from([1, 2, 3]);
+    let _ = Expr::from(&[1, 2, 3]);
+    let two_d = Expr::from([[1, 2], [3, 4]]);
+
+    assert_eq!(
+      two_d.erased,
+      ErasedExpr::Array(
+        <[[i32; 2]; 2] as ToType>::ty(),
+        vec![
+          ErasedExpr::Array(
+            <[i32; 2] as ToType>::ty(),
+            vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)]
+          ),
+          ErasedExpr::Array(
+            <[i32; 2] as ToType>::ty(),
+            vec![ErasedExpr::LitInt(3), ErasedExpr::LitInt(4)]
+          )
+        ]
+      )
     );
   }
 }
