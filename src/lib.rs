@@ -2897,6 +2897,99 @@ impl_FloatingExt!(V2<f32>, V2<bool>);
 impl_FloatingExt!(V3<f32>, V3<bool>);
 impl_FloatingExt!(V4<f32>, V4<bool>);
 
+pub trait Geometry: Sized {
+  type LengthExpr;
+
+  fn length(&self) -> Self::LengthExpr;
+
+  fn distance(&self, other: impl Into<Self>) -> Self::LengthExpr;
+
+  fn dot(&self, other: impl Into<Self>) -> Self::LengthExpr;
+
+  fn cross(&self, other: impl Into<Self>) -> Self;
+
+  fn normalize(&self) -> Self;
+
+  fn face_forward(&self, normal: impl Into<Self>, reference: impl Into<Self>) -> Self;
+
+  fn reflect(&self, normal: impl Into<Self>) -> Self;
+
+  fn refract(&self, normal: impl Into<Self>, eta: impl Into<Expr<f32>>) -> Self;
+}
+
+macro_rules! impl_Geometry {
+  ($t:ty, $l:ty) => {
+    impl Geometry for Expr<$t> {
+      type LengthExpr = Expr<$l>;
+
+      fn length(&self) -> Self::LengthExpr {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Length,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn distance(&self, other: impl Into<Self>) -> Self::LengthExpr {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Distance,
+          vec![self.erased.clone(), other.into().erased],
+        ))
+      }
+
+      fn dot(&self, other: impl Into<Self>) -> Self::LengthExpr {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Dot,
+          vec![self.erased.clone(), other.into().erased],
+        ))
+      }
+
+      fn cross(&self, other: impl Into<Self>) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Cross,
+          vec![self.erased.clone(), other.into().erased],
+        ))
+      }
+
+      fn normalize(&self) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Normalize,
+          vec![self.erased.clone()],
+        ))
+      }
+
+      fn face_forward(&self, normal: impl Into<Self>, reference: impl Into<Self>) -> Self {
+        // note: this function call is super weird as the normal and incident (i.e. self) arguments are swapped
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::FaceForward,
+          vec![
+            normal.into().erased,
+            self.erased.clone(),
+            reference.into().erased,
+          ],
+        ))
+      }
+
+      fn reflect(&self, normal: impl Into<Self>) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Reflect,
+          vec![self.erased.clone(), normal.into().erased],
+        ))
+      }
+
+      fn refract(&self, normal: impl Into<Self>, eta: impl Into<Expr<f32>>) -> Self {
+        Expr::new(ErasedExpr::FunCall(
+          ErasedFunHandle::Refract,
+          vec![self.erased.clone(), normal.into().erased, eta.into().erased],
+        ))
+      }
+    }
+  };
+}
+
+impl_Geometry!(V2<f32>, f32);
+impl_Geometry!(V3<f32>, f32);
+impl_Geometry!(V4<f32>, f32);
+
 #[cfg(test)]
 mod tests {
   use super::*;
