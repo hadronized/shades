@@ -21,10 +21,10 @@ impl fmt::Display for WriteError {
 
 impl std::error::Error for WriteError {}
 
-pub fn write_shader_to_str(shader: &Shader) -> Result<String, WriteError> {
+pub fn write_shader_to_str(shader: impl AsRef<Shader>) -> Result<String, WriteError> {
   let mut output = String::new();
 
-  for decl in &shader.decls {
+  for decl in &shader.as_ref().decls {
     match decl {
       ShaderDecl::Main(fun) => write_main_fun_to_str(&mut output, fun)?,
       ShaderDecl::FunDef(handle, fun) => write_fun_def_to_str(&mut output, *handle, fun)?,
