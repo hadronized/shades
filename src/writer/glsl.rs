@@ -246,6 +246,7 @@ fn write_output_to_str(output: &mut String, handle: u16, ty: &Type) -> Result<()
   write_type_to_str(output, ty)?;
 
   // the handle is treated as a global
+  *output += " ";
   write_scoped_handle_to_str(output, &ScopedHandle::global(handle))?;
 
   *output += ";\n";
