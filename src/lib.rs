@@ -120,6 +120,12 @@ impl Shader {
   }
 }
 
+impl AsRef<Shader> for Shader {
+  fn as_ref(&self) -> &Shader {
+    self
+  }
+}
+
 #[derive(Debug)]
 pub(crate) enum ShaderDecl {
   Main(ErasedFun),
@@ -259,6 +265,102 @@ where
     Expr::new(ErasedExpr::Neq(
       Box::new(self.erased.clone()),
       Box::new(rhs.into().erased),
+    ))
+  }
+}
+
+/// Trait allowing to call vec2 constructors with various arguments.
+pub trait Vec2<A> {
+  fn vec2(args: A) -> Self;
+}
+
+impl<'a, T> Vec2<(&'a Expr<T>, &'a Expr<T>)> for Expr<V2<T>> {
+  fn vec2(args: (&'a Expr<T>, &'a Expr<T>)) -> Self {
+    let (x, y) = args;
+    Expr::new(ErasedExpr::FunCall(
+      ErasedFunHandle::Vec2,
+      vec![x.clone().erased, y.clone().erased],
+    ))
+  }
+}
+
+/// Trait allowing to call vec3 constructors with various arguments.
+///
+/// This trait is useful whenever you want to create an expression such as a vecN by
+/// concatenating smaller vecM, such as vec3 from vec2 + scalar.
+pub trait Vec3<A> {
+  fn vec3(args: A) -> Self;
+}
+
+impl<'a, T> Vec3<(&'a Expr<V2<T>>, &'a Expr<T>)> for Expr<V3<T>> {
+  fn vec3(args: (&'a Expr<V2<T>>, &'a Expr<T>)) -> Self {
+    let (xy, z) = args;
+    Expr::new(ErasedExpr::FunCall(
+      ErasedFunHandle::Vec3,
+      vec![xy.clone().erased, z.clone().erased],
+    ))
+  }
+}
+
+impl<'a, T> Vec3<(&'a Expr<T>, &'a Expr<T>, &'a Expr<T>)> for Expr<V3<T>> {
+  fn vec3(args: (&'a Expr<T>, &'a Expr<T>, &'a Expr<T>)) -> Self {
+    let (x, y, z) = args;
+    Expr::new(ErasedExpr::FunCall(
+      ErasedFunHandle::Vec3,
+      vec![x.clone().erased, y.clone().erased, z.clone().erased],
+    ))
+  }
+}
+
+/// Trait allowing to call vec4 constructors with various arguments.
+///
+/// This trait is useful whenever you want to create an expression such as a vecN by
+/// concatenating smaller vecM, such as vec4 from vec3 + scalar or two vec2, for instance.
+pub trait Vec4<A> {
+  fn vec4(args: A) -> Self;
+}
+
+impl<'a, T> Vec4<(&'a Expr<V3<T>>, &'a Expr<T>)> for Expr<V4<T>> {
+  fn vec4(args: (&'a Expr<V3<T>>, &'a Expr<T>)) -> Self {
+    let (xyz, w) = args;
+    Expr::new(ErasedExpr::FunCall(
+      ErasedFunHandle::Vec4,
+      vec![xyz.clone().erased, w.clone().erased],
+    ))
+  }
+}
+
+impl<'a, T> Vec4<(&'a Expr<V2<T>>, &'a Expr<V2<T>>)> for Expr<V4<T>> {
+  fn vec4(args: (&'a Expr<V2<T>>, &'a Expr<V2<T>>)) -> Self {
+    let (xy, zw) = args;
+    Expr::new(ErasedExpr::FunCall(
+      ErasedFunHandle::Vec4,
+      vec![xy.clone().erased, zw.clone().erased],
+    ))
+  }
+}
+
+impl<'a, T> Vec4<(&'a Expr<V2<T>>, &'a Expr<T>, &'a Expr<T>)> for Expr<V4<T>> {
+  fn vec4(args: (&'a Expr<V2<T>>, &'a Expr<T>, &'a Expr<T>)) -> Self {
+    let (xy, z, w) = args;
+    Expr::new(ErasedExpr::FunCall(
+      ErasedFunHandle::Vec4,
+      vec![xy.clone().erased, z.clone().erased, w.clone().erased],
+    ))
+  }
+}
+
+impl<'a, T> Vec4<(&'a Expr<T>, &'a Expr<T>, &'a Expr<T>, &'a Expr<T>)> for Expr<V4<T>> {
+  fn vec4(args: (&'a Expr<T>, &'a Expr<T>, &'a Expr<T>, &'a Expr<T>)) -> Self {
+    let (x, y, z, w) = args;
+    Expr::new(ErasedExpr::FunCall(
+      ErasedFunHandle::Vec4,
+      vec![
+        x.clone().erased,
+        y.clone().erased,
+        z.clone().erased,
+        w.clone().erased,
+      ],
     ))
   }
 }
@@ -755,6 +857,57 @@ macro_rules! lit {
   };
 }
 
+#[macro_export]
+macro_rules! vec2 {
+  ($a:expr) => {
+    todo!("vec2 cast operator missing");
+  };
+
+  ($xy:expr, $z:expr) => {{
+    use $crate::Vec2 as _;
+    $crate::Expr::vec2((&$xy, &$z))
+  }};
+}
+
+#[macro_export]
+macro_rules! vec3 {
+  ($a:expr) => {
+    todo!("vec3 cast operator missing");
+  };
+
+  ($xy:expr, $z:expr) => {{
+    use $crate::Vec3 as _;
+    $crate::Expr::vec3((&$xy, &$z))
+  }};
+
+  ($x:expr, $y:expr, $z:expr) => {{
+    use $crate::Vec3 as _;
+    $crate::Expr::vec3((&$x, &$y, &$z))
+  }};
+}
+
+#[macro_export]
+macro_rules! vec4 {
+  ($a:expr) => {
+    todo!("vec4 cast operator missing");
+  };
+
+  ($xy:expr, $zw:expr) => {{
+    use $crate::Vec4 as _;
+    $crate::Expr::vec4((&$xy, &$zw))
+  }};
+
+  ($xy:expr, $z:expr, $w:expr) => {{
+    use $crate::Vec4 as _;
+    $crate::Expr::vec4((&$xy, &$z, &$w))
+  }};
+
+  ($x:expr, $y:expr, $z:expr, $w:expr) => {{
+    use $crate::Vec4 as _;
+    $crate::Expr::vec4((&$x, &$y, &$z, &$w))
+  }};
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErasedReturn {
   Void,
@@ -1017,6 +1170,10 @@ impl_FunCall_rec!(
 #[derive(Clone, Debug, PartialEq)]
 pub enum ErasedFunHandle {
   Main,
+  // cast operators
+  Vec2,
+  Vec3,
+  Vec4,
   // trigonometry
   Radians,
   Degrees,
@@ -3232,6 +3389,72 @@ mod tests {
             <[i32; 2] as ToType>::ty(),
             vec![ErasedExpr::LitInt(3), ErasedExpr::LitInt(4)]
           )
+        ]
+      )
+    );
+  }
+
+  #[test]
+  fn vec3_ctor() {
+    let xy = lit!(1., 2.);
+    let xyz2 = vec3!(xy, lit!(3.));
+    let xyz3 = vec3!(lit!(1.), lit!(2.), lit!(3.));
+
+    assert_eq!(
+      xyz2.erased,
+      ErasedExpr::FunCall(ErasedFunHandle::Vec3, vec![xy.erased, lit!(3.).erased])
+    );
+
+    assert_eq!(
+      xyz3.erased,
+      ErasedExpr::FunCall(
+        ErasedFunHandle::Vec3,
+        vec![lit!(1.).erased, lit!(2.).erased, lit!(3.).erased]
+      )
+    );
+  }
+
+  #[test]
+  fn vec4_ctor() {
+    let xy = lit!(1., 2.);
+    let xyzw22 = vec4!(xy, xy);
+    let xyzw211 = vec4!(xy, lit!(3.), lit!(4.));
+    let xyzw31 = vec4!(lit!(1., 2., 3.), lit!(4.));
+    let xyzw4 = vec4!(lit!(1.), lit!(2.), lit!(3.), lit!(4.));
+
+    assert_eq!(
+      xyzw22.erased,
+      ErasedExpr::FunCall(
+        ErasedFunHandle::Vec4,
+        vec![xy.clone().erased, xy.clone().erased]
+      )
+    );
+
+    assert_eq!(
+      xyzw211.erased,
+      ErasedExpr::FunCall(
+        ErasedFunHandle::Vec4,
+        vec![xy.clone().erased, lit!(3.).erased, lit!(4.).erased]
+      )
+    );
+
+    assert_eq!(
+      xyzw31.erased,
+      ErasedExpr::FunCall(
+        ErasedFunHandle::Vec4,
+        vec![lit!(1., 2., 3.).erased, lit!(4.).erased]
+      )
+    );
+
+    assert_eq!(
+      xyzw4.erased,
+      ErasedExpr::FunCall(
+        ErasedFunHandle::Vec4,
+        vec![
+          lit!(1.).erased,
+          lit!(2.).erased,
+          lit!(3.).erased,
+          lit!(4.).erased
         ]
       )
     );
