@@ -711,6 +711,28 @@ where
   }
 }
 
+impl<T, const N: usize> From<[Expr<T>; N]> for Expr<[T; N]>
+where
+  Expr<T>: From<T>,
+  T: ToType,
+{
+  fn from(array: [Expr<T>; N]) -> Self {
+    let array = array.iter().cloned().map(|e| e.erased).collect();
+    Self::new(ErasedExpr::Array(<[T; N] as ToType>::ty(), array))
+  }
+}
+
+impl<'a, T, const N: usize> From<&'a [Expr<T>; N]> for Expr<[T; N]>
+where
+  Expr<T>: From<T>,
+  T: ToType,
+{
+  fn from(array: &'a [Expr<T>; N]) -> Self {
+    let array = array.iter().cloned().map(|e| e.erased).collect();
+    Self::new(ErasedExpr::Array(<[T; N] as ToType>::ty(), array))
+  }
+}
+
 /// Easily create literal expressions.
 ///
 /// TODO
