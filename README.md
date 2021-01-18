@@ -118,3 +118,4 @@ The crate is, as of nowadays, still very experimental. Here’s a list of things
 [selda]: http://hackage.haskell.org/package/selda
 [proc-macro]: https://doc.rust-lang.org/reference/procedural-macros.html
 [rust-gpu]: https://github.com/EmbarkStudios/rust-gpu
+[do-notation]: https://crates.io/crates/do-notation
