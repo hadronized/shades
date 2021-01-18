@@ -7,6 +7,15 @@ soundness and typing. Because shaders are written in Rust, this crate is complet
 target any shading language – the current tier-1 language being [GLSL]. The EDSL allows to statically type shaders
 while still generating the actual shading code at runtime.
 
+<!-- vim-markdown-toc GFM -->
+
+* [Motivation](#motivation)
+  * [Influences](#influences)
+* [Why you would love this](#why-you-would-love-this)
+* [Why you wouldn’t love this](#why-you-wouldnt-love-this)
+
+<!-- vim-markdown-toc -->
+
 ## Motivation
 
 In typical graphics libraries and engines, shaders are _opaque strings_ – either hard-coded in the program, read from
@@ -100,6 +109,7 @@ The crate is, as of nowadays, still very experimental. Here’s a list of things
   with a much more convoluted way with this crate. The generated code is the same, but it is correctly more verbose via
   this crate.
 
+[@phaazon]: https://github.com/phaazon
 [EDSL]: https://en.wikipedia.org/wiki/Domain-specific_language#External_and_Embedded_Domain_Specific_Languages
 [shaders]: https://en.wikipedia.org/wiki/Shader
 [GLSL]: https://www.khronos.org/registry/OpenGL/specs/gl/GLSLangSpec.4.60.pdf
