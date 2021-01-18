@@ -114,5 +114,7 @@ The crate is, as of nowadays, still very experimental. Here’s a list of things
 [shaders]: https://en.wikipedia.org/wiki/Shader
 [GLSL]: https://www.khronos.org/registry/OpenGL/specs/gl/GLSLangSpec.4.60.pdf
 [Haskell]: https://www.haskell.org
+[blaze-html]: http://hackage.haskell.org/package/blaze-html
+[selda]: http://hackage.haskell.org/package/selda
 [proc-macro]: https://doc.rust-lang.org/reference/procedural-macros.html
 [rust-gpu]: https://github.com/EmbarkStudios/rust-gpu
