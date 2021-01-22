@@ -274,12 +274,12 @@ pub trait Vec2<A> {
   fn vec2(args: A) -> Self;
 }
 
-impl<'a, T> Vec2<(&'a Expr<T>, &'a Expr<T>)> for Expr<V2<T>> {
-  fn vec2(args: (&'a Expr<T>, &'a Expr<T>)) -> Self {
+impl<T> Vec2<(Expr<T>, Expr<T>)> for Expr<V2<T>> {
+  fn vec2(args: (Expr<T>, Expr<T>)) -> Self {
     let (x, y) = args;
     Expr::new(ErasedExpr::FunCall(
       ErasedFunHandle::Vec2,
-      vec![x.clone().erased, y.clone().erased],
+      vec![x.erased, y.erased],
     ))
   }
 }
@@ -292,22 +292,22 @@ pub trait Vec3<A> {
   fn vec3(args: A) -> Self;
 }
 
-impl<'a, T> Vec3<(&'a Expr<V2<T>>, &'a Expr<T>)> for Expr<V3<T>> {
-  fn vec3(args: (&'a Expr<V2<T>>, &'a Expr<T>)) -> Self {
+impl<T> Vec3<(Expr<V2<T>>, Expr<T>)> for Expr<V3<T>> {
+  fn vec3(args: (Expr<V2<T>>, Expr<T>)) -> Self {
     let (xy, z) = args;
     Expr::new(ErasedExpr::FunCall(
       ErasedFunHandle::Vec3,
-      vec![xy.clone().erased, z.clone().erased],
+      vec![xy.erased, z.erased],
     ))
   }
 }
 
-impl<'a, T> Vec3<(&'a Expr<T>, &'a Expr<T>, &'a Expr<T>)> for Expr<V3<T>> {
-  fn vec3(args: (&'a Expr<T>, &'a Expr<T>, &'a Expr<T>)) -> Self {
+impl<T> Vec3<(Expr<T>, Expr<T>, Expr<T>)> for Expr<V3<T>> {
+  fn vec3(args: (Expr<T>, Expr<T>, Expr<T>)) -> Self {
     let (x, y, z) = args;
     Expr::new(ErasedExpr::FunCall(
       ErasedFunHandle::Vec3,
-      vec![x.clone().erased, y.clone().erased, z.clone().erased],
+      vec![x.erased, y.erased, z.erased],
     ))
   }
 }
@@ -320,47 +320,42 @@ pub trait Vec4<A> {
   fn vec4(args: A) -> Self;
 }
 
-impl<'a, T> Vec4<(&'a Expr<V3<T>>, &'a Expr<T>)> for Expr<V4<T>> {
-  fn vec4(args: (&'a Expr<V3<T>>, &'a Expr<T>)) -> Self {
+impl<T> Vec4<(Expr<V3<T>>, Expr<T>)> for Expr<V4<T>> {
+  fn vec4(args: (Expr<V3<T>>, Expr<T>)) -> Self {
     let (xyz, w) = args;
     Expr::new(ErasedExpr::FunCall(
       ErasedFunHandle::Vec4,
-      vec![xyz.clone().erased, w.clone().erased],
+      vec![xyz.erased, w.erased],
     ))
   }
 }
 
-impl<'a, T> Vec4<(&'a Expr<V2<T>>, &'a Expr<V2<T>>)> for Expr<V4<T>> {
-  fn vec4(args: (&'a Expr<V2<T>>, &'a Expr<V2<T>>)) -> Self {
+impl<T> Vec4<(Expr<V2<T>>, Expr<V2<T>>)> for Expr<V4<T>> {
+  fn vec4(args: (Expr<V2<T>>, Expr<V2<T>>)) -> Self {
     let (xy, zw) = args;
     Expr::new(ErasedExpr::FunCall(
       ErasedFunHandle::Vec4,
-      vec![xy.clone().erased, zw.clone().erased],
+      vec![xy.erased, zw.erased],
     ))
   }
 }
 
-impl<'a, T> Vec4<(&'a Expr<V2<T>>, &'a Expr<T>, &'a Expr<T>)> for Expr<V4<T>> {
-  fn vec4(args: (&'a Expr<V2<T>>, &'a Expr<T>, &'a Expr<T>)) -> Self {
+impl<'a, T> Vec4<(Expr<V2<T>>, Expr<T>, Expr<T>)> for Expr<V4<T>> {
+  fn vec4(args: (Expr<V2<T>>, Expr<T>, Expr<T>)) -> Self {
     let (xy, z, w) = args;
     Expr::new(ErasedExpr::FunCall(
       ErasedFunHandle::Vec4,
-      vec![xy.clone().erased, z.clone().erased, w.clone().erased],
+      vec![xy.erased, z.erased, w.erased],
     ))
   }
 }
 
-impl<'a, T> Vec4<(&'a Expr<T>, &'a Expr<T>, &'a Expr<T>, &'a Expr<T>)> for Expr<V4<T>> {
-  fn vec4(args: (&'a Expr<T>, &'a Expr<T>, &'a Expr<T>, &'a Expr<T>)) -> Self {
+impl<'a, T> Vec4<(Expr<T>, Expr<T>, Expr<T>, Expr<T>)> for Expr<V4<T>> {
+  fn vec4(args: (Expr<T>, Expr<T>, Expr<T>, Expr<T>)) -> Self {
     let (x, y, z, w) = args;
     Expr::new(ErasedExpr::FunCall(
       ErasedFunHandle::Vec4,
-      vec![
-        x.clone().erased,
-        y.clone().erased,
-        z.clone().erased,
-        w.clone().erased,
-      ],
+      vec![x.erased, y.erased, z.erased, w.erased],
     ))
   }
 }
@@ -865,7 +860,7 @@ macro_rules! vec2 {
 
   ($xy:expr, $z:expr) => {{
     use $crate::Vec2 as _;
-    $crate::Expr::vec2((&$xy, &$z))
+    $crate::Expr::vec2(($crate::Expr::from(&$xy), $crate::Expr::from(&$z)))
   }};
 }
 
@@ -877,12 +872,16 @@ macro_rules! vec3 {
 
   ($xy:expr, $z:expr) => {{
     use $crate::Vec3 as _;
-    $crate::Expr::vec3((&$xy, &$z))
+    $crate::Expr::vec3(($crate::Expr::from(&$xy), $crate::Expr::from(&$z)))
   }};
 
   ($x:expr, $y:expr, $z:expr) => {{
     use $crate::Vec3 as _;
-    $crate::Expr::vec3((&$x, &$y, &$z))
+    $crate::Expr::vec3((
+      $crate::Expr::from(&$x),
+      $crate::Expr::from(&$y),
+      $crate::Expr::from(&$z),
+    ))
   }};
 }
 
@@ -894,17 +893,26 @@ macro_rules! vec4 {
 
   ($xy:expr, $zw:expr) => {{
     use $crate::Vec4 as _;
-    $crate::Expr::vec4((&$xy, &$zw))
+    $crate::Expr::vec4(($crate::Expr::from(&$xy), $crate::Expr::from(&$zw)))
   }};
 
   ($xy:expr, $z:expr, $w:expr) => {{
     use $crate::Vec4 as _;
-    $crate::Expr::vec4((&$xy, &$z, &$w))
+    $crate::Expr::vec4((
+      $crate::Expr::from(&$xy),
+      $crate::Expr::from(&$z),
+      $crate::Expr::from(&$w),
+    ))
   }};
 
   ($x:expr, $y:expr, $z:expr, $w:expr) => {{
     use $crate::Vec4 as _;
-    $crate::Expr::vec4((&$x, &$y, &$z, &$w))
+    $crate::Expr::vec4((
+      $crate::Expr::from(&$x),
+      $crate::Expr::from(&$y),
+      $crate::Expr::from(&$z),
+      $crate::Expr::from(&$w),
+    ))
   }};
 }
 
@@ -935,7 +943,7 @@ pub trait ToFun<R, A> {
 
 impl<F, R> ToFun<R, ()> for F
 where
-  Self: Fn(&mut Scope<R>) -> R,
+  Self: FnOnce(&mut Scope<R>) -> R,
   ErasedReturn: From<R>,
 {
   fn build_fn(self) -> FunDef<R, ()> {
@@ -952,7 +960,7 @@ macro_rules! impl_ToFun_args {
   ($($arg:ident , $arg_ident:ident , $arg_rank:expr),*) => {
     impl<F, R, $($arg),*> ToFun<R, ($(Expr<$arg>),*)> for F
     where
-      Self: Fn(&mut Scope<R>, $(Expr<$arg>),*) -> R,
+      Self: FnOnce(&mut Scope<R>, $(Expr<$arg>),*) -> R,
       ErasedReturn: From<R>,
       $($arg: ToType),*
     {
@@ -973,7 +981,7 @@ macro_rules! impl_ToFun_args {
 
 impl<F, R, A> ToFun<R, Expr<A>> for F
 where
-  Self: Fn(&mut Scope<R>, Expr<A>) -> R,
+  Self: FnOnce(&mut Scope<R>, Expr<A>) -> R,
   ErasedReturn: From<R>,
   A: ToType,
 {
@@ -1382,7 +1390,7 @@ where
   pub fn when<'a>(
     &'a mut self,
     condition: impl Into<Expr<bool>>,
-    body: impl Fn(&mut Scope<R>),
+    body: impl FnOnce(&mut Scope<R>),
   ) -> When<'a, R> {
     let mut scope = self.deeper();
     body(&mut scope);
@@ -1398,7 +1406,7 @@ where
   pub fn unless<'a>(
     &'a mut self,
     condition: impl Into<Expr<bool>>,
-    body: impl Fn(&mut Scope<R>),
+    body: impl FnOnce(&mut Scope<R>),
   ) -> When<'a, R> {
     self.when(!condition.into(), body)
   }
@@ -1406,9 +1414,9 @@ where
   pub fn loop_for<T>(
     &mut self,
     init_value: impl Into<Expr<T>>,
-    condition: impl Fn(&Expr<T>) -> Expr<bool>,
-    iter_fold: impl Fn(&Expr<T>) -> Expr<T>,
-    body: impl Fn(&mut Scope<R>, &Expr<T>),
+    condition: impl FnOnce(&Expr<T>) -> Expr<bool>,
+    iter_fold: impl FnOnce(&Expr<T>) -> Expr<T>,
+    body: impl FnOnce(&mut Scope<R>, &Expr<T>),
   ) where
     T: ToType,
   {
@@ -1435,7 +1443,7 @@ where
     });
   }
 
-  pub fn loop_while(&mut self, condition: impl Into<Expr<bool>>, body: impl Fn(&mut Scope<R>)) {
+  pub fn loop_while(&mut self, condition: impl Into<Expr<bool>>, body: impl FnOnce(&mut Scope<R>)) {
     let mut scope = self.deeper();
     body(&mut scope);
 
@@ -1490,7 +1498,7 @@ impl<R> When<'_, R>
 where
   ErasedReturn: From<R>,
 {
-  pub fn or_else(self, condition: impl Into<Expr<bool>>, body: impl Fn(&mut Scope<R>)) -> Self {
+  pub fn or_else(self, condition: impl Into<Expr<bool>>, body: impl FnOnce(&mut Scope<R>)) -> Self {
     let mut scope = self.parent_scope.deeper();
     body(&mut scope);
 
@@ -1506,7 +1514,7 @@ where
     self
   }
 
-  pub fn or(self, body: impl Fn(&mut Scope<R>)) {
+  pub fn or(self, body: impl FnOnce(&mut Scope<R>)) {
     let mut scope = self.parent_scope.deeper();
     body(&mut scope);
 
@@ -3509,11 +3517,11 @@ mod tests {
 
   #[test]
   fn vec4_ctor() {
-    let xy = lit!(1., 2.);
+    let xy: Expr<V2<f32>> = lit!(1., 2.);
     let xyzw22 = vec4!(xy, xy);
-    let xyzw211 = vec4!(xy, lit!(3.), lit!(4.));
-    let xyzw31 = vec4!(lit!(1., 2., 3.), lit!(4.));
-    let xyzw4 = vec4!(lit!(1.), lit!(2.), lit!(3.), lit!(4.));
+    let xyzw211 = vec4!(xy, 3., 4.);
+    let xyzw31 = vec4!(vec3!(1., 2., 3.), 4.);
+    let xyzw4 = vec4!(1., 2., 3., 4.);
 
     assert_eq!(
       xyzw22.erased,
@@ -3535,7 +3543,7 @@ mod tests {
       xyzw31.erased,
       ErasedExpr::FunCall(
         ErasedFunHandle::Vec4,
-        vec![lit!(1., 2., 3.).erased, lit!(4.).erased]
+        vec![vec3!(1., 2., 3.).erased, lit!(4.).erased]
       )
     );
 
