@@ -1579,6 +1579,12 @@ impl<T> Var<[T]> {
   }
 }
 
+impl<T, const N: usize> Var<[T; N]> {
+  pub fn at(&self, index: impl Into<Expr<i32>>) -> Var<T> {
+    Var(self.to_expr().at(index))
+  }
+}
+
 impl<T> ops::Deref for Var<T>
 where
   T: ?Sized,
