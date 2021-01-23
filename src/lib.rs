@@ -1306,7 +1306,7 @@ pub enum ErasedFunHandle {
   UserDefined(u16),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct FunDef<R, A> {
   erased: ErasedFun,
   _phantom: PhantomData<(R, A)>,
@@ -1321,7 +1321,7 @@ impl<R, A> FunDef<R, A> {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct ErasedFun {
   args: Vec<Type>,
   scope: ErasedScope,
@@ -1334,7 +1334,7 @@ impl ErasedFun {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Scope<R> {
   erased: ErasedScope,
   _phantom: PhantomData<R>,
@@ -1486,6 +1486,7 @@ impl ErasedScope {
   }
 }
 
+#[derive(Debug)]
 pub struct When<'a, R> {
   /// The scope from which this [`When`] expression comes from.
   ///
@@ -1622,7 +1623,7 @@ impl ScopedHandle {
   }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 enum ScopeInstr {
   VarDecl {
     ty: Type,
@@ -2012,6 +2013,7 @@ pub enum FragmentBuiltIn {
 }
 
 // vertex shader built-ins
+#[derive(Debug)]
 pub struct VertexShaderEnv {
   // inputs
   pub vertex_id: Expr<i32>,
@@ -2049,6 +2051,7 @@ impl VertexShaderEnv {
 }
 
 // tessellation control shader built-ins
+#[derive(Debug)]
 pub struct TessCtrlShaderEnv {
   // inputs
   pub max_patch_vertices_in: Expr<i32>,
@@ -2094,6 +2097,7 @@ impl TessCtrlShaderEnv {
   }
 }
 
+#[derive(Debug)]
 pub struct TessControlPerVertexIn;
 
 impl Expr<TessControlPerVertexIn> {
@@ -2142,6 +2146,7 @@ impl Expr<TessControlPerVertexIn> {
   }
 }
 
+#[derive(Debug)]
 pub struct TessControlPerVertexOut(());
 
 impl Expr<TessControlPerVertexOut> {
@@ -2191,6 +2196,7 @@ impl Expr<TessControlPerVertexOut> {
 }
 
 // tessellation evalution shader built-ins; inputs
+#[derive(Debug)]
 pub struct TessEvalShaderEnv {
   // inputs
   pub patch_vertices_in: Expr<i32>,
@@ -2246,6 +2252,7 @@ impl TessEvalShaderEnv {
   }
 }
 
+#[derive(Debug)]
 pub struct TessEvaluationPerVertexIn;
 
 impl Expr<TessEvaluationPerVertexIn> {
@@ -2295,6 +2302,7 @@ impl Expr<TessEvaluationPerVertexIn> {
 }
 
 // geometry shader built-ins; inputs
+#[derive(Debug)]
 pub struct GeometryShaderEnv {
   // inputs
   pub primitive_id_in: Expr<i32>,
@@ -2354,6 +2362,7 @@ impl GeometryShaderEnv {
   }
 }
 
+#[derive(Debug)]
 pub struct GeometryPerVertexIn;
 
 impl Expr<GeometryPerVertexIn> {
@@ -2403,6 +2412,7 @@ impl Expr<GeometryPerVertexIn> {
 }
 
 // fragment shader built-ins
+#[derive(Debug)]
 pub struct FragmentShaderEnv {
   // inputs
   pub frag_coord: Expr<V4<f32>>,
