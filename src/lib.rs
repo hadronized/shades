@@ -1,48 +1,308 @@
-#![feature(min_const_generics)]
+//! Shades, a shading language EDSL in vanilla Rust.
+//!
+//! This crate provides an [EDSL] to build [shaders], leveraging the Rust compiler (`rustc`) and its type system to ensure
+//! soundness and typing. Because shaders are written in Rust, this crate is completely language agnostic: it can in theory
+//! target any shading language – the current tier-1 language being [GLSL]. The EDSL allows to statically type shaders
+//! while still generating the actual shading code at runtime.
+//!
+//! # Motivation
+//!
+//! In typical graphics libraries and engines, shaders are _opaque strings_ – either hard-coded in the program, read from
+//! a file at runtime, constructed via fragments of strings concatenated with each others, etc. The strings are passed to
+//! the graphics drivers, which will _compile_ and _link_ the code at runtime. It is the responsibility of the runtime
+//! (i.e. the graphics library, engine or the application) to check for errors and react correctly. Shading languages can
+//! also be compiled _off-line_, and their bytecode is then used at runtime (c.f. SPIR-V).
+//!
+//! For a lot of people, this has proven okay for decades and even allowed _live coding_: because the shading code is
+//! loaded at runtime, it is possible to re-load, re-compile and re-link it every time a change happens. However, this comes
+//! with a non-negligible drawbacks:
+//!
+//! - The shading code is often checked either at runtime. In this case, ill-written shaders won’t be visible by
+//!   programmers until the runtime is executed and the GPU driver refuses the shading code.
+//! - When compiled off-line are transpiled to bytecode, extra specialized tooling is required (such as an external program,
+//!   a language extension, etc.).
+//! - Writing shaders imply learning a new language. The most widespread shading language is [GLSL] but others exist,
+//!   meaning that people will have to learn specialized languages and, most of the time, weaker compilation systems. For
+//!   instance, [GLSL] doesn’t have anything natively to include other [GLSL] files and it’s an old C-like language.
+//! - Even though the appeal of using a language in a dynamic way can seem appealing, going from a dynamic language and
+//!   using it in a statically manner is not an easy task. However, going the other way around (from a static to dynamic)
+//!   is much much simpler. In other terms: it is possible to live-reload a compiled language with the help of low-level
+//!   system primitives, such as `dlopen`, `dlsym`, etc. It’s more work but it’s possible. And
+//!   [Rust can do it too](https://crates.io/crates/libloading).
+//!
+//! The author ([@phaazon]) of this crate thinks that shading code is still code, and that it should be treated as such.
+//! It’s easy to see the power of live-coding / reloading, but it’s more important to provide a shading code that is
+//! statically proven sound and with less bugs that without the static check. Also, as stated above, using a compiled
+//! approach doesn’t prevent from writing a relocatable object, compiled isolated and reload this object, providing roughly
+//! the same functionality as live-coding.
+//!
+//! Another important point is the choice of using an EDSL. Some people would argue that Rust has other interesting and
+//! powerful ways to achieve the same goal. It is important to notice that this crate doesn’t provide a compiler to compile
+//! Rust code to a shading language. Instead, it provides a Rust crate that will still generate the shading code at runtime.
+//! Other alternatives would be using a [proc-macro]. Several crates who do this:
+//!
+//! - You can use the [glsl] and [glsl-quasiquote] crates. The first one is a parser for GLSL and the second one allows you
+//!   to write GLSL in a quasi-quoter (`glsl! { /* here */  }`) and get it compiled and check at runtime. It’s still
+//!   [GLSL], though, and the possibilities of runtime combinations are much less than an EDSL.
+//! - You can use the [rust-gpu] project. It’s a similar project but they use a proc-macro, compiling Rust code
+//!   representing GPU code. It requires a specific toolchain and doesn’t operate at the same level of this crate — it can
+//!   even compile a large part of the `core` library.
+//!
+//! ## Influences
+//!
+//! - [blaze-html], a [Haskell] [EDSL] to build HTML in [Haskell].
+//! - [selda], a [Haskell] [EDSL] to build SQL queries and execute them without writing SQL strings. This current crate is
+//!   very similar in the approach.
+//!
+//! # Why you would love this
+//!
+//! If you like type systems, languages and basically hacking compilers (writing code for your compiler to generate the
+//! runtime code!), then it’s likely you’ll like this crate. Among all the features you will find:
+//!
+//! - Use vanilla Rust. Because this crate is language-agnostic, the whole thing you need to know to get started is to
+//!   write Rust. You don’t have to learn [GLSL] to use this crate — even though you still need to understand the concept
+//!   of shaders, what they are, how they work, etc. But the _encoding of those concepts_ is now encapsulated by a native
+//!   Rust crate.
+//! - Types used to represent shading types are basic and native Rust types, such as `bool`, `f32` or `[T; N]`.
+//! - Write a more functional code rather than imperative code. For instance, a _vertex shader_ in this crate is basically
+//!   a function taking an object of type `Vertex` and returning another object, that will be passed to the next stage.
+//! - Catch semantic bugs within `rustc`. For instance, assigning a `bool` to a `f32` in your shader code will trigger a
+//!   `rustc` error.
+//! - Make some code impossible to write. For instance, you will not be able to use in a _vertex shader_ expressions only
+//!   valid in the context of a _fragment shader_, as this is not possible by their own definitions.
+//! - Extend and add more items to famous shading languages. For instance, [GLSL] doesn’t have a `π` constant. This
+//!   situation is fixed so you will never have to write `π` decimals by yourself anymore.
+//! - Because you write Rust, benefit from all the language type candies, composability, extensibility and soundness.
+//! - An experimental _monadic_ experience behind a _feature-gate_. This allows to write shaders by using the [do-notation]
+//!   crate and remove a lot of boilerplate for you, making _scopes_ and _shader scopes_ hidden for you, making it feel
+//!   like writing magic shading code.
+//!
+//! # Why you wouldn’t love this
+//!
+//! The crate is, as of nowadays, still very experimental. Here’s a list of things you might dislike about the crate:
+//!
+//! - The current verbosity is non-acceptable. Most lambdas you’ll have to use require you to annotate their arguments,
+//!   even though those are clearly guessable. This situation should be addressed as soon as possible, but people has to
+//!   know that the current situation implies lots of type ascriptions.
+//! - Some people would argue that writing [GLSL] is much faster and simpler, and they would be right. However, you would
+//!   need to learn [GLSL] in the first place; you wouldn’t be able to target SPIR-V; you wouldn’t have a solution to the
+//!   static typing problem; etc.
+//! - In the case of a runtime compilation / linking failure of your shading code, debugging it might be challenging, as
+//!   all the identifiers (with a few exceptions) are generated for you. It’ll make it harder to understand the generated
+//!   code.
+//! - Some concepts, especially control-flow statements, look a bit weird. For instance, a `for` loop in [GLSL] is written
+//!   with a much more convoluted way with this crate. The generated code is the same, but it is correctly more verbose via
+//!   this crate.
+//!
+//! [@phaazon]: https://github.com/phaazon
+//! [EDSL]: https://en.wikipedia.org/wiki/Domain-specific_language#External_and_Embedded_Domain_Specific_Languages
+//! [shaders]: https://en.wikipedia.org/wiki/Shader
+//! [GLSL]: https://www.khronos.org/registry/OpenGL/specs/gl/GLSLangSpec.4.60.pdf
+//! [Haskell]: https://www.haskell.org
+//! [blaze-html]: http://hackage.haskell.org/package/blaze-html
+//! [selda]: http://hackage.haskell.org/package/selda
+//! [proc-macro]: https://doc.rust-lang.org/reference/procedural-macros.html
+//! [rust-gpu]: https://github.com/EmbarkStudios/rust-gpu
+//! [do-notation]: https://crates.io/crates/do-notation
+
 #![cfg_attr(feature = "fun-call", feature(unboxed_closures), feature(fn_traits))]
 
 pub mod writer;
 
-use std::{iter::once, marker::PhantomData, ops};
+use std::{
+  iter::once,
+  marker::PhantomData,
+  ops::{self, Deref, DerefMut},
+};
 
+/// A fully built shader stage as represented in Rust, obtained by adding the `main` function to a [`ShaderBuilder`].
 #[derive(Debug)]
 pub struct Shader {
+  pub(crate) builder: ShaderBuilder,
+}
+
+impl AsRef<Shader> for Shader {
+  fn as_ref(&self) -> &Shader {
+    self
+  }
+}
+
+/// A shader builder.
+///
+/// This opaque type is the representation of a shader stage in Rust. It contains constants, uniforms, inputs, outputs and
+/// functions declarations. Such a type is used to build a shader stage and is fully built when the `main` function is
+/// present in its code. See [`ShaderBuilder::main_fun`] for further details.
+#[derive(Debug)]
+pub struct ShaderBuilder {
   pub(crate) decls: Vec<ShaderDecl>,
   next_fun_handle: u16,
   next_global_handle: u16,
 }
 
-impl Shader {
-  pub fn new_vertex_shader(f: impl FnOnce(&mut Self, VertexShaderEnv)) -> Self {
-    let mut shader = Self::new();
-    f(&mut shader, VertexShaderEnv::new());
-    shader
+impl ShaderBuilder {
+  /// Create a new _vertex shader_.
+  ///
+  /// This method creates a [`Shader`] that can be used as _vertex shader_. This is enforced by the fact only this
+  /// method authorized to build a vertex [`Shader`] by using the [`VertexShaderEnv`] argument passed to the input
+  /// closure.
+  ///
+  /// That closure takes as first argument a mutable reference on a [`ShaderBuilder`] and a [`VertexShaderEnv`] as
+  /// second argument. The [`VertexShaderEnv`] allows you to access to vertex attributes found in any invocation of
+  /// a vertex shader. Those are expressions (read-only) and variables (read-write) valid only in vertex shaders.
+  ///
+  /// # Return
+  ///
+  /// This method returns the fully built [`Shader`], which cannot be mutated anymore once it has been built,
+  /// and can be passed to various [`writers`](crate::writer) to generate actual code for target shading languages.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use shades::{Scope, ShaderBuilder, V3, vec4};
+  ///
+  /// let vertex_shader = ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  ///   let in_position = s.input::<V3<f32>>();
+  ///
+  ///   s.main_fun(|s: &mut Scope<()>| {
+  ///     s.set(vertex.position, vec4!(in_position, 1.));
+  ///   })
+  /// });
+  /// ```
+  pub fn new_vertex_shader(f: impl FnOnce(Self, VertexShaderEnv) -> Shader) -> Shader {
+    f(Self::new(), VertexShaderEnv::new())
   }
 
-  pub fn new_tess_ctrl_shader(f: impl FnOnce(&mut Self, TessCtrlShaderEnv)) -> Self {
-    let mut shader = Self::new();
-    f(&mut shader, TessCtrlShaderEnv::new());
-    shader
+  /// Create a new _tessellation control shader_.
+  ///
+  /// This method creates a [`Shader`] that can be used as _tessellation control shader_. This is enforced by the
+  /// fact only this method authorized to build a tessellation control [`Shader`] by using the [`TessCtrlShaderEnv`]
+  /// argument passed to the input closure.
+  ///
+  /// That closure takes as first argument a mutable reference on a [`ShaderBuilder`] and a [`TessCtrlShaderEnv`] as
+  /// second argument. The [`TessCtrlShaderEnv`] allows you to access to tessellation control attributes found in any
+  /// invocation of a tessellation control shader. Those are expressions (read-only) and variables (read-write) valid
+  /// only in tessellation control shaders.
+  ///
+  /// # Return
+  ///
+  /// This method returns the fully built [`Shader`], which cannot be mutated anymore once it has been built,
+  /// and can be passed to various [`writers`](crate::writer) to generate actual code for target shading languages.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use shades::{Scope, ShaderBuilder, V3, vec4};
+  ///
+  /// let tess_ctrl_shader = ShaderBuilder::new_tess_ctrl_shader(|mut s, patch| {
+  ///   let in_position = s.input::<V3<f32>>();
+  ///
+  ///   s.main_fun(|s: &mut Scope<()>| {
+  ///     s.set(patch.tess_level_outer.at(0), 0.1);
+  ///   })
+  /// });
+  /// ```
+  pub fn new_tess_ctrl_shader(f: impl FnOnce(Self, TessCtrlShaderEnv) -> Shader) -> Shader {
+    f(Self::new(), TessCtrlShaderEnv::new())
   }
 
-  pub fn new_tess_eval_shader(f: impl FnOnce(&mut Self, TessEvalShaderEnv)) -> Self {
-    let mut shader = Self::new();
-    f(&mut shader, TessEvalShaderEnv::new());
-    shader
+  /// Create a new _tessellation evaluation shader_.
+  ///
+  /// This method creates a [`Shader`] that can be used as _tessellation evaluation shader_. This is enforced by the
+  /// fact only this method authorized to build a tessellation evaluation [`Shader`] by using the [`TessEvalShaderEnv`]
+  /// argument passed to the input closure.
+  ///
+  /// That closure takes as first argument a mutable reference on a [`ShaderBuilder`] and a [`TessEvalShaderEnv`] as
+  /// second argument. The [`TessEvalShaderEnv`] allows you to access to tessellation evaluation attributes found in
+  /// any invocation of a tessellation evaluation shader. Those are expressions (read-only) and variables (read-write)
+  /// valid only in tessellation evaluation shaders.
+  ///
+  /// # Return
+  ///
+  /// This method returns the fully built [`Shader`], which cannot be mutated anymore once it has been built,
+  /// and can be passed to various [`writers`](crate::writer) to generate actual code for target shading languages.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use shades::{Scope, ShaderBuilder, V3, vec4};
+  ///
+  /// let tess_eval_shader = ShaderBuilder::new_tess_eval_shader(|mut s, patch| {
+  ///   let in_position = s.input::<V3<f32>>();
+  ///
+  ///   s.main_fun(|s: &mut Scope<()>| {
+  ///     s.set(patch.position, vec4!(in_position, 1.));
+  ///   })
+  /// });
+  /// ```
+  pub fn new_tess_eval_shader(f: impl FnOnce(Self, TessEvalShaderEnv) -> Shader) -> Shader {
+    f(Self::new(), TessEvalShaderEnv::new())
   }
 
-  pub fn new_geometry_shader(f: impl FnOnce(&mut Self, GeometryShaderEnv)) -> Self {
-    let mut shader = Self::new();
-    f(&mut shader, GeometryShaderEnv::new());
-    shader
+  /// Create a new _geometry shader_.
+  ///
+  /// This method creates a [`Shader`] that can be used as _geometry shader_. This is enforced by the fact only this
+  /// method authorized to build a geometry [`Shader`] by using the [`GeometryShaderEnv`] argument passed to the input
+  /// closure.
+  ///
+  /// That closure takes as first argument a mutable reference on a [`ShaderBuilder`] and a [`GeometryShaderEnv`] as
+  /// second argument. The [`GeometryShaderEnv`] allows you to access to geometry attributes found in any invocation of
+  /// a geometry shader. Those are expressions (read-only) and variables (read-write) valid only in geometry shaders.
+  ///
+  /// # Return
+  ///
+  /// This method returns the fully built [`Shader`], which cannot be mutated anymore once it has been built,
+  /// and can be passed to various [`writers`](crate::writer) to generate actual code for target shading languages.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use shades::{LoopScope, Scope, ShaderBuilder, V3, vec4};
+  ///
+  /// let geo_shader = ShaderBuilder::new_geometry_shader(|mut s, vertex| {
+  ///   s.main_fun(|s: &mut Scope<()>| {
+  ///     s.loop_for(0, |i| i.lt(3), |i| i + 1, |s: &mut LoopScope<()>, i| {
+  ///       s.set(vertex.position, vertex.input.at(i).position());
+  ///     });
+  ///   })
+  /// });
+  /// ```
+  pub fn new_geometry_shader(f: impl FnOnce(Self, GeometryShaderEnv) -> Shader) -> Shader {
+    f(Self::new(), GeometryShaderEnv::new())
   }
 
-  pub fn new_fragment_shader(f: impl FnOnce(&mut Self, FragmentShaderEnv)) -> Self {
-    let mut shader = Self::new();
-    f(&mut shader, FragmentShaderEnv::new());
-    shader
+  /// Create a new _fragment shader_.
+  ///
+  /// This method creates a [`Shader`] that can be used as _fragment shader_. This is enforced by the fact only this
+  /// method authorized to build a [`ShaderBuilder`] by using the [`FragmentShaderEnv`] argument passed to the input
+  /// closure.
+  ///
+  /// That closure takes as first argument a mutable reference on a [`ShaderBuilder`] and a [`FragmentShaderEnv`] as
+  /// second argument. The [`FragmentShaderEnv`] allows you to access to fragment attributes found in any invocation of
+  /// a fragment shader. Those are expressions (read-only) and variables (read-write) valid only in fragment shaders.
+  ///
+  /// # Return
+  ///
+  /// This method returns the fully built [`Shader`], which cannot be mutated anymore once it has been built,
+  /// and can be passed to various [`writers`](crate::writer) to generate actual code for target shading languages.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use shades::{Geometry as _, Scope, ShaderBuilder, V3, vec4};
+  ///
+  /// let geo_shader = ShaderBuilder::new_fragment_shader(|mut s, fragment| {
+  ///   let color = s.output();
+  ///
+  ///   s.main_fun(|s: &mut Scope<()>| {
+  ///     s.set(color, fragment.frag_coord.normalize());
+  ///   })
+  /// });
+  /// ```
+  pub fn new_fragment_shader(f: impl FnOnce(Self, FragmentShaderEnv) -> Shader) -> Shader {
+    f(Self::new(), FragmentShaderEnv::new())
   }
 
+  /// Create a new empty shader.
   fn new() -> Self {
     Self {
       decls: Vec::new(),
@@ -51,6 +311,117 @@ impl Shader {
     }
   }
 
+  /// Create a new function in the shader and get its handle for future use.
+  ///
+  /// This method requires to pass a closure encoding the argument(s) and return type of the function to create. The
+  /// closure’s body encodes the body of the function to create. The number of arguments will directly impact the
+  /// number of arguments the created function will have. The return type can be [`()`](unit) if the function doesn’t
+  /// return anything or [`Expr<T>`] if it does return something.
+  ///
+  /// The first argument of the closure is a mutable reference on a [`Scope`]. Its type parameter must be set to the
+  /// return type. The scope allows you to add instructions to the function body of the generated function. As in
+  /// vanilla Rust, the last expression in a function is assumed as return value, if the function returns a value.
+  /// However, unlike Rust, if your function returns something, it **cannot `return` it: it has to use the
+  /// expression-as-last-instruction syntax**. It means that even if you don’t use the [`Scope`] within the last
+  /// expression of your function body, the returned expression will still be part of the function as special returned
+  /// expression:
+  ///
+  /// ```
+  /// # use shades::{Expr, Scope, ShaderBuilder};
+  /// # let shader = ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// let f = s.fun(|s: &mut Scope<Expr<f32>>, a: Expr<f32>| a + 1.);
+  /// # s.main_fun(|s: &mut Scope<()>| {})
+  /// # });
+  /// ```
+  ///
+  /// However, as mentioned above, you cannot `return` the last expression (`leave`), as this is not accepted by the
+  /// EDSL:
+  ///
+  /// ```compile_fail
+  /// # use shades::{Expr, Scope, ShaderBuilder};
+  /// # let shader = ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// let f = s.fun(|s: &mut Scope<Expr<f32>>, a: Expr<f32>| {
+  ///   s.leave(a + 1.);
+  /// });
+  /// # s.main_fun(|s: &mut Scope<()>| {})
+  /// # });
+  /// ```
+  ///
+  /// Please refer to the [`Scope`] documentation for a complete list of the instructions you can record.
+  ///
+  /// # Caveats
+  ///
+  /// On a last note, you can still use the `return` keyword from Rust, but it is highly discouraged, as returning with
+  /// `return` cannot be captured by the EDSL. It means that you will not get the shader code you expect.
+  ///
+  /// ```
+  /// # use shades::{Expr, Scope, ShaderBuilder};
+  /// # let shader = ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// let f = s.fun(|s: &mut Scope<Expr<f32>>, a: Expr<f32>| {
+  ///   return a + 1.;
+  /// });
+  /// # s.main_fun(|s: &mut Scope<()>| {})
+  /// # });
+  /// ```
+  ///
+  /// An example of a broken shader is when you use the Rust `return` keyword inside a conditional statement or looping
+  /// statement:
+  ///
+  /// ```
+  /// # use shades::{EscapeScope, Expr, Scope, ShaderBuilder, lit};
+  /// # let shader = ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// // don’t do this.
+  /// let f = s.fun(|s: &mut Scope<Expr<f32>>, a: Expr<f32>| {
+  ///   s.when(a.lt(10.), |s: &mut EscapeScope<Expr<f32>>| {
+  ///     // /!\ problem here /!\
+  ///     return;
+  ///   });
+  ///
+  ///   a + 1.
+  /// });
+  /// # s.main_fun(|s: &mut Scope<()>| {})
+  /// # });
+  /// ```
+  ///
+  /// This snippet will create a GLSL function testing whether its `a` argument is less than `10.` and if it’s the case,
+  /// does nothing inside of it (the `return` is not captured by the EDSL).
+  ///
+  /// # Return
+  ///
+  /// This method returns a _function handle_, [`FunHandle<R, A>`], where `R` is the return type and `A` the argument
+  /// list of the function. This handle can be used in various positions in the EDSL but the most interesting place is
+  /// in [`Expr<T>`] and [`Var<T>`], when calling the function to, respectively, combine it with other expressions or
+  /// assign it to a variable.
+  ///
+  /// ## Nightly-only: call syntax
+  ///
+  /// On the current version of stable `rustc` (1.49), it is not possible to use a [`FunHandle<R, A>`] as you would use
+  /// a normal Rust function: you have to use the [`FunHandle::call`] method, which is not really elegant nor ergonomic.
+  ///
+  /// To fix this problem, enable the `fun-call` feature gate.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use shades::{Exponential as _, Expr, Scope, ShaderBuilder, lit};
+  ///
+  /// let shader = ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  ///   // create a function taking a floating-point number and returning its square
+  ///   let square = s.fun(|s: &mut Scope<Expr<f32>>, a: Expr<f32>| {
+  ///     a.pow(2.)
+  ///   });
+  ///
+  ///   // `square` can now be used to square floats!
+  ///   s.main_fun(|s: &mut Scope<()>| {
+  ///     // if you use the nightly compiler
+  /// #   #[cfg(feature = "fun-call")]
+  ///     let nine = s.var(square(lit!(3.)));
+  ///
+  ///     // if you’d rather use stable
+  ///     let nine = s.var(square.call(lit!(3.)));
+  ///   })
+  /// });
+  /// ```
   pub fn fun<F, R, A>(&mut self, f: F) -> FunHandle<R, A>
   where
     F: ToFun<R, A>,
@@ -67,7 +438,31 @@ impl Shader {
     }
   }
 
-  pub fn main_fun<F, R>(&mut self, f: F) -> FunHandle<R, ()>
+  /// Declare the `main` function of the shader stage.
+  ///
+  /// This method is very similar to [`ShaderBuilder::fun`] in the sense it declares a function. However, it declares the special
+  /// `main` entry-point of a shader stage, which doesn’t have have argument and returns nothing, and is the only
+  /// way to finalize the building of a [`Shader`].
+  ///
+  /// The input closure must take a single argument: a mutable reference on a `Scope<()>`, as the `main` function
+  /// cannot return anything.
+  ///
+  /// # Return
+  ///
+  /// The fully built [`Shader`], which cannot be altered anymore.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use shades::{Scope, ShaderBuilder};
+  ///
+  /// let shader = ShaderBuilder::new_vertex_shader(|s, vertex| {
+  ///   s.main_fun(|s: &mut Scope<()>| {
+  ///     // …
+  ///   })
+  /// });
+  /// ```
+  pub fn main_fun<F, R>(mut self, f: F) -> Shader
   where
     F: ToFun<R, ()>,
   {
@@ -75,13 +470,14 @@ impl Shader {
 
     self.decls.push(ShaderDecl::Main(fundef.erased));
 
-    FunHandle {
-      erased: ErasedFunHandle::Main,
-      _phantom: PhantomData,
-    }
+    Shader { builder: self }
   }
 
-  pub fn constant<T>(&mut self, expr: impl Into<Expr<T>>) -> Var<T>
+  /// Declare a new constant, shared between all functions and constants that come next.
+  ///
+  /// The input argument is any object that can be transformed [`Into`] an [`Expr<T>`]. At this level in the
+  /// shader, pretty much nothing but literals and other constants are accepted here.
+  pub fn constant<T>(&mut self, expr: impl Into<Expr<T>>) -> Expr<T>
   where
     T: ToType,
   {
@@ -92,7 +488,7 @@ impl Shader {
       .decls
       .push(ShaderDecl::Const(handle, T::ty(), expr.into().erased));
 
-    Var::new(ScopedHandle::global(handle))
+    Expr::new(ErasedExpr::Var(ScopedHandle::global(handle)))
   }
 
   pub fn input<T>(&mut self) -> Var<T>
@@ -117,12 +513,6 @@ impl Shader {
     self.decls.push(ShaderDecl::Out(handle, T::ty()));
 
     Var::new(ScopedHandle::global(handle))
-  }
-}
-
-impl AsRef<Shader> for Shader {
-  fn as_ref(&self) -> &Shader {
-    self
   }
 }
 
@@ -175,8 +565,7 @@ pub enum ErasedExpr {
   // arrays
   Array(Type, Vec<ErasedExpr>),
   // var
-  MutVar(ScopedHandle),
-  ImmutBuiltIn(BuiltIn),
+  Var(ScopedHandle),
   // built-in functions and operators
   Not(Box<Self>),
   And(Box<Self>, Box<Self>),
@@ -206,6 +595,12 @@ pub enum ErasedExpr {
   // field expression, as in a struct Foo { float x; }, foo.x is an Expr representing the x field on object foo
   Field { object: Box<Self>, field: Box<Self> },
   ArrayLookup { object: Box<Self>, index: Box<Self> },
+}
+
+impl ErasedExpr {
+  const fn new_builtin(builtin: BuiltIn) -> Self {
+    ErasedExpr::Var(ScopedHandle::builtin(builtin))
+  }
 }
 
 #[derive(Debug)]
@@ -244,14 +639,6 @@ where
       erased,
       _phantom: PhantomData,
     }
-  }
-
-  const fn new_builtin(builtin: BuiltIn) -> Self {
-    Self::new(ErasedExpr::MutVar(ScopedHandle::builtin(builtin)))
-  }
-
-  const fn new_immut_builtin(builtin: BuiltIn) -> Self {
-    Self::new(ErasedExpr::ImmutBuiltIn(builtin))
   }
 
   pub fn eq(&self, rhs: impl Into<Expr<T>>) -> Expr<bool> {
@@ -965,7 +1352,7 @@ macro_rules! impl_ToFun_args {
       $($arg: ToType),*
     {
       fn build_fn(self) -> FunDef<R, ($(Expr<$arg>),*)> {
-        $( let $arg_ident = Expr::new(ErasedExpr::MutVar(ScopedHandle::fun_arg($arg_rank))); )*
+        $( let $arg_ident = Expr::new(ErasedExpr::Var(ScopedHandle::fun_arg($arg_rank))); )*
           let args = vec![$( $arg::ty() ),*];
 
         let mut scope = Scope::new(0);
@@ -986,7 +1373,7 @@ where
   A: ToType,
 {
   fn build_fn(self) -> FunDef<R, Expr<A>> {
-    let arg = Expr::new(ErasedExpr::MutVar(ScopedHandle::fun_arg(0)));
+    let arg = Expr::new(ErasedExpr::Var(ScopedHandle::fun_arg(0)));
 
     let mut scope = Scope::new(0);
     let ret = self(&mut scope, arg);
@@ -1373,6 +1760,117 @@ where
     Var::new(handle)
   }
 
+  pub fn when<'a>(
+    &'a mut self,
+    condition: impl Into<Expr<bool>>,
+    body: impl FnOnce(&mut EscapeScope<R>),
+  ) -> When<'a, R> {
+    let mut scope = EscapeScope::new(self.deeper());
+    body(&mut scope);
+
+    self.erased.instructions.push(ScopeInstr::If {
+      condition: condition.into().erased,
+      scope: Scope::from(scope).erased,
+    });
+
+    When { parent_scope: self }
+  }
+
+  pub fn unless<'a>(
+    &'a mut self,
+    condition: impl Into<Expr<bool>>,
+    body: impl FnOnce(&mut EscapeScope<R>),
+  ) -> When<'a, R> {
+    self.when(!condition.into(), body)
+  }
+
+  pub fn loop_for<T>(
+    &mut self,
+    init_value: impl Into<Expr<T>>,
+    condition: impl FnOnce(&Expr<T>) -> Expr<bool>,
+    iter_fold: impl FnOnce(&Expr<T>) -> Expr<T>,
+    body: impl FnOnce(&mut LoopScope<R>, &Expr<T>),
+  ) where
+    T: ToType,
+  {
+    let mut scope = LoopScope::new(self.deeper());
+
+    // bind the init value so that it’s available in all closures
+    let init_var = scope.var(init_value);
+
+    let condition = condition(&init_var);
+
+    // generate the “post expr”, which is basically the free from of the third part of the for loop; people usually
+    // set this to ++i, i++, etc., but in our case, the expression is to treat as a fold’s accumulator
+    let post_expr = iter_fold(&init_var);
+
+    body(&mut scope, &init_var);
+
+    let scope = Scope::from(scope);
+    self.erased.instructions.push(ScopeInstr::For {
+      init_ty: T::ty(),
+      init_handle: ScopedHandle::fun_var(scope.erased.id, 0),
+      init_expr: init_var.to_expr().erased,
+      condition: condition.erased,
+      post_expr: post_expr.erased,
+      scope: scope.erased,
+    });
+  }
+
+  pub fn loop_while(
+    &mut self,
+    condition: impl Into<Expr<bool>>,
+    body: impl FnOnce(&mut LoopScope<R>),
+  ) {
+    let mut scope = LoopScope::new(self.deeper());
+    body(&mut scope);
+
+    self.erased.instructions.push(ScopeInstr::While {
+      condition: condition.into().erased,
+      scope: Scope::from(scope).erased,
+    });
+  }
+
+  pub fn set<T>(&mut self, var: impl Into<Var<T>>, value: impl Into<Expr<T>>) {
+    self.erased.instructions.push(ScopeInstr::MutateVar {
+      var: var.into().to_expr().erased,
+      expr: value.into().erased,
+    });
+  }
+}
+
+/// A special kind of [`Scope`] that can also escape expressions out of its parent scope.
+#[derive(Debug)]
+pub struct EscapeScope<R>(Scope<R>);
+
+impl<R> From<EscapeScope<R>> for Scope<R> {
+  fn from(s: EscapeScope<R>) -> Self {
+    s.0
+  }
+}
+
+impl<R> Deref for EscapeScope<R> {
+  type Target = Scope<R>;
+
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl<R> DerefMut for EscapeScope<R> {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.0
+  }
+}
+
+impl<R> EscapeScope<R>
+where
+  ErasedReturn: From<R>,
+{
+  fn new(s: Scope<R>) -> Self {
+    Self(s)
+  }
+
   pub fn leave(&mut self, ret: impl Into<R>) {
     self
       .erased
@@ -1386,71 +1884,38 @@ where
       .instructions
       .push(ScopeInstr::Return(ErasedReturn::Void));
   }
+}
 
-  pub fn when<'a>(
-    &'a mut self,
-    condition: impl Into<Expr<bool>>,
-    body: impl FnOnce(&mut Scope<R>),
-  ) -> When<'a, R> {
-    let mut scope = self.deeper();
-    body(&mut scope);
+/// A special kind of [`EscapeScope`] that can also break loops.
+#[derive(Debug)]
+pub struct LoopScope<R>(EscapeScope<R>);
 
-    self.erased.instructions.push(ScopeInstr::If {
-      condition: condition.into().erased,
-      scope: scope.erased,
-    });
-
-    When { parent_scope: self }
+impl<R> From<LoopScope<R>> for Scope<R> {
+  fn from(s: LoopScope<R>) -> Self {
+    s.0.into()
   }
+}
 
-  pub fn unless<'a>(
-    &'a mut self,
-    condition: impl Into<Expr<bool>>,
-    body: impl FnOnce(&mut Scope<R>),
-  ) -> When<'a, R> {
-    self.when(!condition.into(), body)
+impl<R> Deref for LoopScope<R> {
+  type Target = EscapeScope<R>;
+
+  fn deref(&self) -> &Self::Target {
+    &self.0
   }
+}
 
-  pub fn loop_for<T>(
-    &mut self,
-    init_value: impl Into<Expr<T>>,
-    condition: impl FnOnce(&Expr<T>) -> Expr<bool>,
-    iter_fold: impl FnOnce(&Expr<T>) -> Expr<T>,
-    body: impl FnOnce(&mut Scope<R>, &Expr<T>),
-  ) where
-    T: ToType,
-  {
-    let mut scope = self.deeper();
-
-    // bind the init value so that it’s available in all closures
-    let init_var = scope.var(init_value);
-
-    let condition = condition(&init_var);
-
-    // generate the “post expr”, which is basically the free from of the third part of the for loop; people usually
-    // set this to ++i, i++, etc., but in our case, the expression is to treat as a fold’s accumulator
-    let post_expr = iter_fold(&init_var);
-
-    body(&mut scope, &init_var);
-
-    self.erased.instructions.push(ScopeInstr::For {
-      init_ty: T::ty(),
-      init_handle: ScopedHandle::fun_var(scope.erased.id, 0),
-      init_expr: init_var.to_expr().erased,
-      condition: condition.erased,
-      post_expr: post_expr.erased,
-      scope: scope.erased,
-    });
+impl<R> DerefMut for LoopScope<R> {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.0
   }
+}
 
-  pub fn loop_while(&mut self, condition: impl Into<Expr<bool>>, body: impl FnOnce(&mut Scope<R>)) {
-    let mut scope = self.deeper();
-    body(&mut scope);
-
-    self.erased.instructions.push(ScopeInstr::While {
-      condition: condition.into().erased,
-      scope: scope.erased,
-    });
+impl<R> LoopScope<R>
+where
+  ErasedReturn: From<R>,
+{
+  fn new(s: Scope<R>) -> Self {
+    Self(EscapeScope::new(s))
   }
 
   pub fn loop_continue(&mut self) {
@@ -1460,16 +1925,9 @@ where
   pub fn loop_break(&mut self) {
     self.erased.instructions.push(ScopeInstr::Break);
   }
-
-  pub fn set<T>(&mut self, var: impl Into<Var<T>>, value: impl Into<Expr<T>>) {
-    self.erased.instructions.push(ScopeInstr::MutateVar {
-      var: var.into().to_expr().erased,
-      expr: value.into().erased,
-    });
-  }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 struct ErasedScope {
   id: u16,
   instructions: Vec<ScopeInstr>,
@@ -1499,8 +1957,12 @@ impl<R> When<'_, R>
 where
   ErasedReturn: From<R>,
 {
-  pub fn or_else(self, condition: impl Into<Expr<bool>>, body: impl FnOnce(&mut Scope<R>)) -> Self {
-    let mut scope = self.parent_scope.deeper();
+  pub fn or_else(
+    self,
+    condition: impl Into<Expr<bool>>,
+    body: impl FnOnce(&mut EscapeScope<R>),
+  ) -> Self {
+    let mut scope = EscapeScope::new(self.parent_scope.deeper());
     body(&mut scope);
 
     self
@@ -1509,14 +1971,14 @@ where
       .instructions
       .push(ScopeInstr::ElseIf {
         condition: condition.into().erased,
-        scope: scope.erased,
+        scope: Scope::from(scope).erased,
       });
 
     self
   }
 
-  pub fn or(self, body: impl FnOnce(&mut Scope<R>)) {
-    let mut scope = self.parent_scope.deeper();
+  pub fn or(self, body: impl FnOnce(&mut EscapeScope<R>)) {
+    let mut scope = EscapeScope::new(self.parent_scope.deeper());
     body(&mut scope);
 
     self
@@ -1524,7 +1986,7 @@ where
       .erased
       .instructions
       .push(ScopeInstr::Else {
-        scope: scope.erased,
+        scope: Scope::from(scope).erased,
       });
   }
 }
@@ -1566,7 +2028,7 @@ where
   T: ?Sized,
 {
   pub const fn new(handle: ScopedHandle) -> Self {
-    Self(Expr::new(ErasedExpr::MutVar(handle)))
+    Self(Expr::new(ErasedExpr::Var(handle)))
   }
 
   pub fn to_expr(&self) -> Expr<T> {
@@ -2028,15 +2490,27 @@ pub struct VertexShaderEnv {
 
 impl VertexShaderEnv {
   fn new() -> Self {
-    let vertex_id = Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::VertexID));
-    let instance_id = Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::InstanceID));
-    let base_vertex = Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::BaseVertex));
-    let base_instance = Expr::new_immut_builtin(BuiltIn::Vertex(VertexBuiltIn::BaseInstance));
-    let position = Var(Expr::new_builtin(BuiltIn::Vertex(VertexBuiltIn::Position)));
-    let point_size = Var(Expr::new_builtin(BuiltIn::Vertex(VertexBuiltIn::PointSize)));
-    let clip_distance = Var(Expr::new_builtin(BuiltIn::Vertex(
-      VertexBuiltIn::ClipDistance,
+    let vertex_id = Expr::new(ErasedExpr::new_builtin(BuiltIn::Vertex(
+      VertexBuiltIn::VertexID,
     )));
+    let instance_id = Expr::new(ErasedExpr::new_builtin(BuiltIn::Vertex(
+      VertexBuiltIn::InstanceID,
+    )));
+    let base_vertex = Expr::new(ErasedExpr::new_builtin(BuiltIn::Vertex(
+      VertexBuiltIn::BaseVertex,
+    )));
+    let base_instance = Expr::new(ErasedExpr::new_builtin(BuiltIn::Vertex(
+      VertexBuiltIn::BaseInstance,
+    )));
+    let position = Var(Expr::new(ErasedExpr::new_builtin(BuiltIn::Vertex(
+      VertexBuiltIn::Position,
+    ))));
+    let point_size = Var(Expr::new(ErasedExpr::new_builtin(BuiltIn::Vertex(
+      VertexBuiltIn::PointSize,
+    ))));
+    let clip_distance = Var(Expr::new(ErasedExpr::new_builtin(BuiltIn::Vertex(
+      VertexBuiltIn::ClipDistance,
+    ))));
 
     Self {
       vertex_id,
@@ -2067,13 +2541,21 @@ pub struct TessCtrlShaderEnv {
 
 impl TessCtrlShaderEnv {
   fn new() -> Self {
-    let max_patch_vertices_in =
-      Expr::new_immut_builtin(BuiltIn::TessCtrl(TessCtrlBuiltIn::MaxPatchVerticesIn));
-    let patch_vertices_in =
-      Expr::new_immut_builtin(BuiltIn::TessCtrl(TessCtrlBuiltIn::PatchVerticesIn));
-    let primitive_id = Expr::new_immut_builtin(BuiltIn::TessCtrl(TessCtrlBuiltIn::PrimitiveID));
-    let invocation_id = Expr::new_immut_builtin(BuiltIn::TessCtrl(TessCtrlBuiltIn::InvocationID));
-    let input = Expr::new_immut_builtin(BuiltIn::TessCtrl(TessCtrlBuiltIn::In));
+    let max_patch_vertices_in = Expr::new(ErasedExpr::new_builtin(BuiltIn::TessCtrl(
+      TessCtrlBuiltIn::MaxPatchVerticesIn,
+    )));
+    let patch_vertices_in = Expr::new(ErasedExpr::new_builtin(BuiltIn::TessCtrl(
+      TessCtrlBuiltIn::PatchVerticesIn,
+    )));
+    let primitive_id = Expr::new(ErasedExpr::new_builtin(BuiltIn::TessCtrl(
+      TessCtrlBuiltIn::PrimitiveID,
+    )));
+    let invocation_id = Expr::new(ErasedExpr::new_builtin(BuiltIn::TessCtrl(
+      TessCtrlBuiltIn::InvocationID,
+    )));
+    let input = Expr::new(ErasedExpr::new_builtin(BuiltIn::TessCtrl(
+      TessCtrlBuiltIn::In,
+    )));
     let tess_level_outer = Var::new(ScopedHandle::BuiltIn(BuiltIn::TessCtrl(
       TessCtrlBuiltIn::TessellationLevelOuter,
     )));
@@ -2104,7 +2586,7 @@ impl Expr<TessControlPerVertexIn> {
   pub fn position(&self) -> Expr<V4<f32>> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+      field: Box::new(ErasedExpr::new_builtin(BuiltIn::TessCtrl(
         TessCtrlBuiltIn::Position,
       ))),
     };
@@ -2115,7 +2597,7 @@ impl Expr<TessControlPerVertexIn> {
   pub fn point_size(&self) -> Expr<f32> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+      field: Box::new(ErasedExpr::new_builtin(BuiltIn::TessCtrl(
         TessCtrlBuiltIn::PointSize,
       ))),
     };
@@ -2126,7 +2608,7 @@ impl Expr<TessControlPerVertexIn> {
   pub fn clip_distance(&self) -> Expr<[f32]> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+      field: Box::new(ErasedExpr::new_builtin(BuiltIn::TessCtrl(
         TessCtrlBuiltIn::ClipDistance,
       ))),
     };
@@ -2137,7 +2619,7 @@ impl Expr<TessControlPerVertexIn> {
   pub fn cull_distance(&self) -> Expr<[f32]> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+      field: Box::new(ErasedExpr::new_builtin(BuiltIn::TessCtrl(
         TessCtrlBuiltIn::CullDistance,
       ))),
     };
@@ -2153,7 +2635,7 @@ impl Expr<TessControlPerVertexOut> {
   pub fn position(&self) -> Var<V4<f32>> {
     let expr = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+      field: Box::new(ErasedExpr::new_builtin(BuiltIn::TessCtrl(
         TessCtrlBuiltIn::Position,
       ))),
     };
@@ -2164,7 +2646,7 @@ impl Expr<TessControlPerVertexOut> {
   pub fn point_size(&self) -> Var<f32> {
     let expr = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+      field: Box::new(ErasedExpr::new_builtin(BuiltIn::TessCtrl(
         TessCtrlBuiltIn::PointSize,
       ))),
     };
@@ -2175,7 +2657,7 @@ impl Expr<TessControlPerVertexOut> {
   pub fn clip_distance(&self) -> Var<[f32]> {
     let expr = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+      field: Box::new(ErasedExpr::new_builtin(BuiltIn::TessCtrl(
         TessCtrlBuiltIn::ClipDistance,
       ))),
     };
@@ -2186,7 +2668,7 @@ impl Expr<TessControlPerVertexOut> {
   pub fn cull_distance(&self) -> Var<[f32]> {
     let expr = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessCtrl(
+      field: Box::new(ErasedExpr::new_builtin(BuiltIn::TessCtrl(
         TessCtrlBuiltIn::CullDistance,
       ))),
     };
@@ -2214,15 +2696,24 @@ pub struct TessEvalShaderEnv {
 
 impl TessEvalShaderEnv {
   fn new() -> Self {
-    let patch_vertices_in =
-      Expr::new_immut_builtin(BuiltIn::TessEval(TessEvalBuiltIn::PatchVerticesIn));
-    let primitive_id = Expr::new_immut_builtin(BuiltIn::TessEval(TessEvalBuiltIn::PrimitiveID));
-    let tess_coord = Expr::new_immut_builtin(BuiltIn::TessEval(TessEvalBuiltIn::TessCoord));
-    let tess_level_outer =
-      Expr::new_immut_builtin(BuiltIn::TessEval(TessEvalBuiltIn::TessellationLevelOuter));
-    let tess_level_inner =
-      Expr::new_immut_builtin(BuiltIn::TessEval(TessEvalBuiltIn::TessellationLevelInner));
-    let input = Expr::new_immut_builtin(BuiltIn::TessEval(TessEvalBuiltIn::In));
+    let patch_vertices_in = Expr::new(ErasedExpr::new_builtin(BuiltIn::TessEval(
+      TessEvalBuiltIn::PatchVerticesIn,
+    )));
+    let primitive_id = Expr::new(ErasedExpr::new_builtin(BuiltIn::TessEval(
+      TessEvalBuiltIn::PrimitiveID,
+    )));
+    let tess_coord = Expr::new(ErasedExpr::new_builtin(BuiltIn::TessEval(
+      TessEvalBuiltIn::TessCoord,
+    )));
+    let tess_level_outer = Expr::new(ErasedExpr::new_builtin(BuiltIn::TessEval(
+      TessEvalBuiltIn::TessellationLevelOuter,
+    )));
+    let tess_level_inner = Expr::new(ErasedExpr::new_builtin(BuiltIn::TessEval(
+      TessEvalBuiltIn::TessellationLevelInner,
+    )));
+    let input = Expr::new(ErasedExpr::new_builtin(BuiltIn::TessEval(
+      TessEvalBuiltIn::In,
+    )));
 
     let position = Var::new(ScopedHandle::BuiltIn(BuiltIn::TessEval(
       TessEvalBuiltIn::Position,
@@ -2259,7 +2750,7 @@ impl Expr<TessEvaluationPerVertexIn> {
   pub fn position(&self) -> Expr<V4<f32>> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessEval(
+      field: Box::new(ErasedExpr::new_builtin(BuiltIn::TessEval(
         TessEvalBuiltIn::Position,
       ))),
     };
@@ -2270,7 +2761,7 @@ impl Expr<TessEvaluationPerVertexIn> {
   pub fn point_size(&self) -> Expr<f32> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessEval(
+      field: Box::new(ErasedExpr::new_builtin(BuiltIn::TessEval(
         TessEvalBuiltIn::PointSize,
       ))),
     };
@@ -2281,7 +2772,7 @@ impl Expr<TessEvaluationPerVertexIn> {
   pub fn clip_distance(&self) -> Expr<[f32]> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessEval(
+      field: Box::new(ErasedExpr::new_builtin(BuiltIn::TessEval(
         TessEvalBuiltIn::ClipDistance,
       ))),
     };
@@ -2292,7 +2783,7 @@ impl Expr<TessEvaluationPerVertexIn> {
   pub fn cull_distance(&self) -> Expr<[f32]> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::TessEval(
+      field: Box::new(ErasedExpr::new_builtin(BuiltIn::TessEval(
         TessEvalBuiltIn::CullDistance,
       ))),
     };
@@ -2320,10 +2811,15 @@ pub struct GeometryShaderEnv {
 
 impl GeometryShaderEnv {
   fn new() -> Self {
-    let primitive_id_in =
-      Expr::new_immut_builtin(BuiltIn::Geometry(GeometryBuiltIn::PrimitiveIDIn));
-    let invocation_id = Expr::new_immut_builtin(BuiltIn::Geometry(GeometryBuiltIn::InvocationID));
-    let input = Expr::new_immut_builtin(BuiltIn::Geometry(GeometryBuiltIn::In));
+    let primitive_id_in = Expr::new(ErasedExpr::new_builtin(BuiltIn::Geometry(
+      GeometryBuiltIn::PrimitiveIDIn,
+    )));
+    let invocation_id = Expr::new(ErasedExpr::new_builtin(BuiltIn::Geometry(
+      GeometryBuiltIn::InvocationID,
+    )));
+    let input = Expr::new(ErasedExpr::new_builtin(BuiltIn::Geometry(
+      GeometryBuiltIn::In,
+    )));
 
     let position = Var::new(ScopedHandle::BuiltIn(BuiltIn::Geometry(
       GeometryBuiltIn::Position,
@@ -2369,7 +2865,7 @@ impl Expr<GeometryPerVertexIn> {
   pub fn position(&self) -> Expr<V4<f32>> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::Geometry(
+      field: Box::new(ErasedExpr::new_builtin(BuiltIn::Geometry(
         GeometryBuiltIn::Position,
       ))),
     };
@@ -2380,7 +2876,7 @@ impl Expr<GeometryPerVertexIn> {
   pub fn point_size(&self) -> Expr<f32> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::Geometry(
+      field: Box::new(ErasedExpr::new_builtin(BuiltIn::Geometry(
         GeometryBuiltIn::PointSize,
       ))),
     };
@@ -2391,7 +2887,7 @@ impl Expr<GeometryPerVertexIn> {
   pub fn clip_distance(&self) -> Expr<[f32]> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::Geometry(
+      field: Box::new(ErasedExpr::new_builtin(BuiltIn::Geometry(
         GeometryBuiltIn::ClipDistance,
       ))),
     };
@@ -2402,7 +2898,7 @@ impl Expr<GeometryPerVertexIn> {
   pub fn cull_distance(&self) -> Expr<[f32]> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
-      field: Box::new(ErasedExpr::ImmutBuiltIn(BuiltIn::Geometry(
+      field: Box::new(ErasedExpr::new_builtin(BuiltIn::Geometry(
         GeometryBuiltIn::CullDistance,
       ))),
     };
@@ -2434,18 +2930,42 @@ pub struct FragmentShaderEnv {
 
 impl FragmentShaderEnv {
   fn new() -> Self {
-    let frag_coord = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::FragCoord));
-    let front_facing = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::FrontFacing));
-    let clip_distance = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::ClipDistance));
-    let cull_distance = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::CullDistance));
-    let point_coord = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::PointCoord));
-    let primitive_id = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::PrimitiveID));
-    let sample_id = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::SampleID));
-    let sample_position = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::SamplePosition));
-    let sample_mask_in = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::SampleMaskIn));
-    let layer = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::Layer));
-    let viewport_index = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::ViewportIndex));
-    let helper_invocation = Expr::new_builtin(BuiltIn::Fragment(FragmentBuiltIn::HelperInvocation));
+    let frag_coord = Expr::new(ErasedExpr::new_builtin(BuiltIn::Fragment(
+      FragmentBuiltIn::FragCoord,
+    )));
+    let front_facing = Expr::new(ErasedExpr::new_builtin(BuiltIn::Fragment(
+      FragmentBuiltIn::FrontFacing,
+    )));
+    let clip_distance = Expr::new(ErasedExpr::new_builtin(BuiltIn::Fragment(
+      FragmentBuiltIn::ClipDistance,
+    )));
+    let cull_distance = Expr::new(ErasedExpr::new_builtin(BuiltIn::Fragment(
+      FragmentBuiltIn::CullDistance,
+    )));
+    let point_coord = Expr::new(ErasedExpr::new_builtin(BuiltIn::Fragment(
+      FragmentBuiltIn::PointCoord,
+    )));
+    let primitive_id = Expr::new(ErasedExpr::new_builtin(BuiltIn::Fragment(
+      FragmentBuiltIn::PrimitiveID,
+    )));
+    let sample_id = Expr::new(ErasedExpr::new_builtin(BuiltIn::Fragment(
+      FragmentBuiltIn::SampleID,
+    )));
+    let sample_position = Expr::new(ErasedExpr::new_builtin(BuiltIn::Fragment(
+      FragmentBuiltIn::SamplePosition,
+    )));
+    let sample_mask_in = Expr::new(ErasedExpr::new_builtin(BuiltIn::Fragment(
+      FragmentBuiltIn::SampleMaskIn,
+    )));
+    let layer = Expr::new(ErasedExpr::new_builtin(BuiltIn::Fragment(
+      FragmentBuiltIn::Layer,
+    )));
+    let viewport_index = Expr::new(ErasedExpr::new_builtin(BuiltIn::Fragment(
+      FragmentBuiltIn::ViewportIndex,
+    )));
+    let helper_invocation = Expr::new(ErasedExpr::new_builtin(BuiltIn::Fragment(
+      FragmentBuiltIn::HelperInvocation,
+    )));
 
     let frag_depth = Var::new(ScopedHandle::BuiltIn(BuiltIn::Fragment(
       FragmentBuiltIn::FragDepth,
@@ -3037,7 +3557,7 @@ mod tests {
       ErasedExpr::Not(Box::new(ErasedExpr::LitBool(true)))
     );
     assert_eq!(b.erased, ErasedExpr::Neg(Box::new(ErasedExpr::LitInt(3))));
-    assert_eq!(c.erased, ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0)));
+    assert_eq!(c.erased, ErasedExpr::Var(ScopedHandle::fun_var(0, 0)));
   }
 
   #[test]
@@ -3136,11 +3656,11 @@ mod tests {
     let y = scope.var(1u32);
     let z = scope.var(lit![false, true, false]);
 
-    assert_eq!(x.erased, ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0)));
-    assert_eq!(y.erased, ErasedExpr::MutVar(ScopedHandle::fun_var(0, 1)));
+    assert_eq!(x.erased, ErasedExpr::Var(ScopedHandle::fun_var(0, 0)));
+    assert_eq!(y.erased, ErasedExpr::Var(ScopedHandle::fun_var(0, 1)));
     assert_eq!(
       z.erased,
-      ErasedExpr::MutVar(ScopedHandle::fun_var(0, 2).into())
+      ErasedExpr::Var(ScopedHandle::fun_var(0, 2).into())
     );
     assert_eq!(scope.erased.instructions.len(), 3);
     assert_eq!(
@@ -3215,7 +3735,7 @@ mod tests {
 
   #[test]
   fn fun0() {
-    let mut shader = Shader::new();
+    let mut shader = ShaderBuilder::new();
     let fun = shader.fun(|s: &mut Scope<()>| {
       let _x = s.var(3);
     });
@@ -3245,7 +3765,7 @@ mod tests {
 
   #[test]
   fn fun1() {
-    let mut shader = Shader::new();
+    let mut shader = ShaderBuilder::new();
     let fun = shader.fun(|f: &mut Scope<Expr<i32>>, _arg: Expr<i32>| {
       let x = f.var(lit!(3i32));
       x.into()
@@ -3257,7 +3777,7 @@ mod tests {
       ShaderDecl::FunDef(0, ref fun) => {
         assert_eq!(
           fun.ret,
-          ErasedReturn::Expr(i32::ty(), ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0)))
+          ErasedReturn::Expr(i32::ty(), ErasedExpr::Var(ScopedHandle::fun_var(0, 0)))
         );
         assert_eq!(
           fun.args,
@@ -3293,7 +3813,7 @@ mod tests {
     assert_eq!(
       foo_xy.erased,
       ErasedExpr::Swizzle(
-        Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0))),
+        Box::new(ErasedExpr::Var(ScopedHandle::fun_var(0, 0))),
         Swizzle::D2(SwizzleSelector::X, SwizzleSelector::Y),
       )
     );
@@ -3301,7 +3821,7 @@ mod tests {
     assert_eq!(
       foo_xx.erased,
       ErasedExpr::Swizzle(
-        Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0))),
+        Box::new(ErasedExpr::Var(ScopedHandle::fun_var(0, 0))),
         Swizzle::D2(SwizzleSelector::X, SwizzleSelector::X),
       )
     );
@@ -3348,14 +3868,14 @@ mod tests {
       .instructions
       .push(ScopeInstr::Return(ErasedReturn::Expr(
         V4::<f32>::ty(),
-        ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0)),
+        ErasedExpr::Var(ScopedHandle::fun_var(1, 0)),
       )));
 
     assert_eq!(
       s.erased.instructions[1],
       ScopeInstr::If {
         condition: ErasedExpr::Eq(
-          Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0))),
+          Box::new(ErasedExpr::Var(ScopedHandle::fun_var(0, 0))),
           Box::new(ErasedExpr::LitInt(2)),
         ),
         scope,
@@ -3375,7 +3895,7 @@ mod tests {
       s.erased.instructions[2],
       ScopeInstr::ElseIf {
         condition: ErasedExpr::Eq(
-          Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(0, 0))),
+          Box::new(ErasedExpr::Var(ScopedHandle::fun_var(0, 0))),
           Box::new(ErasedExpr::LitInt(0)),
         ),
         scope,
@@ -3420,7 +3940,7 @@ mod tests {
       .instructions
       .push(ScopeInstr::Return(ErasedReturn::Expr(
         i32::ty(),
-        ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0)),
+        ErasedExpr::Var(ScopedHandle::fun_var(1, 0)),
       )));
 
     assert_eq!(
@@ -3428,13 +3948,13 @@ mod tests {
       ScopeInstr::For {
         init_ty: i32::ty(),
         init_handle: ScopedHandle::fun_var(1, 0),
-        init_expr: ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0)),
+        init_expr: ErasedExpr::Var(ScopedHandle::fun_var(1, 0)),
         condition: ErasedExpr::Lt(
-          Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0))),
+          Box::new(ErasedExpr::Var(ScopedHandle::fun_var(1, 0))),
           Box::new(ErasedExpr::LitInt(10)),
         ),
         post_expr: ErasedExpr::Add(
-          Box::new(ErasedExpr::MutVar(ScopedHandle::fun_var(1, 0))),
+          Box::new(ErasedExpr::Var(ScopedHandle::fun_var(1, 0))),
           Box::new(ErasedExpr::LitInt(1)),
         ),
         scope: loop_scope,
@@ -3446,7 +3966,7 @@ mod tests {
   fn while_loop() {
     let mut scope: Scope<Expr<i32>> = Scope::new(0);
 
-    scope.loop_while(lit!(1).lt(lit!(2)), Scope::loop_continue);
+    scope.loop_while(lit!(1).lt(lit!(2)), LoopScope::loop_continue);
 
     let mut loop_scope = ErasedScope::new(1);
     loop_scope.instructions.push(ScopeInstr::Continue);

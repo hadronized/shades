@@ -24,7 +24,7 @@ impl std::error::Error for WriteError {}
 pub fn write_shader_to_str(shader: impl AsRef<Shader>) -> Result<String, WriteError> {
   let mut output = String::new();
 
-  for decl in &shader.as_ref().decls {
+  for decl in &shader.as_ref().builder.decls {
     match decl {
       ShaderDecl::Main(fun) => write_main_fun_to_str(&mut output, fun)?,
       ShaderDecl::FunDef(handle, fun) => write_fun_def_to_str(&mut output, *handle, fun)?,
@@ -305,9 +305,7 @@ fn write_expr_to_str(output: &mut String, expr: &ErasedExpr) -> Result<(), Write
       *output += ")";
     }
 
-    ErasedExpr::MutVar(handle) => write_mut_var_to_str(output, handle)?,
-
-    ErasedExpr::ImmutBuiltIn(builtin) => write_builtin_to_str(output, builtin)?,
+    ErasedExpr::Var(handle) => write_mut_var_to_str(output, handle)?,
 
     ErasedExpr::Not(e) => {
       *output += "!";
