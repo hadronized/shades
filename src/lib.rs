@@ -1304,23 +1304,32 @@ macro_rules! vec4 {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum ErasedReturn {
+pub struct Return {
+  erased: ErasedReturn,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum ErasedReturn {
   Void,
   Expr(Type, ErasedExpr),
 }
 
-impl From<()> for ErasedReturn {
+impl From<()> for Return {
   fn from(_: ()) -> Self {
-    ErasedReturn::Void
+    Return {
+      erased: ErasedReturn::Void,
+    }
   }
 }
 
-impl<T> From<Expr<T>> for ErasedReturn
+impl<T> From<Expr<T>> for Return
 where
   T: ToType,
 {
   fn from(expr: Expr<T>) -> Self {
-    ErasedReturn::Expr(T::ty(), expr.erased)
+    Return {
+      erased: ErasedReturn::Expr(T::ty(), expr.erased),
+    }
   }
 }
 
@@ -1331,13 +1340,13 @@ pub trait ToFun<R, A> {
 impl<F, R> ToFun<R, ()> for F
 where
   Self: FnOnce(&mut Scope<R>) -> R,
-  ErasedReturn: From<R>,
+  Return: From<R>,
 {
   fn build_fn(self) -> FunDef<R, ()> {
     let mut scope = Scope::new(0);
     let ret = self(&mut scope);
 
-    let erased = ErasedFun::new(Vec::new(), scope.erased, ErasedReturn::from(ret));
+    let erased = ErasedFun::new(Vec::new(), scope.erased, Return::from(ret).erased);
 
     FunDef::new(erased)
   }
@@ -1348,7 +1357,7 @@ macro_rules! impl_ToFun_args {
     impl<F, R, $($arg),*> ToFun<R, ($(Expr<$arg>),*)> for F
     where
       Self: FnOnce(&mut Scope<R>, $(Expr<$arg>),*) -> R,
-      ErasedReturn: From<R>,
+      Return: From<R>,
       $($arg: ToType),*
     {
       fn build_fn(self) -> FunDef<R, ($(Expr<$arg>),*)> {
@@ -1358,7 +1367,7 @@ macro_rules! impl_ToFun_args {
         let mut scope = Scope::new(0);
         let ret = self(&mut scope, $($arg_ident),*);
 
-        let erased = ErasedFun::new(args, scope.erased, ErasedReturn::from(ret));
+        let erased = ErasedFun::new(args, scope.erased, Return::from(ret).erased);
 
         FunDef::new(erased)
       }
@@ -1369,7 +1378,7 @@ macro_rules! impl_ToFun_args {
 impl<F, R, A> ToFun<R, Expr<A>> for F
 where
   Self: FnOnce(&mut Scope<R>, Expr<A>) -> R,
-  ErasedReturn: From<R>,
+  Return: From<R>,
   A: ToType,
 {
   fn build_fn(self) -> FunDef<R, Expr<A>> {
@@ -1378,7 +1387,7 @@ where
     let mut scope = Scope::new(0);
     let ret = self(&mut scope, arg);
 
-    let erased = ErasedFun::new(vec![A::ty()], scope.erased, ErasedReturn::from(ret));
+    let erased = ErasedFun::new(vec![A::ty()], scope.erased, Return::from(ret).erased);
 
     FunDef::new(erased)
   }
@@ -1729,7 +1738,7 @@ pub struct Scope<R> {
 
 impl<R> Scope<R>
 where
-  ErasedReturn: From<R>,
+  Return: From<R>,
 {
   fn new(id: u16) -> Self {
     Self {
@@ -1865,7 +1874,7 @@ impl<R> DerefMut for EscapeScope<R> {
 
 impl<R> EscapeScope<R>
 where
-  ErasedReturn: From<R>,
+  Return: From<R>,
 {
   fn new(s: Scope<R>) -> Self {
     Self(s)
@@ -1875,9 +1884,11 @@ where
     self
       .erased
       .instructions
-      .push(ScopeInstr::Return(ErasedReturn::from(ret.into())));
+      .push(ScopeInstr::Return(Return::from(ret.into()).erased));
   }
+}
 
+impl EscapeScope<()> {
   pub fn abort(&mut self) {
     self
       .erased
@@ -1912,7 +1923,7 @@ impl<R> DerefMut for LoopScope<R> {
 
 impl<R> LoopScope<R>
 where
-  ErasedReturn: From<R>,
+  Return: From<R>,
 {
   fn new(s: Scope<R>) -> Self {
     Self(EscapeScope::new(s))
@@ -1955,7 +1966,7 @@ pub struct When<'a, R> {
 
 impl<R> When<'_, R>
 where
-  ErasedReturn: From<R>,
+  Return: From<R>,
 {
   pub fn or_else(
     self,
