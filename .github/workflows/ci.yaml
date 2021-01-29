@@ -2,30 +2,15 @@ name: CI
 on: [pull_request]
 
 jobs:
-  build-linux:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v2
       - name: Build
         run: cargo build
-
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Build
-        run: cargo build
-
-  build-macosx:
-    runs-on: macOS-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install Rust
-        run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile=minimal
-      - name: Build
-        run: |
-          . ~/.cargo/env
-          cargo build
 
   quality:
     runs-on: ubuntu-latest
