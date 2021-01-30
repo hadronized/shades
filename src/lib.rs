@@ -327,8 +327,10 @@ impl ShaderBuilder {
   /// expression:
   ///
   /// ```
-  /// # use shades::{Expr, Scope, ShaderBuilder};
-  /// # let shader = ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::ShaderBuilder;
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// use shades::{Expr, Scope};
+  ///
   /// let f = s.fun(|s: &mut Scope<Expr<f32>>, a: Expr<f32>| a + 1.);
   /// # s.main_fun(|s: &mut Scope<()>| {})
   /// # });
@@ -338,8 +340,10 @@ impl ShaderBuilder {
   /// EDSL:
   ///
   /// ```compile_fail
-  /// # use shades::{Expr, Scope, ShaderBuilder};
-  /// # let shader = ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::ShaderBuilder;
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// use shades::{Expr, Scope};
+  ///
   /// let f = s.fun(|s: &mut Scope<Expr<f32>>, a: Expr<f32>| {
   ///   s.leave(a + 1.);
   /// });
@@ -356,7 +360,9 @@ impl ShaderBuilder {
   ///
   /// ```
   /// # use shades::{Expr, Scope, ShaderBuilder};
-  /// # let shader = ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// use shades::{Expr, Scope};
+  ///
   /// let f = s.fun(|s: &mut Scope<Expr<f32>>, a: Expr<f32>| {
   ///   return a + 1.;
   /// });
@@ -368,8 +374,10 @@ impl ShaderBuilder {
   /// statement:
   ///
   /// ```
-  /// # use shades::{EscapeScope, Expr, Scope, ShaderBuilder, lit};
-  /// # let shader = ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Expr, Scope, ShaderBuilder};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// use shades::{EscapeScope, Expr, Scope};
+  ///
   /// // don’t do this.
   /// let f = s.fun(|s: &mut Scope<Expr<f32>>, a: Expr<f32>| {
   ///   s.when(a.lt(10.), |s: &mut EscapeScope<Expr<f32>>| {
@@ -477,6 +485,21 @@ impl ShaderBuilder {
   ///
   /// The input argument is any object that can be transformed [`Into`] an [`Expr<T>`]. At this level in the
   /// shader, pretty much nothing but literals and other constants are accepted here.
+  ///
+  /// # Return
+  ///
+  /// An [`Expr<T>`] representing the constant passed as input.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::{EscapeScope, Expr, Scope, ShaderBuilder, lit};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// // don’t do this.
+  /// let illum_coefficient: Expr<f32> = s.constant(10.);
+  /// # s.main_fun(|s: &mut Scope<()>| {})
+  /// # });
+  /// ```
   pub fn constant<T>(&mut self, expr: impl Into<Expr<T>>) -> Expr<T>
   where
     T: ToType,
@@ -491,6 +514,9 @@ impl ShaderBuilder {
     Expr::new(ErasedExpr::Var(ScopedHandle::global(handle)))
   }
 
+  /// Declare a new input, shared between all functions and constants that come next.
+  ///
+  /// TODO
   pub fn input<T>(&mut self) -> Var<T>
   where
     T: ToType,
@@ -516,17 +542,59 @@ impl ShaderBuilder {
   }
 }
 
+/// Shader declaration.
+///
+/// This contain everything that can be declared at top-level of a shader.
 #[derive(Debug)]
 pub(crate) enum ShaderDecl {
+  /// The `main` function declaration. The [`ErasedFun`] is a function that returns nothing and has no argument.
   Main(ErasedFun),
+
+  /// A function definition.
+  ///
+  /// The [`u16`] represents the _handle_ of the function, and is unique for each shader stage. The [`ErasedFun`] is
+  /// the representation of the function definition.
   FunDef(u16, ErasedFun),
+
+  /// A constant definition.
+  ///
+  /// The [`u16`] represents the _handle_ of the constant, and is unique for each shader stage. The [`Type`] is the
+  /// the type of the constant expression. [`ErasedExpr`] is the representation of the constant.
   Const(u16, Type, ErasedExpr),
+
+  /// An input definition.
+  ///
+  /// The [`u16`] represents the _handle_ of the input, and is unique for each shader stage. The [`Type`] is the
+  /// the type of the input.
   In(u16, Type),
+
+  /// An output definition.
+  ///
+  /// The [`u16`] represents the _handle_ of the output, and is unique for each shader stage. The [`Type`] is the
+  /// the type of the output.
   Out(u16, Type),
 }
 
 macro_rules! make_vn {
   ($t:ident, $dim:expr) => {
+    /// Scalar vectors.
+    ///
+    /// Scalar vectors come into three flavors, based on the dimension used:
+    ///
+    /// - Two dimensions (2D): [`V2<T>`].
+    /// - Three dimensions (3D): [`V3<T>`].
+    /// - Four dimensions (4D): [`V4<T>`].
+    ///
+    /// Each type implements the [`From`] trait for sized array. For instance, if you want to make a `V3<f32>` from
+    /// constants / literals, you can simply use the implementor `From<[f32; 3]> for V3<f32>`.
+    ///
+    /// A builder macro version exists for each flavor:
+    ///
+    /// - [`vec2`]: build [`V2<T>`].
+    /// - [`vec3`]: build [`V3<T>`].
+    /// - [`vec4`]: build [`V4<T>`].
+    ///
+    /// Those three macros can also be used with literals.
     #[derive(Clone, Debug, PartialEq)]
     pub struct $t<T>([T; $dim]);
 
@@ -542,8 +610,9 @@ make_vn!(V2, 2);
 make_vn!(V3, 3);
 make_vn!(V4, 4);
 
+/// Representation of an expression.
 #[derive(Clone, Debug, PartialEq)]
-pub enum ErasedExpr {
+enum ErasedExpr {
   // scalars
   LitInt(i32),
   LitUInt(u32),
@@ -603,6 +672,53 @@ impl ErasedExpr {
   }
 }
 
+/// Expression representation.
+///
+/// An expression is anything that carries a (typed) value and that can be combined in various ways with other
+/// expressions. A literal, a constant or a variable are all expressions. The sum (as in `a + b`) of two expressions is
+/// also an expression. A function call returning an expression is also an expression, as in `a * sin(b)`. Accessing an
+/// element in an array (which is an expression as it carries items) via an index (an expression) is also an
+/// expression — e.g. `levels[y * HEIGHT + x] * size`. The same thing applies to field access, swizzling, etc. etc.
+///
+/// On a general note, expressions are pretty central to the EDSL, as they are the _lower level concept_ you will be
+/// able to manipulate. Expressions are side effect free, so a variable, for instance, can either be considered as an
+/// expression or not. If `x` is a variable (see [`Var`]), then `x * 10` is an expression, but using `x` to mutate its
+/// content does not make a use of `x` as an expression. It means that expressions are read-only and even though you
+/// can go from higher constructs (like variables) to expressions, the opposite direction is forbidden.
+///
+/// # Literals
+///
+/// The most obvious kind of expression is a literal — e.g. `1`, `false`, `3.14`, etc. Any type `T` that defines an
+/// implementor `From<T> for Expr<T>` can be used as literal. You can then use, for instance, `1.into()`,
+/// `Expr::from(1)`, etc.
+///
+/// A much better and easier way to create literals is to use the [`lit!`](lit) macro, which basically does the lifting
+/// for you, but also accept more forms to create more complex literals, such as scalar vectors. See its documentation
+/// for further details.
+///
+/// It’s important to notice that because of how Rust infers type, type ambiguities might occur when using literals —
+/// hence, the use of [`lit!`](lit) should help. For instance, in `1 + 2`, the type of `1` is ambiguous because of how
+/// the implementors for [`Add`] are picked. In such a case, you are advised to use [`lit!`](lit).
+///
+/// ## Automatic lifting
+///
+/// Sometimes, you will want to pass literals to form other expressions, function calls, etc. Most of the API has been
+/// written in a way that if no ambiguity would occur, then you can use the Rust type directly. For instance, if `x`
+/// has the type `Expr<i32>`, then `x + 1` is the same as `x + lit!(1)`. You can use this property with literals too:
+/// `lit!(1) + 2 + 3 + 4`.
+///
+/// That automatic lifting is valid for a lot of traits and methods throughout this crate.
+///
+/// # Expressions from side-effects
+///
+/// Some side-effects will create expressions, such as creating a variable or a constant. Most of the time, you
+/// shouldn’t have to worry about the type of the expression as it should be inferred based on the side-effect.
+///
+/// # Expression macros
+///
+/// Some macros will create expressions for you, such as [`lit!`](lit), [`vec2!`](vec2), [`vec3!`](vec3) and
+/// [`vec4!`](vec4) or the [`sw!`](sw) macros. Most of the time, those macros will work by automatically adding a
+/// reference (`&`) to their arguments so that you don’t have to worry about that either.
 #[derive(Debug)]
 pub struct Expr<T>
 where
@@ -634,6 +750,7 @@ impl<T> Expr<T>
 where
   T: ?Sized,
 {
+  /// Type an [`ErasedExpr`] and return it wrapped in [`Expr<T>`].
   const fn new(erased: ErasedExpr) -> Self {
     Self {
       erased,
@@ -641,6 +758,26 @@ where
     }
   }
 
+  /// Equality expression.
+  ///
+  /// This method builds an expression representing the equality between two expressions.
+  ///
+  /// # Return
+  ///
+  /// An [`Expr<bool>`] representing the equality between the two input expressions.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::{Scope, ShaderBuilder};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// use shades::{lit, vec2};
+  ///
+  /// let _ = lit!(1).eq(1); // 1 == 1;
+  /// let _ = vec2!(1., 2.).eq(vec2!(0., 0.)); // vec2(1., 2.) == vec2(0., 0.)
+  /// # s.main_fun(|s: &mut Scope<()>| {})
+  /// # });
+  /// ```
   pub fn eq(&self, rhs: impl Into<Expr<T>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Eq(
       Box::new(self.erased.clone()),
@@ -648,6 +785,26 @@ where
     ))
   }
 
+  /// Inequality expression.
+  ///
+  /// This method builds an expression representing the inequality between two expressions.
+  ///
+  /// # Return
+  ///
+  /// An [`Expr<bool>`] representing the inequality between the two input expressions.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::{Scope, ShaderBuilder};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// use shades::{lit, vec2};
+  ///
+  /// let _ = lit!(1).neq(1); // 1 != 1;
+  /// let _ = vec2!(1., 2.).eq(vec2!(0., 0.)); // vec2(1., 2.) != vec2(0., 0.)
+  /// # s.main_fun(|s: &mut Scope<()>| {})
+  /// # });
+  /// ```
   pub fn neq(&self, rhs: impl Into<Expr<T>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Neq(
       Box::new(self.erased.clone()),
@@ -656,8 +813,16 @@ where
   }
 }
 
-/// Trait allowing to call vec2 constructors with various arguments.
+/// Trait allowing to create 2D scalar vector ([`V2`])constructors.
+/// 2D scalar vectors can be created from either two sole scalars or a single 2D scalar vector (identity function).
+///
+///
+/// The `A` type variable represents the arguments type. In the case of several arguments, tuples are used.
+///
+/// You are advised to use the [`vec2!`](vec2) macro instead as the interface of this function is not really
+/// user-friendly.
 pub trait Vec2<A> {
+  /// Make a [`V2`] from `A`.
   fn vec2(args: A) -> Self;
 }
 
@@ -671,11 +836,17 @@ impl<T> Vec2<(Expr<T>, Expr<T>)> for Expr<V2<T>> {
   }
 }
 
-/// Trait allowing to call vec3 constructors with various arguments.
+/// Trait allowing to create 3D scalar vector ([`V3`])constructors.
 ///
-/// This trait is useful whenever you want to create an expression such as a vecN by
-/// concatenating smaller vecM, such as vec3 from vec2 + scalar.
+/// 3D scalar vectors can be created from either three sole scalars, a single 2D scalar vector with a single scalar or
+/// a single 3D scalar vector (identity function).
+///
+/// The `A` type variable represents the arguments type. In the case of several arguments, tuples are used.
+///
+/// You are advised to use the [`vec3!`](vec3) macro instead as the interface of this function is not really
+/// user-friendly.
 pub trait Vec3<A> {
+  /// Make a [`V3`] from `A`.
   fn vec3(args: A) -> Self;
 }
 
@@ -699,11 +870,17 @@ impl<T> Vec3<(Expr<T>, Expr<T>, Expr<T>)> for Expr<V3<T>> {
   }
 }
 
-/// Trait allowing to call vec4 constructors with various arguments.
+/// Trait allowing to create 4D scalar vector ([`V4`])constructors.
 ///
-/// This trait is useful whenever you want to create an expression such as a vecN by
-/// concatenating smaller vecM, such as vec4 from vec3 + scalar or two vec2, for instance.
+/// 4D scalar vectors can be created from either four sole scalars, a single 3D scalar vector with a single scalar,
+/// two 2D scalar vectors, a 2D scalar vector and a sole scalar or a single 4D scalar vector (identity function).
+///
+/// The `A` type variable represents the arguments type. In the case of several arguments, tuples are used.
+///
+/// You are advised to use the [`vec4!`](vec4) macro instead as the interface of this function is not really
+/// user-friendly.
 pub trait Vec4<A> {
+  /// Make a [`V4`] from `A`.
   fn vec4(args: A) -> Self;
 }
 
@@ -751,6 +928,25 @@ impl<T> Expr<T>
 where
   T: PartialOrd,
 {
+  /// Less-than expression.
+  ///
+  /// This method builds an expression representing the binary operation `a < b`.
+  ///
+  /// # Return
+  ///
+  /// An [`Expr<bool>`] representing `a < b`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::{Scope, ShaderBuilder};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// use shades::lit;
+  ///
+  /// let _ = lit!(1).lt(2); // 1 < 2;
+  /// # s.main_fun(|s: &mut Scope<()>| {})
+  /// # });
+  /// ```
   pub fn lt(&self, rhs: impl Into<Expr<T>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Lt(
       Box::new(self.erased.clone()),
@@ -758,6 +954,25 @@ where
     ))
   }
 
+  /// Less-than-or-equal expression.
+  ///
+  /// This method builds an expression representing the binary operation `a <= b`.
+  ///
+  /// # Return
+  ///
+  /// An [`Expr<bool>`] representing `a <= b`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::{Scope, ShaderBuilder};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// use shades::lit;
+  ///
+  /// let _ = lit!(1).lte(2); // 1 <= 2;
+  /// # s.main_fun(|s: &mut Scope<()>| {})
+  /// # });
+  /// ```
   pub fn lte(&self, rhs: impl Into<Expr<T>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Lte(
       Box::new(self.erased.clone()),
@@ -765,6 +980,25 @@ where
     ))
   }
 
+  /// Greater-than expression.
+  ///
+  /// This method builds an expression representing the binary operation `a > b`.
+  ///
+  /// # Return
+  ///
+  /// An [`Expr<bool>`] representing `a > b`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::{Scope, ShaderBuilder};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// use shades::lit;
+  ///
+  /// let _ = lit!(1).gt(2); // 1 > 2;
+  /// # s.main_fun(|s: &mut Scope<()>| {})
+  /// # });
+  /// ```
   pub fn gt(&self, rhs: impl Into<Expr<T>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Gt(
       Box::new(self.erased.clone()),
@@ -772,6 +1006,25 @@ where
     ))
   }
 
+  /// Less-than-or-equal expression.
+  ///
+  /// This method builds an expression representing the binary operation `a <= b`.
+  ///
+  /// # Return
+  ///
+  /// An [`Expr<bool>`] representing `a <= b`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::{Scope, ShaderBuilder};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// use shades::lit;
+  ///
+  /// let _ = lit!(1).lte(2); // 1 <= 2;
+  /// # s.main_fun(|s: &mut Scope<()>| {})
+  /// # });
+  /// ```
   pub fn gte(&self, rhs: impl Into<Expr<T>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Gte(
       Box::new(self.erased.clone()),
@@ -781,6 +1034,25 @@ where
 }
 
 impl Expr<bool> {
+  /// Logical _and_ expression.
+  ///
+  /// This method builds an expression representing the logical operation `a AND b`.
+  ///
+  /// # Return
+  ///
+  /// An [`Expr<bool>`] representing `a AND b`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::{Scope, ShaderBuilder};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// use shades::lit;
+  ///
+  /// let _ = lit!(true).and(false); // true && false
+  /// # s.main_fun(|s: &mut Scope<()>| {})
+  /// # });
+  /// ```
   pub fn and(&self, rhs: impl Into<Expr<bool>>) -> Expr<bool> {
     Expr::new(ErasedExpr::And(
       Box::new(self.erased.clone()),
@@ -788,6 +1060,25 @@ impl Expr<bool> {
     ))
   }
 
+  /// Logical _or_ expression.
+  ///
+  /// This method builds an expression representing the logical operation `a OR b`.
+  ///
+  /// # Return
+  ///
+  /// An [`Expr<bool>`] representing `a OR b`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::{Scope, ShaderBuilder};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// use shades::lit;
+  ///
+  /// let _ = lit!(true).or(false); // true || false
+  /// # s.main_fun(|s: &mut Scope<()>| {})
+  /// # });
+  /// ```
   pub fn or(&self, rhs: impl Into<Expr<bool>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Or(
       Box::new(self.erased.clone()),
@@ -795,6 +1086,25 @@ impl Expr<bool> {
     ))
   }
 
+  /// Logical _exclusive or_ expression.
+  ///
+  /// This method builds an expression representing the logical operation `a XOR b`.
+  ///
+  /// # Return
+  ///
+  /// An [`Expr<bool>`] representing `a XOR b`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::{Scope, ShaderBuilder};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// use shades::lit;
+  ///
+  /// let _ = lit!(true).xor(false); // true ^^ false
+  /// # s.main_fun(|s: &mut Scope<()>| {})
+  /// # });
+  /// ```
   pub fn xor(&self, rhs: impl Into<Expr<bool>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Xor(
       Box::new(self.erased.clone()),
@@ -804,6 +1114,26 @@ impl Expr<bool> {
 }
 
 impl<T> Expr<[T]> {
+  /// Array lookup.
+  ///
+  /// The expression `a.at(i)` represents an _array lookup_, where `a` is an array — which type must be either
+  /// [`Expr<[T]>`](Expr) or [`Expr<[T; N]>`](Expr) – and `i` is an [`Expr<i32>`].
+  ///
+  /// # Return
+  ///
+  /// The resulting [`Expr<T>`] represents the array lookup in `a` at index `i`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::{Scope, ShaderBuilder};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// use shades::lit;
+  ///
+  /// let _ = lit!([1, 2, 3]).at(2); // [1, 2, 3][2]
+  /// # s.main_fun(|s: &mut Scope<()>| {})
+  /// # });
+  /// ```
   pub fn at(&self, index: impl Into<Expr<i32>>) -> Expr<T> {
     Expr::new(ErasedExpr::ArrayLookup {
       object: Box::new(self.erased.clone()),
@@ -813,6 +1143,26 @@ impl<T> Expr<[T]> {
 }
 
 impl<T, const N: usize> Expr<[T; N]> {
+  /// Array lookup.
+  ///
+  /// The expression `a.at(i)` represents an _array lookup_, where `a` is an array — which type must be either
+  /// [`Expr<[T]>`](Expr) or [`Expr<[T; N]>`](Expr) – and `i` is an [`Expr<i32>`].
+  ///
+  /// # Return
+  ///
+  /// The resulting [`Expr<T>`] represents the array lookup in `a` at index `i`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::{Scope, ShaderBuilder};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// use shades::lit;
+  ///
+  /// let _ = lit!([1, 2, 3]).at(2); // [1, 2, 3][2]
+  /// # s.main_fun(|s: &mut Scope<()>| {})
+  /// # });
+  /// ```
   pub fn at(&self, index: impl Into<Expr<i32>>) -> Expr<T> {
     Expr::new(ErasedExpr::ArrayLookup {
       object: Box::new(self.erased.clone()),
@@ -1217,9 +1567,34 @@ where
   }
 }
 
-/// Easily create literal expressions.
+/// Create various forms of literal expressions.
 ///
-/// TODO
+/// This macro allows you to create _literal expressions_ by lifting Rust constants into the EDSL. The way this is done
+/// is via several forms:
+///
+/// - `lit!(x)` lifts a single Rust expression into the EDSL. It’s isomorphic to `Expr::from(x)`.
+/// - `lit!(x, y)` lifts two Rust expressions into the EDSL as a 2D scalar vector. It’s isomorphic to
+///   `Expr::from(V2::from([x, y]))`.
+/// - `lit!(x, y, z)` lifts three Rust expressions into the EDSL as a 3D scalar vector. It’s isomorphic to
+///   `Expr::from(V3::from([x, y, z]))`.
+/// - `lit!(x, y, z, w)` lifts three Rust expressions into the EDSL as a 3D scalar vector. It’s isomorphic to
+///   `Expr::from(V4::from([x, y, z, w]))`.
+///
+/// Most of the time, type inference will kick in and you shouldn’t have to annotate the return expression.
+///
+/// # Examples
+///
+/// ```
+/// # use shades::{Scope, ShaderBuilder};
+/// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+/// use shades::{lit};
+///
+/// let _ = lit!(1);
+/// let _ = lit!(false);
+/// let _ = lit!(1., 2., 3., 4.);
+/// # s.main_fun(|s: &mut Scope<()>| {})
+/// # });
+/// ```
 #[macro_export]
 macro_rules! lit {
   ($e:expr) => {
@@ -1239,6 +1614,24 @@ macro_rules! lit {
   };
 }
 
+/// Create 2D scalar vectors via different forms.
+///
+/// This macro allows to create 2D ([`V2`]) scalar vectors from two forms:
+///
+/// - `vec2!(xy)`, which acts as the cast operator. Only types `T` satisfying [`Vec2`] are castable.
+/// - `vec2!(x, y)`, which builds a [`V2<T>`] for `x: T` and `y: T`.
+///
+/// # Examples
+///
+/// ```
+/// # use shades::{Scope, ShaderBuilder};
+/// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+/// use shades::vec2;
+///
+/// let scalar_vector = vec2!(1, 2);
+/// # s.main_fun(|s: &mut Scope<()>| {})
+/// # });
+/// ```
 #[macro_export]
 macro_rules! vec2 {
   ($a:expr) => {
