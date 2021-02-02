@@ -1628,7 +1628,7 @@ macro_rules! lit {
 /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
 /// use shades::vec2;
 ///
-/// let scalar_vector = vec2!(1, 2);
+/// let _ = vec2!(1, 2);
 /// # s.main_fun(|s: &mut Scope<()>| {})
 /// # });
 /// ```
@@ -1644,6 +1644,26 @@ macro_rules! vec2 {
   }};
 }
 
+/// Create 3D scalar vectors via different forms.
+///
+/// This macro allows to create 3D ([`V3`]) scalar vectors from several forms:
+///
+/// - `vec3!(xyz)`, which acts as the cast operator. Only types `T` satisfying [`Vec3`] are castable.
+/// - `vec3!(xy, z)`, which builds a [`V3<T>`] with `xy` a value that can be turned into a `Expr<V2<T>>` and `z: T`
+/// - `vec3!(x, y, z)`, which builds a [`V3<T>`] for `x: T`, `y: T` and `z: T`.
+///
+/// # Examples
+///
+/// ```
+/// # use shades::{Scope, ShaderBuilder};
+/// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+/// use shades::{vec2, vec3};
+///
+/// let _ = vec3!(1, 2, 3);
+/// let _ = vec3!(vec2!(1, 2), 3);
+/// # s.main_fun(|s: &mut Scope<()>| {})
+/// # });
+/// ```
 #[macro_export]
 macro_rules! vec3 {
   ($a:expr) => {
@@ -1665,6 +1685,30 @@ macro_rules! vec3 {
   }};
 }
 
+/// Create 4D scalar vectors via different forms.
+///
+/// This macro allows to create 4D ([`V4`]) scalar vectors from several forms:
+///
+/// - `vec4!(xyzw)`, which acts as the cast operator. Only types `T` satisfying [`Vec4`] are castable.
+/// - `vec4!(xyz, w)`, which builds a [`V4<T>`] with `xyz` a value that can be turned into a `Expr<V3<T>>` and `w: T`.
+/// - `vec4!(xy, zw)`, which builds a [`V4<T>`] with `xy` and `zw` values that can be turned into `Expr<V3<T>>`.
+/// - `vec4!(xy, z, w)`, which builds a [`V4<T>`] with `xy`, `z: T` and `w: T`.
+/// - `vec4!(x, y, z, w)`, which builds a [`V3<T>`] for `x: T`, `y: T` and `z: T`.
+///
+/// # Examples
+///
+/// ```
+/// # use shades::{Scope, ShaderBuilder};
+/// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+/// use shades::{vec2, vec3, vec4};
+///
+/// let _ = vec4!(1, 2, 3, 4);
+/// let _ = vec4!(vec3!(1, 2, 3), 4);
+/// let _ = vec4!(vec2!(1, 2), vec2!(3, 4));
+/// let _ = vec4!(vec2!(1, 2), 3, 4);
+/// # s.main_fun(|s: &mut Scope<()>| {})
+/// # });
+/// ```
 #[macro_export]
 macro_rules! vec4 {
   ($a:expr) => {
@@ -1696,11 +1740,18 @@ macro_rules! vec4 {
   }};
 }
 
+/// Function return.
+///
+/// This type represents a function return and is used to annotate values that can be returned from functions (i.e.
+/// expressions).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Return {
   erased: ErasedReturn,
 }
 
+/// Erased return.
+///
+/// Either `Void` (i.e. `void`) or an expression. The type of the expression is also present for convenience.
 #[derive(Clone, Debug, PartialEq)]
 enum ErasedReturn {
   Void,
@@ -1726,6 +1777,21 @@ where
   }
 }
 
+/// Function definition injection.
+///
+/// This trait represents _function definition injection_, i.e. types that can provide a function definition — see
+/// [`FunDef`]. Ideally, only a very small number of types can do this: polymorphic types implementing the [`FnOnce`]
+/// trait with different number of arguments. Namely, closures / lambdas with various numbers of arguments.
+///
+/// You are not supposed to implement this type by yourself. Instead, when creating functions in the EDSL, you just have
+/// to pass lambdas to automatically get the proper function definition lifted into the EDSL.
+///
+/// See the [`ShaderBuilder::fun`] for further information.
+///
+/// # Caveats
+///
+/// This way of doing currently comes with a price: type inference is bad. You will — most of the time — have to
+/// annotate the closure’s arguments. This is currently working on but progress on that matter is slow.
 pub trait ToFun<R, A> {
   fn build_fn(self) -> FunDef<R, A>;
 }
@@ -1832,6 +1898,83 @@ impl_ToFun_args!(
   A16, a16, 16
 );
 
+/// An opaque function handle, used to call user-defined functions.
+///
+/// Function handles are created with the [`ShaderBuilder::fun`] function, introducing new functions in the EDSL. You
+/// can then call the functions in the context of generating new expressions, returning them or creating variables.
+///
+/// Injecting a function call in the EDSL is done via two current mechanisms:
+///
+/// - Either call the [`FunHandle::call`] method:
+///   - It is a function without argument if the represented function doesn’t have any argument.
+///   - It is a unary function if the represented function has a single argument.
+///   - It takes a tuple encapsulating the arguments for a n-ary represented function.
+/// - **On nightly only**, you can enable the `fun-call` feature-gate and calling the function will do the same thing
+///   as [`FunHandle::call`]. However, because of how the various [`FnOnce`], [`FnMut`] and [`Fn`] traits are made,
+///   functions taking several arguments take them as separate arguments as if it was a regular Rust function (they
+///   don’t take a tuple as with the [`FunHandle::call`] method).
+///
+/// # Examples
+///
+/// A unary function squaring its argument, the regular way:
+///
+/// ```
+/// # use shades::ShaderBuilder;
+/// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+/// use shades::{Expr, FunHandle, Scope, lit, vec2};
+///
+/// let square = s.fun(|s: &mut Scope<Expr<i32>>, a: Expr<i32>| {
+///   &a * &a
+/// });
+///
+/// s.main_fun(|s: &mut Scope<()>| {
+///   // call square with 3 and bind the result to a variable
+///   let squared = s.var(square.call(lit!(3)));
+/// })
+/// # });
+/// ```
+///
+/// The same function but with the `fun-call` feature-gate enabled:
+///
+/// ```
+/// # use shades::ShaderBuilder;
+/// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+/// use shades::{Expr, Scope, lit};
+///
+/// let square = s.fun(|s: &mut Scope<Expr<i32>>, a: Expr<i32>| {
+///   &a * &a
+/// });
+///
+/// s.main_fun(|s: &mut Scope<()>| {
+///   // call square with 3 and bind the result to a variable
+///   # #[cfg(feature = "fun-call")]
+///   let squared = s.var(square(lit!(3)));
+/// })
+/// # });
+/// ```
+///
+/// A function taking two 3D vectors and a floating scalar and returning their linear interpolation, called with
+/// three arguments:
+///
+/// ```
+/// # use shades::ShaderBuilder;
+/// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+/// use shades::{Expr, Mix as _, Scope, V3, lit, vec3};
+///
+/// let lerp = s.fun(|s: &mut Scope<Expr<V3<f32>>>, a: Expr<V3<f32>>, b: Expr<V3<f32>>, t: Expr<f32>| {
+///   a.mix(b, t)
+/// });
+///
+/// s.main_fun(|s: &mut Scope<()>| {
+///   # #[cfg(feature = "fun-call")]
+///   let a = vec3!(0., 0., 0.);
+///   let b = vec3!(1., 1., 1.);
+///
+///   // call lerp here and bind it to a local variable
+///   let result = s.var(lerp(a, b, lit!(0.75)));
+/// })
+/// # });
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunHandle<R, A> {
   erased: ErasedFunHandle,
@@ -1839,6 +1982,9 @@ pub struct FunHandle<R, A> {
 }
 
 impl<R> FunHandle<Expr<R>, ()> {
+  /// Create an expression representing a function call to this function.
+  ///
+  /// See the documentation of [`FunHandle`] for examples.
   pub fn call(&self) -> Expr<R> {
     Expr::new(ErasedExpr::FunCall(self.erased.clone(), Vec::new()))
   }
@@ -3766,49 +3912,50 @@ impl_Bounded!(V2<bool>);
 impl_Bounded!(V3<bool>);
 impl_Bounded!(V4<bool>);
 
-pub trait Mix: Sized {
-  fn mix(&self, y: impl Into<Self>, a: impl Into<Self>) -> Self;
+pub trait Mix<RHS>: Sized {
+  fn mix(&self, y: impl Into<Self>, a: RHS) -> Self;
 
-  fn step(&self, edge: impl Into<Self>) -> Self;
+  fn step(&self, edge: RHS) -> Self;
 
-  fn smooth_step(&self, edge_a: impl Into<Self>, edge_b: impl Into<Self>) -> Self;
+  fn smooth_step(&self, edge_a: RHS, edge_b: RHS) -> Self;
 }
 
 macro_rules! impl_Mix {
-  ($t:ty) => {
-    impl Mix for Expr<$t> {
-      fn mix(&self, y: impl Into<Self>, a: impl Into<Self>) -> Self {
+  ($t:ty, $q:ty) => {
+    impl Mix<Expr<$q>> for Expr<$t> {
+      fn mix(&self, y: impl Into<Self>, a: Expr<$q>) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Mix,
-          vec![self.erased.clone(), y.into().erased, a.into().erased],
+          vec![self.erased.clone(), y.into().erased, a.erased],
         ))
       }
 
-      fn step(&self, edge: impl Into<Self>) -> Self {
+      fn step(&self, edge: Expr<$q>) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Step,
-          vec![self.erased.clone(), edge.into().erased],
+          vec![self.erased.clone(), edge.erased],
         ))
       }
 
-      fn smooth_step(&self, edge_a: impl Into<Self>, edge_b: impl Into<Self>) -> Self {
+      fn smooth_step(&self, edge_a: Expr<$q>, edge_b: Expr<$q>) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::SmoothStep,
-          vec![
-            self.erased.clone(),
-            edge_a.into().erased,
-            edge_b.into().erased,
-          ],
+          vec![self.erased.clone(), edge_a.erased, edge_b.erased],
         ))
       }
     }
   };
 }
 
-impl_Mix!(f32);
-impl_Mix!(V2<f32>);
-impl_Mix!(V3<f32>);
-impl_Mix!(V4<f32>);
+impl_Mix!(f32, f32);
+impl_Mix!(V2<f32>, f32);
+impl_Mix!(V2<f32>, V2<f32>);
+
+impl_Mix!(V3<f32>, f32);
+impl_Mix!(V3<f32>, V3<f32>);
+
+impl_Mix!(V4<f32>, f32);
+impl_Mix!(V4<f32>, V4<f32>);
 
 pub trait FloatingExt {
   type BoolExpr;
