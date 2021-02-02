@@ -1246,6 +1246,43 @@ macro_rules! impl_binop_Expr {
       }
     }
 
+    // var OP expr
+    impl<'a> ops::$op<Expr<$b>> for Var<$a> {
+      type Output = Expr<$a>;
+
+      fn $meth_name(self, rhs: Expr<$b>) -> Self::Output {
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.0.erased),
+          Box::new(rhs.erased),
+        ))
+      }
+    }
+
+    // expr OP var
+    impl<'a> ops::$op<Var<$b>> for Expr<$a> {
+      type Output = Expr<$a>;
+
+      fn $meth_name(self, rhs: Var<$b>) -> Self::Output {
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.erased),
+          Box::new(rhs.0.erased),
+        ))
+      }
+    }
+
+    // var OP var
+    impl<'a> ops::$op<Var<$b>> for Var<$a> {
+      type Output = Expr<$a>;
+
+      fn $meth_name(self, rhs: Var<$b>) -> Self::Output {
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.0.erased),
+          Box::new(rhs.0.erased),
+        ))
+      }
+    }
+
+    // expr OP &expr
     impl<'a> ops::$op<&'a Expr<$b>> for Expr<$a> {
       type Output = Expr<$a>;
 
@@ -1257,6 +1294,43 @@ macro_rules! impl_binop_Expr {
       }
     }
 
+    // var OP &expr
+    impl<'a> ops::$op<&'a Expr<$b>> for Var<$a> {
+      type Output = Expr<$a>;
+
+      fn $meth_name(self, rhs: &'a Expr<$b>) -> Self::Output {
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.0.erased),
+          Box::new(rhs.erased.clone()),
+        ))
+      }
+    }
+
+    // expr OP &var
+    impl<'a> ops::$op<&'a Var<$b>> for Expr<$a> {
+      type Output = Expr<$a>;
+
+      fn $meth_name(self, rhs: &'a Var<$b>) -> Self::Output {
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.erased),
+          Box::new(rhs.0.erased.clone()),
+        ))
+      }
+    }
+
+    // var OP &var
+    impl<'a> ops::$op<&'a Var<$b>> for Var<$a> {
+      type Output = Expr<$a>;
+
+      fn $meth_name(self, rhs: &'a Var<$b>) -> Self::Output {
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.0.erased),
+          Box::new(rhs.0.erased.clone()),
+        ))
+      }
+    }
+
+    // &expr OP expr
     impl<'a> ops::$op<Expr<$b>> for &'a Expr<$a> {
       type Output = Expr<$a>;
 
@@ -1268,6 +1342,43 @@ macro_rules! impl_binop_Expr {
       }
     }
 
+    // &var OP expr
+    impl<'a> ops::$op<Expr<$b>> for &'a Var<$a> {
+      type Output = Expr<$a>;
+
+      fn $meth_name(self, rhs: Expr<$b>) -> Self::Output {
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.0.erased.clone()),
+          Box::new(rhs.erased),
+        ))
+      }
+    }
+
+    // &expr OP var
+    impl<'a> ops::$op<Var<$b>> for &'a Expr<$a> {
+      type Output = Expr<$a>;
+
+      fn $meth_name(self, rhs: Var<$b>) -> Self::Output {
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.erased.clone()),
+          Box::new(rhs.0.erased),
+        ))
+      }
+    }
+
+    // &var OP var
+    impl<'a> ops::$op<Var<$b>> for &'a Var<$a> {
+      type Output = Expr<$a>;
+
+      fn $meth_name(self, rhs: Var<$b>) -> Self::Output {
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.0.erased.clone()),
+          Box::new(rhs.0.erased),
+        ))
+      }
+    }
+
+    // &expr OP &expr
     impl<'a> ops::$op<&'a Expr<$b>> for &'a Expr<$a> {
       type Output = Expr<$a>;
 
@@ -1275,6 +1386,42 @@ macro_rules! impl_binop_Expr {
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased.clone()),
           Box::new(rhs.erased.clone()),
+        ))
+      }
+    }
+
+    // &var OP &expr
+    impl<'a> ops::$op<&'a Expr<$b>> for &'a Var<$a> {
+      type Output = Expr<$a>;
+
+      fn $meth_name(self, rhs: &'a Expr<$b>) -> Self::Output {
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.0.erased.clone()),
+          Box::new(rhs.erased.clone()),
+        ))
+      }
+    }
+
+    // &expr OP &var
+    impl<'a> ops::$op<&'a Var<$b>> for &'a Expr<$a> {
+      type Output = Expr<$a>;
+
+      fn $meth_name(self, rhs: &'a Var<$b>) -> Self::Output {
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.erased.clone()),
+          Box::new(rhs.0.erased.clone()),
+        ))
+      }
+    }
+
+    // &var OP &var
+    impl<'a> ops::$op<&'a Var<$b>> for &'a Var<$a> {
+      type Output = Expr<$a>;
+
+      fn $meth_name(self, rhs: &'a Var<$b>) -> Self::Output {
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.0.erased.clone()),
+          Box::new(rhs.0.erased.clone()),
         ))
       }
     }
@@ -1289,6 +1436,20 @@ macro_rules! impl_binop_Expr {
       }
     }
 
+    // var OP t, where t is automatically lifted
+    impl<'a> ops::$op<$b> for Var<$a> {
+      type Output = Expr<$a>;
+
+      fn $meth_name(self, rhs: $b) -> Self::Output {
+        let rhs = Expr::from(rhs);
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.0.erased),
+          Box::new(rhs.erased),
+        ))
+      }
+    }
+
+    // &expr OP t, where t is automatically lifted
     impl<'a> ops::$op<$b> for &'a Expr<$a> {
       type Output = Expr<$a>;
 
@@ -1296,6 +1457,19 @@ macro_rules! impl_binop_Expr {
         let rhs: Expr<$b> = rhs.into();
         Expr::new(ErasedExpr::$op(
           Box::new(self.erased.clone()),
+          Box::new(rhs.erased),
+        ))
+      }
+    }
+
+    // &var OP t, where t is automatically lifted
+    impl<'a> ops::$op<$b> for &'a Var<$a> {
+      type Output = Expr<$a>;
+
+      fn $meth_name(self, rhs: $b) -> Self::Output {
+        let rhs: Expr<$b> = rhs.into();
+        Expr::new(ErasedExpr::$op(
+          Box::new(self.0.erased.clone()),
           Box::new(rhs.erased),
         ))
       }
