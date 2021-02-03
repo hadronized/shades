@@ -698,7 +698,7 @@ impl ErasedExpr {
 ///
 /// It’s important to notice that because of how Rust infers type, type ambiguities might occur when using literals —
 /// hence, the use of [`lit!`](lit) should help. For instance, in `1 + 2`, the type of `1` is ambiguous because of how
-/// the implementors for [`Add`] are picked. In such a case, you are advised to use [`lit!`](lit).
+/// the implementors for [`Add`](std::ops::Add) are picked. In such a case, you are advised to use [`lit!`](lit).
 ///
 /// ## Automatic lifting
 ///
@@ -2188,6 +2188,9 @@ impl<R> Fn<()> for FunHandle<Expr<R>, ()> {
 }
 
 impl<R, A> FunHandle<Expr<R>, Expr<A>> {
+  /// Create an expression representing a function call to this function.
+  ///
+  /// See the documentation of [`FunHandle`] for examples.
   pub fn call(&self, a: Expr<A>) -> Expr<R> {
     Expr::new(ErasedExpr::FunCall(self.erased.clone(), vec![a.erased]))
   }
@@ -2221,6 +2224,9 @@ macro_rules! impl_FunCall {
   ( $( ( $arg_name:ident, $arg_ty:ident ) ),*) => {
     impl<R, $($arg_ty),*> FunHandle<Expr<R>, ($(Expr<$arg_ty>),*)>
     {
+      /// Create an expression representing a function call to this function.
+      ///
+      /// See the documentation of [`FunHandle`] for examples.
       pub fn call(&self, $($arg_name : Expr<$arg_ty>),*) -> Expr<R> {
         Expr::new(ErasedExpr::FunCall(self.erased.clone(), vec![$($arg_name.erased),*]))
       }
@@ -2284,9 +2290,9 @@ impl_FunCall_rec!(
   (p, P)
 );
 
+/// Erased function handle.
 #[derive(Clone, Debug, PartialEq)]
-pub enum ErasedFunHandle {
-  Main,
+enum ErasedFunHandle {
   // cast operators
   Vec2,
   Vec3,
@@ -2415,6 +2421,10 @@ pub enum ErasedFunHandle {
   UserDefined(u16),
 }
 
+/// A function definition.
+///
+/// Function definitions contain the information required to know how to represent a function’s arguments, return type
+/// and its body.
 #[derive(Debug)]
 pub struct FunDef<R, A> {
   erased: ErasedFun,
@@ -2430,8 +2440,9 @@ impl<R, A> FunDef<R, A> {
   }
 }
 
+/// Erased function definition.
 #[derive(Debug)]
-pub struct ErasedFun {
+struct ErasedFun {
   args: Vec<Type>,
   scope: ErasedScope,
   ret: ErasedReturn,
@@ -2443,6 +2454,24 @@ impl ErasedFun {
   }
 }
 
+/// Lexical scope that must output a `R`.
+///
+/// Scopes are the only way to add control flow expressions to shaders. [`Scope<R>`] is the most general one, parent
+/// of all scopes. Depending on the kind of control flow, several kind of scopes are possible:
+///
+/// - [`Scope<R>`] is the most general one and every scopes share its features.
+/// - [`EscapeScope<R>`] is a special kind of [`Scope<R>`] that allows escaping from anywhere in the scope.
+/// - [`LoopScope<R>`] is a special kind of [`EscapeScope<R>`] that also allows to escape local looping expressions,
+///   such as `for` and `while` loops.
+///
+/// A [`Scope<R>`] allows to perform a bunch of actions:
+///
+/// - Creating variable via [`Scope::var`]. Expressions of type [`Expr<T>`] where [`T: ToType`](ToType) are bound in a
+///   [`Scope<R>`] via [`Scope::var`] and a [`Var<T>`] is returned, representing the bound variable.
+/// - Variable mutation via [`Scope::set`]. Any [`Var<T>`] declared previously and still reachable in the current [`Scope`]
+///   can be mutated.
+/// - Introducing conditional statements with [`Scope::when`] and [`Scope::unless`].
+/// - Introducing looping statements with [`Scope::loop_for`] and [`Scope::loop_while`].
 #[derive(Debug)]
 pub struct Scope<R> {
   erased: ErasedScope,
@@ -2453,6 +2482,13 @@ impl<R> Scope<R>
 where
   Return: From<R>,
 {
+  /// Create a new [`Scope<R>`] for which the ID is explicitly passed.
+  ///
+  /// The ID is unique in the scope hierarchy, but is not necessarily unique in the parent scope. What it means is that
+  /// creating a scope `s` in a (parent) scope of ID `p` will give `s` the ID `p + 1`. So any scope created directly
+  /// under the scope of ID `p` will get the `p + 1` ID. The reason for this is that variables go out of scope at the
+  /// end of the scope they were created in, so it’s safe to reuse the same ID for sibling scopes, as they can’t share
+  /// variables.
   fn new(id: u16) -> Self {
     Self {
       erased: ErasedScope::new(id),
@@ -2460,10 +2496,32 @@ where
     }
   }
 
+  /// Create a new fresh scope under the current scope.
   fn deeper(&self) -> Self {
     Scope::new(self.erased.id + 1)
   }
 
+  /// Bind an expression to a variable in the current scope.
+  ///
+  /// `let v = s.var(e);` binds the `e` expression to `v` in the `s` [`Scope<T>`], and `e` must have type [`Expr<T>`]
+  /// and `v` must be a [`Var<T>`], with [`T: ToType`](ToType).
+  ///
+  /// # Return
+  ///
+  /// The resulting [`Var<T>`] contains the representation of the binding in the EDSL and the actual binding is
+  /// recorded in the current scope.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::{Scope, ShaderBuilder};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// #   s.main_fun(|s: &mut Scope<()>| {
+  /// let v = s.var(3.1415); // assign the literal 3.1415 to v
+  /// let q = s.var(v * 2.); // assign v * 2. to q
+  /// #   })
+  /// # });
+  /// ```
   pub fn var<T>(&mut self, init_value: impl Into<Expr<T>>) -> Var<T>
   where
     T: ToType,
@@ -2482,6 +2540,62 @@ where
     Var::new(handle)
   }
 
+  /// Conditional statement — `if`.
+  ///
+  /// `s.when(cond, |s: &mut EscapeScope<R>| { /* body */ })` inserts a conditional branch in the EDSL using the `cond`
+  /// expression as truth and the passed closure as body to run when the represented condition is `true`. The
+  /// [`EscapeScope<R>`] provides you with the possibility to escape and leave the function earlier, either by returning
+  /// an expression or by aborting the function, depending on the value of `R`: `Expr<_>` allows for early-returns and
+  /// `()` allows for aborting.
+  ///
+  /// # Return
+  ///
+  /// A [`When<R>`], authorizing the same escape rules with `R`. This object allows you to chain other conditional
+  /// statements, commonly referred to as `else if` and `else` in common languages.
+  ///
+  /// Have a look at the documentation of [`When`] for further information.
+  ///
+  /// # Examples
+  ///
+  /// Early-return:
+  ///
+  /// ```
+  /// use shades::{EscapeScope, Expr, Scope, ShaderBuilder, lit};
+  ///
+  /// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  ///   let f = s.fun(|s: &mut Scope<Expr<i32>>| {
+  ///     s.when(lit!(1).lt(3), |s: &mut EscapeScope<Expr<i32>>| {
+  ///       // do something in here
+  ///
+  ///       // early-return with 0; only possible if the function returns Expr<i32>
+  ///       s.leave(0);
+  ///     });
+  ///
+  ///     lit!(1)
+  ///   });
+  ///
+  ///   s.main_fun(|s: &mut Scope<()>| {
+  ///     let x = s.var(f());
+  ///   })
+  /// });
+  /// ```
+  ///
+  /// Aborting a function:
+  ///
+  /// ```
+  /// use shades::{EscapeScope, Scope, ShaderBuilder, lit};
+  ///
+  /// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  ///   s.main_fun(|s: &mut Scope<()>| {
+  ///     s.when(lit!(1).lt(3), |s: &mut EscapeScope<()>| {
+  ///       // do something in here
+  ///
+  ///       // break the parent function by aborting; this is possible because the return type is ()
+  ///       s.abort();
+  ///     });
+  ///   })
+  /// });
+  /// ```
   pub fn when<'a>(
     &'a mut self,
     condition: impl Into<Expr<bool>>,
@@ -2498,6 +2612,10 @@ where
     When { parent_scope: self }
   }
 
+  /// Complement form of [`Scope::when`].
+  ///
+  /// This method does the same thing as [`Scope::when`] but applies the [`Not::not`](std::ops::Not::not) operator on
+  /// the condition first.
   pub fn unless<'a>(
     &'a mut self,
     condition: impl Into<Expr<bool>>,
@@ -2506,6 +2624,44 @@ where
     self.when(!condition.into(), body)
   }
 
+  /// For looping statement — `for`.
+  ///
+  /// `s.loop_for(i, |i| /* cond */, |i| /* fold */, |i| /* body */ )` inserts a looping statement into the EDSL
+  /// representing a typical “for” loop. `i` is an [`Expr<T>`] satisfying [`T: ToType`](ToType) and is used as
+  /// _initial_ value.
+  ///
+  /// In all the following closures, `i` refers to the initial value.
+  ///
+  /// The first `cond` closure must return an [`Expr<bool>`], representing the condition that is held until the loop
+  /// exits. The second `fold` closure is a pure computation that must return an [`Expr<T>`] and that will be evaluated
+  /// at the end of each iteration before the next check on `cond`. The last and third `body` closure is the body of the
+  /// loop.
+  ///
+  /// The behaviors of first two closures is important to understand. Those are akin to _filtering_ and _folding_. The
+  /// closure returning the [`Expr<bool>`] is given the [`Expr<T>`] at each iteration and the second closure creates
+  /// the new [`Expr<T>`] for the next iteration. Normally, people are used to write this pattern as `i++`, for
+  /// instance, but in the case of our EDSL, it is more akin go `i + 1`, and this value is affected to a local
+  /// accumulator hidden from the user.
+  ///
+  /// The [`LoopScope<R>`] argument to the `body` closure is a specialization of [`Scope<R>`] that allows breaking out
+  /// of loops.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use shades::{LoopScope, Scope, ShaderBuilder};
+  ///
+  /// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  ///   s.main_fun(|s: &mut Scope<()>| {
+  ///     s.loop_for(0, |i| i.lt(10), |i| i + 1, |s: &mut LoopScope<()>, i| {
+  ///       s.when(i.eq(5), |s: &mut LoopScope<()>| {
+  ///         // when i == 5, abort from the main function
+  ///         s.abort();
+  ///       });
+  ///     });
+  ///   })
+  /// });
+  /// ```
   pub fn loop_for<T>(
     &mut self,
     init_value: impl Into<Expr<T>>,
