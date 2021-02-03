@@ -565,7 +565,6 @@ fn write_swizzle_sel_to_str(output: &mut String, d: &SwizzleSelector) -> Result<
 
 fn write_fun_handle_to_str(output: &mut String, f: &ErasedFunHandle) -> Result<(), WriteError> {
   match f {
-    ErasedFunHandle::Main => *output += "main",
     ErasedFunHandle::Vec2 => *output += "vec2",
     ErasedFunHandle::Vec3 => *output += "vec3",
     ErasedFunHandle::Vec4 => *output += "vec4",
