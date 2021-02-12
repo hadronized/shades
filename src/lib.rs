@@ -2540,90 +2540,6 @@ where
     Var::new(handle)
   }
 
-  /// Conditional statement — `if`.
-  ///
-  /// `s.when(cond, |s: &mut EscapeScope<R>| { /* body */ })` inserts a conditional branch in the EDSL using the `cond`
-  /// expression as truth and the passed closure as body to run when the represented condition is `true`. The
-  /// [`EscapeScope<R>`] provides you with the possibility to escape and leave the function earlier, either by returning
-  /// an expression or by aborting the function, depending on the value of `R`: `Expr<_>` allows for early-returns and
-  /// `()` allows for aborting.
-  ///
-  /// # Return
-  ///
-  /// A [`When<R>`], authorizing the same escape rules with `R`. This object allows you to chain other conditional
-  /// statements, commonly referred to as `else if` and `else` in common languages.
-  ///
-  /// Have a look at the documentation of [`When`] for further information.
-  ///
-  /// # Examples
-  ///
-  /// Early-return:
-  ///
-  /// ```
-  /// use shades::{EscapeScope, Expr, Scope, ShaderBuilder, lit};
-  ///
-  /// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
-  ///   let f = s.fun(|s: &mut Scope<Expr<i32>>| {
-  ///     s.when(lit!(1).lt(3), |s: &mut EscapeScope<Expr<i32>>| {
-  ///       // do something in here
-  ///
-  ///       // early-return with 0; only possible if the function returns Expr<i32>
-  ///       s.leave(0);
-  ///     });
-  ///
-  ///     lit!(1)
-  ///   });
-  ///
-  ///   s.main_fun(|s: &mut Scope<()>| {
-  ///     let x = s.var(f());
-  ///   })
-  /// });
-  /// ```
-  ///
-  /// Aborting a function:
-  ///
-  /// ```
-  /// use shades::{EscapeScope, Scope, ShaderBuilder, lit};
-  ///
-  /// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
-  ///   s.main_fun(|s: &mut Scope<()>| {
-  ///     s.when(lit!(1).lt(3), |s: &mut EscapeScope<()>| {
-  ///       // do something in here
-  ///
-  ///       // break the parent function by aborting; this is possible because the return type is ()
-  ///       s.abort();
-  ///     });
-  ///   })
-  /// });
-  /// ```
-  pub fn when<'a>(
-    &'a mut self,
-    condition: impl Into<Expr<bool>>,
-    body: impl FnOnce(&mut EscapeScope<R>),
-  ) -> When<'a, R> {
-    let mut scope = EscapeScope::new(self.deeper());
-    body(&mut scope);
-
-    self.erased.instructions.push(ScopeInstr::If {
-      condition: condition.into().erased,
-      scope: Scope::from(scope).erased,
-    });
-
-    When { parent_scope: self }
-  }
-
-  /// Complement form of [`Scope::when`].
-  ///
-  /// This method does the same thing as [`Scope::when`] but applies the [`Not::not`](std::ops::Not::not) operator on
-  /// the condition first.
-  pub fn unless<'a>(
-    &'a mut self,
-    condition: impl Into<Expr<bool>>,
-    body: impl FnOnce(&mut EscapeScope<R>),
-  ) -> When<'a, R> {
-    self.when(!condition.into(), body)
-  }
-
   /// For looping statement — `for`.
   ///
   /// `s.loop_for(i, |i| /* cond */, |i| /* fold */, |i| /* body */ )` inserts a looping statement into the EDSL
@@ -2821,6 +2737,137 @@ impl ErasedScope {
       instructions: Vec::new(),
       next_var: 0,
     }
+  }
+}
+
+/// Scopes allowing to enter conditional scopes.
+///
+/// Conditional scopes allow to break out of a function by early-return / aborting the function.
+pub trait CanEscape<R>
+where
+  Return: From<R>,
+{
+  /// Scope type inside the scope of the conditional.
+  type InnerScope;
+
+  /// Conditional statement — `if`.
+  ///
+  /// `s.when(cond, |s: &mut EscapeScope<R>| { /* body */ })` inserts a conditional branch in the EDSL using the `cond`
+  /// expression as truth and the passed closure as body to run when the represented condition is `true`. The
+  /// [`EscapeScope<R>`] provides you with the possibility to escape and leave the function earlier, either by returning
+  /// an expression or by aborting the function, depending on the value of `R`: `Expr<_>` allows for early-returns and
+  /// `()` allows for aborting.
+  ///
+  /// # Return
+  ///
+  /// A [`When<R>`], authorizing the same escape rules with `R`. This object allows you to chain other conditional
+  /// statements, commonly referred to as `else if` and `else` in common languages.
+  ///
+  /// Have a look at the documentation of [`When`] for further information.
+  ///
+  /// # Examples
+  ///
+  /// Early-return:
+  ///
+  /// ```
+  /// use shades::{EscapeScope, Expr, Scope, ShaderBuilder, lit};
+  ///
+  /// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  ///   let f = s.fun(|s: &mut Scope<Expr<i32>>| {
+  ///     s.when(lit!(1).lt(3), |s: &mut EscapeScope<Expr<i32>>| {
+  ///       // do something in here
+  ///
+  ///       // early-return with 0; only possible if the function returns Expr<i32>
+  ///       s.leave(0);
+  ///     });
+  ///
+  ///     lit!(1)
+  ///   });
+  ///
+  ///   s.main_fun(|s: &mut Scope<()>| {
+  ///     let x = s.var(f());
+  ///   })
+  /// });
+  /// ```
+  ///
+  /// Aborting a function:
+  ///
+  /// ```
+  /// use shades::{EscapeScope, Scope, ShaderBuilder, lit};
+  ///
+  /// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  ///   s.main_fun(|s: &mut Scope<()>| {
+  ///     s.when(lit!(1).lt(3), |s: &mut EscapeScope<()>| {
+  ///       // do something in here
+  ///
+  ///       // break the parent function by aborting; this is possible because the return type is ()
+  ///       s.abort();
+  ///     });
+  ///   })
+  /// });
+  /// ```
+  fn when<'a>(
+    &'a mut self,
+    condition: impl Into<Expr<bool>>,
+    body: impl FnOnce(&mut Self::InnerScope),
+  ) -> When<'a, R>;
+
+  /// Complement form of [`Scope::when`].
+  ///
+  /// This method does the same thing as [`Scope::when`] but applies the [`Not::not`](std::ops::Not::not) operator on
+  /// the condition first.
+  fn unless<'a>(
+    &'a mut self,
+    condition: impl Into<Expr<bool>>,
+    body: impl FnOnce(&mut Self::InnerScope),
+  ) -> When<'a, R> {
+    self.when(!condition.into(), body)
+  }
+}
+
+impl<R> CanEscape<R> for Scope<R>
+where
+  Return: From<R>,
+{
+  type InnerScope = EscapeScope<R>;
+
+  fn when<'a>(
+    &'a mut self,
+    condition: impl Into<Expr<bool>>,
+    body: impl FnOnce(&mut Self::InnerScope),
+  ) -> When<'a, R> {
+    let mut scope = EscapeScope::new(self.deeper());
+    body(&mut scope);
+
+    self.erased.instructions.push(ScopeInstr::If {
+      condition: condition.into().erased,
+      scope: Scope::from(scope).erased,
+    });
+
+    When { parent_scope: self }
+  }
+}
+
+impl<R> CanEscape<R> for LoopScope<R>
+where
+  Return: From<R>,
+{
+  type InnerScope = LoopScope<R>;
+
+  fn when<'a>(
+    &'a mut self,
+    condition: impl Into<Expr<bool>>,
+    body: impl FnOnce(&mut Self::InnerScope),
+  ) -> When<'a, R> {
+    let mut scope = LoopScope::new(self.deeper());
+    body(&mut scope);
+
+    self.erased.instructions.push(ScopeInstr::If {
+      condition: condition.into().erased,
+      scope: Scope::from(scope).erased,
+    });
+
+    When { parent_scope: self }
   }
 }
 

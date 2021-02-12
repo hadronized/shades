@@ -1,4 +1,4 @@
-use shades::{lit, Expr, Scope, ShaderBuilder, V2};
+use shades::{lit, CanEscape as _, Expr, Scope, ShaderBuilder, V2};
 
 fn main() {
   let vertex_shader = ShaderBuilder::new_vertex_shader(|mut shader: ShaderBuilder, vertex| {
@@ -9,8 +9,15 @@ fn main() {
     shader.main_fun(|s: &mut Scope<()>| {
       let x = s.var(1.);
       let _ = s.var([1, 2]);
-      s.set(vertex.clip_distance.at(0), increment(x.into()));
+      s.set(vertex.clip_distance.at(0), increment(x.clone()));
       s.set(&vertex.position, lit![0., 0.1, 1., -1.]);
+
+      s.loop_while(true, |s| {
+        s.when(x.clone().eq(1.), |s| {
+          s.loop_break();
+          s.abort();
+        });
+      });
     })
   });
 
