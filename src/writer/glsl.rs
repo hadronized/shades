@@ -138,7 +138,7 @@ fn write_scope_to_str(
         write_expr_to_str(output, condition)?;
         *output += ") {\n";
         write_scope_to_str(output, scope, indent_lvl + 1)?;
-        *output += "}";
+        write_indented(output, &indent, "}");
       }
 
       ScopeInstr::ElseIf { condition, scope } => {
@@ -146,13 +146,13 @@ fn write_scope_to_str(
         write_expr_to_str(output, condition)?;
         *output += ") {\n";
         write_scope_to_str(output, scope, indent_lvl + 1)?;
-        *output += "}";
+        write_indented(output, &indent, "}");
       }
 
       ScopeInstr::Else { scope } => {
         *output += " else {\n";
         write_scope_to_str(output, scope, indent_lvl + 1)?;
-        *output += "}";
+        write_indented(output, &indent, "}");
       }
 
       ScopeInstr::For {
@@ -194,7 +194,7 @@ fn write_scope_to_str(
         write_expr_to_str(output, condition)?;
         *output += ") {\n";
         write_scope_to_str(output, scope, indent_lvl + 1)?;
-        *output += "}";
+        write_indented(output, &indent, "}");
       }
 
       ScopeInstr::MutateVar { var, expr } => {
@@ -565,7 +565,6 @@ fn write_swizzle_sel_to_str(output: &mut String, d: &SwizzleSelector) -> Result<
 
 fn write_fun_handle_to_str(output: &mut String, f: &ErasedFunHandle) -> Result<(), WriteError> {
   match f {
-    ErasedFunHandle::Main => *output += "main",
     ErasedFunHandle::Vec2 => *output += "vec2",
     ErasedFunHandle::Vec3 => *output += "vec3",
     ErasedFunHandle::Vec4 => *output += "vec4",
@@ -866,4 +865,9 @@ fn write_type_to_str(output: &mut String, ty: &Type) -> Result<(), WriteError> {
   }
 
   Ok(())
+}
+
+fn write_indented(output: &mut String, indent: &str, t: &str) {
+  *output += &indent;
+  *output += t;
 }
