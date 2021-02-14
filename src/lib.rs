@@ -374,9 +374,9 @@ impl ShaderBuilder {
   /// statement:
   ///
   /// ```
-  /// # use shades::{Expr, Scope, ShaderBuilder};
+  /// # use shades::ShaderBuilder;
   /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
-  /// use shades::{EscapeScope, Expr, Scope};
+  /// use shades::{CanEscape as _, EscapeScope, Expr, Scope};
   ///
   /// // don’t do this.
   /// let f = s.fun(|s: &mut Scope<Expr<f32>>, a: Expr<f32>| {
@@ -529,6 +529,7 @@ impl ShaderBuilder {
     Var::new(ScopedHandle::global(handle))
   }
 
+  /// TODO
   pub fn output<T>(&mut self) -> Var<T>
   where
     T: ToType,
@@ -2145,6 +2146,7 @@ impl_ToFun_args!(
 ///   let b = vec3!(1., 1., 1.);
 ///
 ///   // call lerp here and bind it to a local variable
+/// # #[cfg(feature = "fun-call")]
 ///   let result = s.var(lerp(a, b, lit!(0.75)));
 /// })
 /// # });
@@ -2565,7 +2567,7 @@ where
   /// # Examples
   ///
   /// ```
-  /// use shades::{LoopScope, Scope, ShaderBuilder};
+  /// use shades::{CanEscape as _, LoopScope, Scope, ShaderBuilder};
   ///
   /// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
   ///   s.main_fun(|s: &mut Scope<()>| {
@@ -2611,6 +2613,31 @@ where
     });
   }
 
+  /// While looping statement — `while`.
+  ///
+  /// `s.loop_while(cond, body)` inserts a looping statement into the EDSL representing a typical “while” loop.
+  ///
+  /// `cond` is an [`Expr<bool>`], representing the condition that is held until the loop exits. `body` is the content
+  /// the loop will execute at each iteration.
+  ///
+  /// The [`LoopScope<R>`] argument to the `body` closure is a specialization of [`Scope<R>`] that allows breaking out
+  /// of loops.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use shades::{CanEscape as _, LoopScope, Scope, ShaderBuilder};
+  ///
+  /// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  ///   s.main_fun(|s: &mut Scope<()>| {
+  ///     let i = s.var(10);
+  ///
+  ///     s.loop_while(i.lt(10), |s| {
+  ///       s.set(&i, &i + 1);
+  ///     });
+  ///   })
+  /// });
+  /// ```
   pub fn loop_while(
     &mut self,
     condition: impl Into<Expr<bool>>,
@@ -2625,6 +2652,19 @@ where
     });
   }
 
+  /// Mutate a variable in the current scope.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::{Scope, ShaderBuilder};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// #   s.main_fun(|s: &mut Scope<()>| {
+  /// let v = s.var(1); // v = 1
+  /// s.set(&v, 10); // v = 10
+  /// #   })
+  /// # });
+  /// ```
   pub fn set<T>(&mut self, var: impl Into<Var<T>>, value: impl Into<Expr<T>>) {
     self.erased.instructions.push(ScopeInstr::MutateVar {
       var: var.into().to_expr().erased,
@@ -2665,6 +2705,28 @@ where
     Self(s)
   }
 
+  /// Early-return the current function with an expression.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::ShaderBuilder;
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// use shades::{CanEscape as _, Expr, Scope};
+  ///
+  /// let _fun = s.fun(|s: &mut Scope<Expr<i32>>, arg: Expr<i32>| {
+  ///   // if arg is less than 10, early-return with 0
+  ///   s.when(arg.lt(10), |s| {
+  ///     s.leave(0);
+  ///   });
+  ///
+  ///   arg
+  /// });
+  ///
+  /// #   s.main_fun(|s: &mut Scope<()>| {
+  /// #   })
+  /// # });
+  /// ```
   pub fn leave(&mut self, ret: impl Into<R>) {
     self
       .erased
@@ -2674,6 +2736,28 @@ where
 }
 
 impl EscapeScope<()> {
+  /// Early-abort the current function.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::ShaderBuilder;
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// use shades::{CanEscape as _, Expr, Scope};
+  ///
+  /// let _fun = s.fun(|s: &mut Scope<()>, arg: Expr<i32>| {
+  ///   // if arg is less than 10, early-return with 0
+  ///   s.when(arg.lt(10), |s| {
+  ///     s.abort();
+  ///   });
+  ///
+  ///   // do something else…
+  /// });
+  ///
+  /// #   s.main_fun(|s: &mut Scope<()>| {
+  /// #   })
+  /// # });
+  /// ```
   pub fn abort(&mut self) {
     self
       .erased
@@ -2714,10 +2798,42 @@ where
     Self(EscapeScope::new(s))
   }
 
+  /// Break the current iteration of the nearest loop and continue to the next iteration.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::{Scope, ShaderBuilder};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// #   s.main_fun(|s: &mut Scope<()>| {
+  /// use shades::CanEscape as _;
+  ///
+  /// s.loop_while(true, |s| {
+  ///   s.loop_continue();
+  /// });
+  /// #   })
+  /// # });
+  /// ```
   pub fn loop_continue(&mut self) {
     self.erased.instructions.push(ScopeInstr::Continue);
   }
 
+  /// Break the nearest loop.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::{Scope, ShaderBuilder};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// #   s.main_fun(|s: &mut Scope<()>| {
+  /// use shades::CanEscape as _;
+  ///
+  /// s.loop_while(true, |s| {
+  ///   s.loop_break();
+  /// });
+  /// #   })
+  /// # });
+  /// ```
   pub fn loop_break(&mut self) {
     self.erased.instructions.push(ScopeInstr::Break);
   }
@@ -2770,7 +2886,7 @@ where
   /// Early-return:
   ///
   /// ```
-  /// use shades::{EscapeScope, Expr, Scope, ShaderBuilder, lit};
+  /// use shades::{CanEscape as _, EscapeScope, Expr, Scope, ShaderBuilder, lit};
   ///
   /// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
   ///   let f = s.fun(|s: &mut Scope<Expr<i32>>| {
@@ -2785,6 +2901,7 @@ where
   ///   });
   ///
   ///   s.main_fun(|s: &mut Scope<()>| {
+  /// # #[cfg(feature = "fun-call")]
   ///     let x = s.var(f());
   ///   })
   /// });
@@ -2793,7 +2910,7 @@ where
   /// Aborting a function:
   ///
   /// ```
-  /// use shades::{EscapeScope, Scope, ShaderBuilder, lit};
+  /// use shades::{CanEscape as _, EscapeScope, Scope, ShaderBuilder, lit};
   ///
   /// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
   ///   s.main_fun(|s: &mut Scope<()>| {
@@ -2871,6 +2988,10 @@ where
   }
 }
 
+/// Conditional combinator.
+///
+/// A [`When<R>`] is returned from functions such as [`CanEscape::when`] or [`CanEscape::unless`] and allows to continue
+/// chaining conditional statements, encoding the concept of `else if` and `else` in more traditional languages.
 #[derive(Debug)]
 pub struct When<'a, R> {
   /// The scope from which this [`When`] expression comes from.
@@ -2884,6 +3005,34 @@ impl<R> When<'_, R>
 where
   Return: From<R>,
 {
+  /// Add a conditional branch — `else if`.
+  ///
+  /// This method is often found chained after [`CanEscape::when`] and allows to add a new conditional if the previous
+  /// conditional fails (i.e. `else if`). The behavior is the same as with [`CanEscape::when`].
+  ///
+  /// # Return
+  ///
+  /// Another [`When<R>`], allowing to add more conditional branches.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::{Scope, ShaderBuilder};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// #   s.main_fun(|s: &mut Scope<()>| {
+  /// use shades::{CanEscape as _, lit};
+  ///
+  /// let x = lit!(1);
+  ///
+  /// // you will need CanEscape in order to use when
+  /// s.when(x.lt(2), |s| {
+  ///   // do something if x < 2
+  /// }).or_else(x.lt(10), |s| {
+  ///   // do something if x < 10
+  /// });
+  /// #   })
+  /// # });
+  /// ```
   pub fn or_else(
     self,
     condition: impl Into<Expr<bool>>,
@@ -2904,6 +3053,54 @@ where
     self
   }
 
+  /// Add a final catch-all conditional branch — `else`.
+  ///
+  /// This method is often found chained after [`CanEscape::when`] and allows to finish the chain of conditional
+  /// branches if the previous conditional fails (i.e. `else`). The behavior is the same as with [`CanEscape::when`].
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::{Scope, ShaderBuilder};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// #   s.main_fun(|s: &mut Scope<()>| {
+  /// use shades::{CanEscape as _, lit};
+  ///
+  /// let x = lit!(1);
+  ///
+  /// // you will need CanEscape in order to use when
+  /// s.when(x.lt(2), |s| {
+  ///   // do something if x < 2
+  /// }).or(|s| {
+  ///   // do something if x >= 2
+  /// });
+  /// #   })
+  /// # });
+  /// ```
+  ///
+  /// Can chain and mix conditional but [`When::or`] cannot be anywhere else but the end of the chain:
+  ///
+  /// ```
+  /// # use shades::{Scope, ShaderBuilder};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// #   s.main_fun(|s: &mut Scope<()>| {
+  /// use shades::{CanEscape as _, lit};
+  ///
+  /// let x = lit!(1);
+  ///
+  /// // you will need CanEscape in order to use when
+  /// s.when(x.lt(2), |s| {
+  ///   // do something if x < 2
+  /// }).or_else(x.lt(5), |s| {
+  ///   // do something if x < 5
+  /// }).or_else(x.lt(10), |s| {
+  ///   // do something if x < 10
+  /// }).or(|s| {
+  ///   // else, do this
+  /// });
+  /// #   })
+  /// # });
+  /// ```
   pub fn or(self, body: impl FnOnce(&mut EscapeScope<R>)) {
     let mut scope = EscapeScope::new(self.parent_scope.deeper());
     body(&mut scope);
@@ -2918,6 +3115,13 @@ where
   }
 }
 
+/// Mutable variable.
+///
+/// A [`Var<T>`] is akin to an [`Expr<T>`] that can be mutated. You can go from a [`Var<T>`] to an [`Expr<T>`] via
+/// either the [`From`] or [`Var::to_expr`] method.
+///
+/// Variables, because they allow mutations, allow to write more complicated shader functions. Also, lots of graphics
+/// pipelines’ properties are variables you will have to write to, such as [`VertexShaderEnv::position`].
 #[derive(Debug)]
 pub struct Var<T>(Expr<T>)
 where
@@ -2954,10 +3158,34 @@ impl<T> Var<T>
 where
   T: ?Sized,
 {
-  pub const fn new(handle: ScopedHandle) -> Self {
+  /// Create a new [`Var<T>`] from a [`ScopedHandle`].
+  const fn new(handle: ScopedHandle) -> Self {
     Self(Expr::new(ErasedExpr::Var(handle)))
   }
 
+  /// Coerce [`Var<T>`] into [`Expr<T>`].
+  ///
+  /// Remember that doing so will move the [`Var<T>`]. `clone` it if you want to preserve the source variable.
+  ///
+  /// > Note: use this function only when necessary. Lots of functions will accept both [`Expr<T>`] and [`Var<T>`],
+  /// > performing the coercion for you automatically.
+  ///
+  /// # Return
+  ///
+  /// The expression representation of [`Var<T>`], allowing to pass the variable to functions or expressions that don’t
+  /// easily coerce it automatically to [`Expr<T>`] already.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// # use shades::{Scope, ShaderBuilder};
+  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// #   s.main_fun(|s: &mut Scope<()>| {
+  /// let v = s.var(123); // Var<i32>
+  /// let e = v.to_expr(); // Expr<i32>
+  /// #   })
+  /// # });
+  /// ```
   pub fn to_expr(&self) -> Expr<T> {
     self.0.clone()
   }
@@ -2986,8 +3214,19 @@ where
   }
 }
 
+/// Hierarchical and namespaced handle.
+///
+/// Handles live in different namespaces:
+///
+/// - The _built-in_ namespace gathers all built-ins.
+/// - The _global_ namespace gathers everything that can be declared at top-level of a shader stage — i.e. input,
+///    outputs, constants, uniforms, etc.
+/// - The _function argument_ namespace gives handles to function arguments, which exist only in a function body.
+/// - The _function variable_ namespace gives handles to variables defined in function bodies. This namespace is
+/// hierarchical: for each scope, a new namespace is created. The depth at which a namespace is located is referred to
+/// as its _subscope_.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum ScopedHandle {
+enum ScopedHandle {
   BuiltIn(BuiltIn),
   Global(u16),
   FunArg(u16),
@@ -3060,32 +3299,73 @@ enum ScopeInstr {
   },
 }
 
+/// Dimension of a primitive type.
+///
+/// Primitive types currently can have one of four dimension:
+///
+/// - [`Dim::Scalar`]: designates a scalar value.
+/// - [`Dim::D2`]: designates a 2D vector.
+/// - [`Dim::D3`]: designates a 3D vector.
+/// - [`Dim::D4`]: designates a 4D vector.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Dim {
+  /// Scalar value.
   Scalar,
+
+  /// 2D vector.
   D2,
+
+  /// 3D vector.
   D3,
+
+  /// 4D vector.
   D4,
 }
 
+/// Type representation — akin to [`PrimType`] glued with array dimensions, if any.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Type {
+  /// Primitive type, representing a type without array dimensions.
   prim_ty: PrimType,
+
   /// Array dimensions, if any.
   ///
   /// Dimensions are sorted from outer to inner; i.e. `[[i32; N]; M]`’s dimensions is encoded as `vec![M, N]`.
   array_dims: Vec<usize>,
 }
 
+/// Primitive supported types.
+///
+/// Types without array dimensions are known as _primitive types_ and are exhaustively constructed thanks to
+/// [`PrimType`].
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum PrimType {
+  /// An integral type.
+  ///
+  /// The [`Dim`] argument represents the vector dimension — do not confuse it with an array dimension.
   Int(Dim),
+
+  /// An unsigned integral type.
+  ///
+  /// The [`Dim`] argument represents the vector dimension — do not confuse it with an array dimension.
   UInt(Dim),
+
+  /// An floating type.
+  ///
+  /// The [`Dim`] argument represents the vector dimension — do not confuse it with an array dimension.
   Float(Dim),
+
+  /// A boolean type.
+  ///
+  /// The [`Dim`] argument represents the vector dimension — do not confuse it with an array dimension.
   Bool(Dim),
 }
 
+/// Class of types that are recognized by the EDSL.
+///
+/// Any type implementing this type family is _representable_ in the EDSL.
 pub trait ToPrimType {
+  /// Mapped primitive type.
   const PRIM_TYPE: PrimType;
 }
 
@@ -3114,6 +3394,10 @@ impl_ToPrimType!(V4<u32>, UInt, D4);
 impl_ToPrimType!(V4<f32>, Float, D4);
 impl_ToPrimType!(V4<bool>, Bool, D4);
 
+/// Represent a type (primitive type and array dimension) in the EDSL.
+///
+/// Any type implementing [`ToType`] is representable in the EDSL. Any type implementing [`ToPrimType`] automatically
+/// also implements [`ToType`].
 pub trait ToType {
   fn ty() -> Type;
 }
@@ -3148,19 +3432,38 @@ where
   }
 }
 
+/// Select a channel to extract from into a swizzled expession.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SwizzleSelector {
+  /// Select the `.x` (or `.r`) channel.
   X,
+
+  /// Select the `.y` (or `.g`) channel.
   Y,
+
+  /// Select the `.z` (or `.b`) channel.
   Z,
+
+  /// Select the `.w` (or `.a`) channel.
   W,
 }
 
+/// Swizzle channel selector.
+///
+/// This type gives the dimension of the target expression (output) and dimension of the source expression (input). The
+/// [`SwizzleSelector`] also to select a specific channel in the input expression.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Swizzle {
+  /// Create a one-channel expression.
   D1(SwizzleSelector),
+
+  /// Create a two-channel expression.
   D2(SwizzleSelector, SwizzleSelector),
+
+  /// Create a three-channel expression.
   D3(SwizzleSelector, SwizzleSelector, SwizzleSelector),
+
+  /// Create a four-channel expression.
   D4(
     SwizzleSelector,
     SwizzleSelector,
@@ -3169,6 +3472,14 @@ pub enum Swizzle {
   ),
 }
 
+/// Interface to implement to swizzle an expression.
+///
+/// If you plan to use your implementor with the [`sw!`](sw) macro, `S` must be one of the following types:
+///
+/// - [`SwizzleSelector`]: to implement `sw!(.x)`.
+/// - [[`SwizzleSelector`]; 2]: to implement `sw!(.xx)`.
+/// - [[`SwizzleSelector`]; 3]: to implement `sw!(.xxx)`.
+/// - [[`SwizzleSelector`]; 4]: to implement `sw!(.xxxx)`.
 pub trait Swizzlable<S> {
   fn swizzle(&self, sw: S) -> Self;
 }
@@ -3257,6 +3568,14 @@ impl<T> Swizzlable<[SwizzleSelector; 4]> for Expr<V4<T>> {
   }
 }
 
+/// Swizzle macro.
+///
+/// This macro allows to swizzle expressions to yield expressions reorganizing the vector attributes. For instance,
+/// `sw!(color, .rgbr)` will take a 4D color and will output a 4D color for which the alpha channel is overridden with
+/// the red channel.
+///
+/// The current syntax allows to extract and construct from a lot of types. Have a look at [`Swizzlable`] for a
+/// comprehensive list of what you can do.
 #[macro_export]
 macro_rules! sw {
   ($e:expr, . $a:tt) => {
@@ -3281,6 +3600,7 @@ macro_rules! sw {
   };
 }
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! sw_extract {
   (x) => {
@@ -3317,7 +3637,7 @@ macro_rules! sw_extract {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum BuiltIn {
+enum BuiltIn {
   Vertex(VertexBuiltIn),
   TessCtrl(TessCtrlBuiltIn),
   TessEval(TessEvalBuiltIn),
@@ -3326,7 +3646,7 @@ pub enum BuiltIn {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum VertexBuiltIn {
+enum VertexBuiltIn {
   VertexID,
   InstanceID,
   BaseVertex,
@@ -3337,7 +3657,7 @@ pub enum VertexBuiltIn {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum TessCtrlBuiltIn {
+enum TessCtrlBuiltIn {
   MaxPatchVerticesIn,
   PatchVerticesIn,
   PrimitiveID,
@@ -3353,7 +3673,7 @@ pub enum TessCtrlBuiltIn {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum TessEvalBuiltIn {
+enum TessEvalBuiltIn {
   TessCoord,
   MaxPatchVerticesIn,
   PatchVerticesIn,
@@ -3369,7 +3689,7 @@ pub enum TessEvalBuiltIn {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum GeometryBuiltIn {
+enum GeometryBuiltIn {
   In,
   Out,
   Position,
@@ -3384,7 +3704,7 @@ pub enum GeometryBuiltIn {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum FragmentBuiltIn {
+enum FragmentBuiltIn {
   FragCoord,
   FrontFacing,
   PointCoord,
@@ -3401,17 +3721,30 @@ pub enum FragmentBuiltIn {
   HelperInvocation,
 }
 
-// vertex shader built-ins
+/// Vertex shader environment.
 #[derive(Debug)]
 pub struct VertexShaderEnv {
   // inputs
+  /// ID of the current vertex.
   pub vertex_id: Expr<i32>,
+
+  /// Instance ID of the current vertex.
   pub instance_id: Expr<i32>,
+
+  /// Base vertex offset.
   pub base_vertex: Expr<i32>,
+
+  /// Base instance vertex offset.
   pub base_instance: Expr<i32>,
+
   // outputs
+  /// 4D position of the vertex.
   pub position: Var<V4<f32>>,
+
+  /// Point size of the vertex.
   pub point_size: Var<f32>,
+
+  // Clip distances to user-defined plans.
   pub clip_distance: Var<[f32]>,
 }
 
@@ -3451,18 +3784,33 @@ impl VertexShaderEnv {
   }
 }
 
-// tessellation control shader built-ins
+/// Tessellation control shader environment.
 #[derive(Debug)]
 pub struct TessCtrlShaderEnv {
   // inputs
+  /// Maximum number of vertices per patch.
   pub max_patch_vertices_in: Expr<i32>,
+
+  /// Number of vertices for the current patch.
   pub patch_vertices_in: Expr<i32>,
+
+  /// ID of the current primitive.
   pub primitive_id: Expr<i32>,
+
+  /// ID of the current tessellation control shader invocation.
   pub invocation_id: Expr<i32>,
+
+  /// Array of per-vertex input expressions.
   pub input: Expr<[TessControlPerVertexIn]>,
+
   // outputs
+  /// Outer tessellation levels.
   pub tess_level_outer: Var<[f32; 4]>,
+
+  /// Inner tessellation levels.
   pub tess_level_inner: Var<[f32; 2]>,
+
+  /// Array of per-vertex output variables.
   pub output: Var<[TessControlPerVertexOut]>,
 }
 
@@ -3506,10 +3854,12 @@ impl TessCtrlShaderEnv {
   }
 }
 
+/// Read-only, input tessellation control shader environment.
 #[derive(Debug)]
 pub struct TessControlPerVertexIn;
 
 impl Expr<TessControlPerVertexIn> {
+  ///
   pub fn position(&self) -> Expr<V4<f32>> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
@@ -3555,10 +3905,12 @@ impl Expr<TessControlPerVertexIn> {
   }
 }
 
+/// Output tessellation control shader environment.
 #[derive(Debug)]
 pub struct TessControlPerVertexOut(());
 
 impl Expr<TessControlPerVertexOut> {
+  /// 4D position of the verte.
   pub fn position(&self) -> Var<V4<f32>> {
     let expr = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
@@ -3570,6 +3922,7 @@ impl Expr<TessControlPerVertexOut> {
     Var(Expr::new(expr))
   }
 
+  /// Point size of the vertex.
   pub fn point_size(&self) -> Var<f32> {
     let expr = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
@@ -3581,6 +3934,7 @@ impl Expr<TessControlPerVertexOut> {
     Var(Expr::new(expr))
   }
 
+  /// Clip distances to user-defined planes.
   pub fn clip_distance(&self) -> Var<[f32]> {
     let expr = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
@@ -3592,6 +3946,7 @@ impl Expr<TessControlPerVertexOut> {
     Var(Expr::new(expr))
   }
 
+  /// Cull distances to user-defined planes.
   pub fn cull_distance(&self) -> Var<[f32]> {
     let expr = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
@@ -3604,20 +3959,39 @@ impl Expr<TessControlPerVertexOut> {
   }
 }
 
-// tessellation evalution shader built-ins; inputs
+/// Tessellation evalution shader environm.nt
 #[derive(Debug)]
 pub struct TessEvalShaderEnv {
   // inputs
+  /// Number of vertices in the current patch.
   pub patch_vertices_in: Expr<i32>,
+
+  /// ID of the current primitive.
   pub primitive_id: Expr<i32>,
+
+  /// Tessellation coordinates of the current vertex.
   pub tess_coord: Expr<V3<f32>>,
+
+  /// Outer tessellation levels.
   pub tess_level_outer: Expr<[f32; 4]>,
+
+  /// Inner tessellation levels.
   pub tess_level_inner: Expr<[f32; 2]>,
+
+  /// Array of per-evertex expressions.
   pub input: Expr<[TessEvaluationPerVertexIn]>,
+
   // outputs
+  /// 4D position of the vertex.
   pub position: Var<V4<f32>>,
+
+  /// Point size of the vertex.
   pub point_size: Var<f32>,
+
+  /// Clip distances to user-defined planes.
   pub clip_distance: Var<[f32]>,
+
+  /// Cull distances to user-defined planes.
   pub cull_distance: Var<[f32]>,
 }
 
@@ -3670,10 +4044,12 @@ impl TessEvalShaderEnv {
   }
 }
 
+/// Tessellation evaluation per-vertex expression.
 #[derive(Debug)]
 pub struct TessEvaluationPerVertexIn;
 
 impl Expr<TessEvaluationPerVertexIn> {
+  /// 4D position of the vertex.
   pub fn position(&self) -> Expr<V4<f32>> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
@@ -3685,6 +4061,7 @@ impl Expr<TessEvaluationPerVertexIn> {
     Expr::new(erased)
   }
 
+  /// Point size of the vertex.
   pub fn point_size(&self) -> Expr<f32> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
@@ -3696,6 +4073,7 @@ impl Expr<TessEvaluationPerVertexIn> {
     Expr::new(erased)
   }
 
+  /// Clip distances to user-defined planes.
   pub fn clip_distance(&self) -> Expr<[f32]> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
@@ -3707,6 +4085,7 @@ impl Expr<TessEvaluationPerVertexIn> {
     Expr::new(erased)
   }
 
+  /// Cull distances to user-defined planes.
   pub fn cull_distance(&self) -> Expr<[f32]> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
@@ -3719,20 +4098,39 @@ impl Expr<TessEvaluationPerVertexIn> {
   }
 }
 
-// geometry shader built-ins; inputs
+/// Geometry shader environment.
 #[derive(Debug)]
 pub struct GeometryShaderEnv {
   // inputs
+  /// Contains the index of the current primitive.
   pub primitive_id_in: Expr<i32>,
+
+  /// ID of the current invocation of the geometry shader.
   pub invocation_id: Expr<i32>,
+
+  /// Read-only environment for each vertices.
   pub input: Expr<[GeometryPerVertexIn]>,
+
   // outputs
+  /// Output 4D vertex position.
   pub position: Var<V4<f32>>,
+
+  /// Output vertex point size.
   pub point_size: Var<f32>,
+
+  /// Output clip distances to user-defined planes.
   pub clip_distance: Var<[f32]>,
+
+  /// Output cull distances to user-defined planes.
   pub cull_distance: Var<[f32]>,
+
+  /// Primitive ID to write to in.
   pub primitive_id: Var<i32>,
+
+  /// Layer to write to in.
   pub layer: Var<i32>,
+
+  /// Viewport index to write to.
   pub viewport_index: Var<i32>,
 }
 
@@ -3785,10 +4183,12 @@ impl GeometryShaderEnv {
   }
 }
 
+/// Read-only, input geometry shader environment.
 #[derive(Debug)]
 pub struct GeometryPerVertexIn;
 
 impl Expr<GeometryPerVertexIn> {
+  /// Provides 4D the position of the vertex.
   pub fn position(&self) -> Expr<V4<f32>> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
@@ -3800,6 +4200,7 @@ impl Expr<GeometryPerVertexIn> {
     Expr::new(erased)
   }
 
+  /// Provides the size point of the vertex if it’s currently being rendered in point mode.
   pub fn point_size(&self) -> Expr<f32> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
@@ -3811,6 +4212,7 @@ impl Expr<GeometryPerVertexIn> {
     Expr::new(erased)
   }
 
+  /// Clip distances to user planes of the vertex.
   pub fn clip_distance(&self) -> Expr<[f32]> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
@@ -3822,6 +4224,7 @@ impl Expr<GeometryPerVertexIn> {
     Expr::new(erased)
   }
 
+  /// Cull distances to user planes of the vertex.
   pub fn cull_distance(&self) -> Expr<[f32]> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
@@ -3834,24 +4237,57 @@ impl Expr<GeometryPerVertexIn> {
   }
 }
 
-// fragment shader built-ins
+/// Fragment shader environment.
+///
+/// This type contains everything you have access to when writing a fragment shader.
 #[derive(Debug)]
 pub struct FragmentShaderEnv {
   // inputs
+  /// Fragment coordinate in the framebuffer.
   pub frag_coord: Expr<V4<f32>>,
+
+  /// Whether the fragment is front-facing.
   pub front_facing: Expr<bool>,
+
+  /// Clip distances to user planes.
+  ///
+  /// This is an array giving the clip distances to each of the user clip planes.
   pub clip_distance: Expr<[f32]>,
+
+  /// Cull distances to user planes.
+  ///
+  /// This is an array giving the cull distances to each of the user clip planes.
   pub cull_distance: Expr<[f32]>,
+
+  /// Contains the 2D coordinates of a fragment within a point primitive.
   pub point_coord: Expr<V2<f32>>,
+
+  /// ID of the primitive being currently rendered.
   pub primitive_id: Expr<i32>,
+
+  /// ID of the sample being currently rendered.
   pub sample_id: Expr<i32>,
+
+  /// Sample 2D coordinates.
   pub sample_position: Expr<V2<f32>>,
+
+  /// Contains the computed sample coverage mask for the current fragment.
   pub sample_mask_in: Expr<i32>,
+
+  /// Layer the fragment will be written to.
   pub layer: Expr<i32>,
+
+  /// Viewport index the fragment will be written to.
   pub viewport_index: Expr<i32>,
+
+  /// Indicates whether we are in a helper invocation of a fragment shader.
   pub helper_invocation: Expr<bool>,
+
   // outputs
+  /// Depth of the fragment.
   pub frag_depth: Var<f32>,
+
+  /// Sample mask of the fragment.
   pub sample_mask: Var<[i32]>,
 }
 
