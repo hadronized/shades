@@ -31,8 +31,9 @@ pub fn write_shader_to_str(shader: impl AsRef<Shader>) -> Result<String, WriteEr
       ShaderDecl::Const(handle, ty, ref constant) => {
         write_constant_to_str(&mut output, *handle, ty, constant)?
       }
-      ShaderDecl::In(handle, ty) => write_input_to_str(&mut output, *handle, ty)?,
-      ShaderDecl::Out(handle, ty) => write_output_to_str(&mut output, *handle, ty)?,
+      ShaderDecl::In(name, ty) => write_input_to_str(&mut output, name, ty)?,
+      ShaderDecl::Out(name, ty) => write_output_to_str(&mut output, name, ty)?,
+      ShaderDecl::Uniform(name, ty) => write_uniform_to_str(&mut output, name, ty)?,
     }
   }
 
@@ -228,27 +229,34 @@ fn write_constant_to_str(
   Ok(())
 }
 
-fn write_input_to_str(output: &mut String, handle: u16, ty: &Type) -> Result<(), WriteError> {
+fn write_input_to_str(output: &mut String, name: &str, ty: &Type) -> Result<(), WriteError> {
   *output += "in ";
   write_type_to_str(output, ty)?;
 
-  // the handle is treated as a global
   *output += " ";
-  write_scoped_handle_to_str(output, &ScopedHandle::global(handle))?;
-
+  *output += name;
   *output += ";\n";
 
   Ok(())
 }
 
-fn write_output_to_str(output: &mut String, handle: u16, ty: &Type) -> Result<(), WriteError> {
+fn write_output_to_str(output: &mut String, name: &str, ty: &Type) -> Result<(), WriteError> {
   *output += "out ";
   write_type_to_str(output, ty)?;
 
-  // the handle is treated as a global
   *output += " ";
-  write_scoped_handle_to_str(output, &ScopedHandle::global(handle))?;
+  *output += name;
+  *output += ";\n";
 
+  Ok(())
+}
+
+fn write_uniform_to_str(output: &mut String, name: &str, ty: &Type) -> Result<(), WriteError> {
+  *output += "uniform ";
+  write_type_to_str(output, ty)?;
+
+  *output += " ";
+  *output += name;
   *output += ";\n";
 
   Ok(())
@@ -707,6 +715,12 @@ fn write_scoped_handle_to_str(
     ScopedHandle::FunVar { subscope, handle } => {
       *output += &format!("var_{}_{}", subscope, handle);
     }
+
+    ScopedHandle::Input(name) => *output += &name,
+
+    ScopedHandle::Output(name) => *output += &name,
+
+    ScopedHandle::Uniform(name) => *output += &name,
   }
 
   Ok(())

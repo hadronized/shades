@@ -158,13 +158,13 @@ impl ShaderBuilder {
   /// # Examples
   ///
   /// ```
-  /// use shades::{Scope, ShaderBuilder, V3, vec4};
+  /// use shades::{Scope, ShaderBuilder, V3, inputs, vec4};
   ///
   /// let vertex_shader = ShaderBuilder::new_vertex_shader(|mut s, vertex| {
-  ///   let in_position = s.input::<V3<f32>>();
+  ///   inputs!(s, position: V3<f32>);
   ///
   ///   s.main_fun(|s: &mut Scope<()>| {
-  ///     s.set(vertex.position, vec4!(in_position, 1.));
+  ///     s.set(vertex.position, vec4!(position, 1.));
   ///   })
   /// });
   /// ```
@@ -194,8 +194,6 @@ impl ShaderBuilder {
   /// use shades::{Scope, ShaderBuilder, V3, vec4};
   ///
   /// let tess_ctrl_shader = ShaderBuilder::new_tess_ctrl_shader(|mut s, patch| {
-  ///   let in_position = s.input::<V3<f32>>();
-  ///
   ///   s.main_fun(|s: &mut Scope<()>| {
   ///     s.set(patch.tess_level_outer.at(0), 0.1);
   ///   })
@@ -224,13 +222,13 @@ impl ShaderBuilder {
   /// # Examples
   ///
   /// ```
-  /// use shades::{Scope, ShaderBuilder, V3, vec4};
+  /// use shades::{Scope, ShaderBuilder, V3, inputs, vec4};
   ///
   /// let tess_eval_shader = ShaderBuilder::new_tess_eval_shader(|mut s, patch| {
-  ///   let in_position = s.input::<V3<f32>>();
+  ///   inputs!(s, position: V3<f32>);
   ///
   ///   s.main_fun(|s: &mut Scope<()>| {
-  ///     s.set(patch.position, vec4!(in_position, 1.));
+  ///     s.set(patch.position, vec4!(position, 1.));
   ///   })
   /// });
   /// ```
@@ -288,10 +286,10 @@ impl ShaderBuilder {
   /// # Examples
   ///
   /// ```
-  /// use shades::{Geometry as _, Scope, ShaderBuilder, V3, vec4};
+  /// use shades::{Geometry as _, Scope, ShaderBuilder, V4, outputs, vec4};
   ///
   /// let geo_shader = ShaderBuilder::new_fragment_shader(|mut s, fragment| {
-  ///   let color = s.output();
+  ///   outputs!(s, color: V4<f32>);
   ///
   ///   s.main_fun(|s: &mut Scope<()>| {
   ///     s.set(color, fragment.frag_coord.normalize());
@@ -517,29 +515,32 @@ impl ShaderBuilder {
   /// Declare a new input, shared between all functions and constants that come next.
   ///
   /// TODO
-  pub fn input<T>(&mut self) -> Var<T>
+  pub unsafe fn input<T>(&mut self, name: &str) -> Var<T>
   where
     T: ToType,
   {
-    let handle = self.next_global_handle;
-    self.next_global_handle += 1;
-
-    self.decls.push(ShaderDecl::In(handle, T::ty()));
-
-    Var::new(ScopedHandle::global(handle))
+    let name = name.to_owned();
+    self.decls.push(ShaderDecl::In(name.clone(), T::ty()));
+    Var::new(ScopedHandle::Input(name))
   }
 
   /// TODO
-  pub fn output<T>(&mut self) -> Var<T>
+  pub unsafe fn output<T>(&mut self, name: &str) -> Var<T>
   where
     T: ToType,
   {
-    let handle = self.next_global_handle;
-    self.next_global_handle += 1;
+    let name = name.to_owned();
+    self.decls.push(ShaderDecl::Out(name.clone(), T::ty()));
+    Var::new(ScopedHandle::Output(name))
+  }
 
-    self.decls.push(ShaderDecl::Out(handle, T::ty()));
-
-    Var::new(ScopedHandle::global(handle))
+  pub unsafe fn uniform<T>(&mut self, name: &str) -> Var<T>
+  where
+    T: ToType,
+  {
+    let name = name.to_owned();
+    self.decls.push(ShaderDecl::Uniform(name.clone(), T::ty()));
+    Var::new(ScopedHandle::uniform(name))
   }
 }
 
@@ -567,13 +568,16 @@ pub(crate) enum ShaderDecl {
   ///
   /// The [`u16`] represents the _handle_ of the input, and is unique for each shader stage. The [`Type`] is the
   /// the type of the input.
-  In(u16, Type),
+  In(String, Type),
 
   /// An output definition.
   ///
   /// The [`u16`] represents the _handle_ of the output, and is unique for each shader stage. The [`Type`] is the
   /// the type of the output.
-  Out(u16, Type),
+  Out(String, Type),
+
+  /// A uniform definition.
+  Uniform(String, Type),
 }
 
 macro_rules! make_vn {
@@ -2535,7 +2539,7 @@ where
 
     self.erased.instructions.push(ScopeInstr::VarDecl {
       ty: T::ty(),
-      handle,
+      handle: handle.clone(),
       init_value: init_value.into().erased,
     });
 
@@ -2555,8 +2559,8 @@ where
   /// at the end of each iteration before the next check on `cond`. The last and third `body` closure is the body of the
   /// loop.
   ///
-  /// The behaviors of first two closures is important to understand. Those are akin to _filtering_ and _folding_. The
-  /// closure returning the [`Expr<bool>`] is given the [`Expr<T>`] at each iteration and the second closure creates
+  /// The behaviors of the first two closures is important to understand. Those are akin to _filtering_ and _folding_.
+  /// The closure returning the [`Expr<bool>`] is given the [`Expr<T>`] at each iteration and the second closure creates
   /// the new [`Expr<T>`] for the next iteration. Normally, people are used to write this pattern as `i++`, for
   /// instance, but in the case of our EDSL, it is more akin go `i + 1`, and this value is affected to a local
   /// accumulator hidden from the user.
@@ -3219,18 +3223,23 @@ where
 /// Handles live in different namespaces:
 ///
 /// - The _built-in_ namespace gathers all built-ins.
-/// - The _global_ namespace gathers everything that can be declared at top-level of a shader stage — i.e. input,
-///    outputs, constants, uniforms, etc.
+/// - The _global_ namespace gathers everything that can be declared at top-level of a shader stage — i.e. mainly
+///   constants for this namespace.
+/// - The _input_ namespace gathers inputs.
+/// - The _output_ namespace gathers outputs.
 /// - The _function argument_ namespace gives handles to function arguments, which exist only in a function body.
 /// - The _function variable_ namespace gives handles to variables defined in function bodies. This namespace is
 /// hierarchical: for each scope, a new namespace is created. The depth at which a namespace is located is referred to
 /// as its _subscope_.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 enum ScopedHandle {
   BuiltIn(BuiltIn),
   Global(u16),
   FunArg(u16),
   FunVar { subscope: u16, handle: u16 },
+  Input(String),
+  Output(String),
+  Uniform(String),
 }
 
 impl ScopedHandle {
@@ -3248,6 +3257,10 @@ impl ScopedHandle {
 
   const fn fun_var(subscope: u16, handle: u16) -> Self {
     Self::FunVar { subscope, handle }
+  }
+
+  fn uniform(name: impl Into<String>) -> Self {
+    Self::Uniform(name.into())
   }
 }
 
@@ -3579,23 +3592,27 @@ impl<T> Swizzlable<[SwizzleSelector; 4]> for Expr<V4<T>> {
 #[macro_export]
 macro_rules! sw {
   ($e:expr, . $a:tt) => {
-    $e.swizzle(sw_extract!($a))
+    $e.swizzle($crate::sw_extract!($a))
   };
 
   ($e:expr, . $a:tt . $b:tt) => {
-    $e.swizzle([sw_extract!($a), sw_extract!($b)])
+    $e.swizzle([$crate::sw_extract!($a), $crate::sw_extract!($b)])
   };
 
   ($e:expr, . $a:tt . $b:tt . $c:tt) => {
-    $e.swizzle([sw_extract!($a), sw_extract!($b), sw_extract!($c)])
+    $e.swizzle([
+      $crate::sw_extract!($a),
+      $crate::sw_extract!($b),
+      $crate::sw_extract!($c),
+    ])
   };
 
   ($e:expr, . $a:tt . $b:tt . $c:tt . $d:tt) => {
     $e.swizzle([
-      sw_extract!($a),
-      sw_extract!($b),
-      sw_extract!($c),
-      sw_extract!($d),
+      $crate::sw_extract!($a),
+      $crate::sw_extract!($b),
+      $crate::sw_extract!($c),
+      $crate::sw_extract!($d),
     ])
   };
 }
@@ -3604,36 +3621,89 @@ macro_rules! sw {
 #[macro_export]
 macro_rules! sw_extract {
   (x) => {
-    SwizzleSelector::X
+    $crate::SwizzleSelector::X
   };
 
   (r) => {
-    SwizzleSelector::X
+    $crate::SwizzleSelector::X
   };
 
   (y) => {
-    SwizzleSelector::Y
+    $crate::SwizzleSelector::Y
   };
 
   (g) => {
-    SwizzleSelector::Y
+    $crate::SwizzleSelector::Y
   };
 
   (z) => {
-    SwizzleSelector::Z
+    $crate::SwizzleSelector::Z
   };
 
   (b) => {
-    SwizzleSelector::Z
+    $crate::SwizzleSelector::Z
   };
 
   (w) => {
-    SwizzleSelector::Z
+    $crate::SwizzleSelector::Z
   };
 
   (a) => {
-    SwizzleSelector::Z
+    $crate::SwizzleSelector::Z
   };
+}
+
+/// Input declaration.
+///
+/// # Examples
+///
+/// ```
+/// use shades::{Scope, ShaderBuilder, Swizzlable, V3, V4, inputs, sw};
+///
+/// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+///   inputs!(s,
+///     position: V3<f32>,
+///     color: V4<f32>
+///   );
+///
+///   s.main_fun(|s: &mut Scope<()>| {
+///     let rgb = sw!(color, .r.g.b);
+///   })
+/// });
+/// ```
+#[macro_export]
+macro_rules! inputs {
+  ($s:ident, $( $name:ident : $t:ty ),+) => {
+    $(
+      let $name = unsafe { $s.input::<$t>(stringify!($name)) };
+    )+
+  }
+}
+
+/// Output declaration.
+///
+/// # Examples
+///
+/// ```
+/// use shades::{Scope, ShaderBuilder, V3, lit, outputs};
+///
+/// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+///   outputs!(s,
+///     position: V3<f32>
+///   );
+///
+///   s.main_fun(|s: &mut Scope<()>| {
+///     s.set(&position, lit!(0., 0., 0.));
+///   })
+/// });
+/// ```
+#[macro_export]
+macro_rules! outputs {
+  ($s:ident, $( $name:ident : $t:ty ),+) => {
+    $(
+      let $name = unsafe { $s.output::<$t>(stringify!($name)) };
+    )+
+  }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
