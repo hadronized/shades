@@ -636,6 +636,16 @@ enum ErasedExpr {
   LitUInt4([u32; 4]),
   LitFloat4([f32; 4]),
   LitBool4([bool; 4]),
+  // matrices
+  LitM22(M22),
+  // LitM23(M23),
+  // LitM24(M24),
+  // LitM32(M32),
+  LitM33(M33),
+  // LitM34(M34),
+  // LitM42(M42),
+  // LitM43(M43),
+  LitM44(M44),
   // arrays
   Array(Type, Vec<ErasedExpr>),
   // var
@@ -1242,9 +1252,13 @@ impl_Neg_Expr!(V4<f32>);
 // binop
 macro_rules! impl_binop_Expr {
   ($op:ident, $meth_name:ident, $a:ty, $b:ty) => {
+    impl_binop_Expr!($op, $meth_name, $a, $b, $a);
+  };
+
+  ($op:ident, $meth_name:ident, $a:ty, $b:ty, $r:ty) => {
     // expr OP expr
     impl<'a> ops::$op<Expr<$b>> for Expr<$a> {
-      type Output = Expr<$a>;
+      type Output = Expr<$r>;
 
       fn $meth_name(self, rhs: Expr<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
@@ -1253,7 +1267,7 @@ macro_rules! impl_binop_Expr {
 
     // var OP expr
     impl<'a> ops::$op<Expr<$b>> for Var<$a> {
-      type Output = Expr<$a>;
+      type Output = Expr<$r>;
 
       fn $meth_name(self, rhs: Expr<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
@@ -1265,7 +1279,7 @@ macro_rules! impl_binop_Expr {
 
     // expr OP var
     impl<'a> ops::$op<Var<$b>> for Expr<$a> {
-      type Output = Expr<$a>;
+      type Output = Expr<$r>;
 
       fn $meth_name(self, rhs: Var<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
@@ -1277,7 +1291,7 @@ macro_rules! impl_binop_Expr {
 
     // var OP var
     impl<'a> ops::$op<Var<$b>> for Var<$a> {
-      type Output = Expr<$a>;
+      type Output = Expr<$r>;
 
       fn $meth_name(self, rhs: Var<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
@@ -1289,7 +1303,7 @@ macro_rules! impl_binop_Expr {
 
     // expr OP &expr
     impl<'a> ops::$op<&'a Expr<$b>> for Expr<$a> {
-      type Output = Expr<$a>;
+      type Output = Expr<$r>;
 
       fn $meth_name(self, rhs: &'a Expr<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
@@ -1301,7 +1315,7 @@ macro_rules! impl_binop_Expr {
 
     // var OP &expr
     impl<'a> ops::$op<&'a Expr<$b>> for Var<$a> {
-      type Output = Expr<$a>;
+      type Output = Expr<$r>;
 
       fn $meth_name(self, rhs: &'a Expr<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
@@ -1313,7 +1327,7 @@ macro_rules! impl_binop_Expr {
 
     // expr OP &var
     impl<'a> ops::$op<&'a Var<$b>> for Expr<$a> {
-      type Output = Expr<$a>;
+      type Output = Expr<$r>;
 
       fn $meth_name(self, rhs: &'a Var<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
@@ -1325,7 +1339,7 @@ macro_rules! impl_binop_Expr {
 
     // var OP &var
     impl<'a> ops::$op<&'a Var<$b>> for Var<$a> {
-      type Output = Expr<$a>;
+      type Output = Expr<$r>;
 
       fn $meth_name(self, rhs: &'a Var<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
@@ -1337,7 +1351,7 @@ macro_rules! impl_binop_Expr {
 
     // &expr OP expr
     impl<'a> ops::$op<Expr<$b>> for &'a Expr<$a> {
-      type Output = Expr<$a>;
+      type Output = Expr<$r>;
 
       fn $meth_name(self, rhs: Expr<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
@@ -1349,7 +1363,7 @@ macro_rules! impl_binop_Expr {
 
     // &var OP expr
     impl<'a> ops::$op<Expr<$b>> for &'a Var<$a> {
-      type Output = Expr<$a>;
+      type Output = Expr<$r>;
 
       fn $meth_name(self, rhs: Expr<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
@@ -1361,7 +1375,7 @@ macro_rules! impl_binop_Expr {
 
     // &expr OP var
     impl<'a> ops::$op<Var<$b>> for &'a Expr<$a> {
-      type Output = Expr<$a>;
+      type Output = Expr<$r>;
 
       fn $meth_name(self, rhs: Var<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
@@ -1373,7 +1387,7 @@ macro_rules! impl_binop_Expr {
 
     // &var OP var
     impl<'a> ops::$op<Var<$b>> for &'a Var<$a> {
-      type Output = Expr<$a>;
+      type Output = Expr<$r>;
 
       fn $meth_name(self, rhs: Var<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
@@ -1385,7 +1399,7 @@ macro_rules! impl_binop_Expr {
 
     // &expr OP &expr
     impl<'a> ops::$op<&'a Expr<$b>> for &'a Expr<$a> {
-      type Output = Expr<$a>;
+      type Output = Expr<$r>;
 
       fn $meth_name(self, rhs: &'a Expr<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
@@ -1397,7 +1411,7 @@ macro_rules! impl_binop_Expr {
 
     // &var OP &expr
     impl<'a> ops::$op<&'a Expr<$b>> for &'a Var<$a> {
-      type Output = Expr<$a>;
+      type Output = Expr<$r>;
 
       fn $meth_name(self, rhs: &'a Expr<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
@@ -1409,7 +1423,7 @@ macro_rules! impl_binop_Expr {
 
     // &expr OP &var
     impl<'a> ops::$op<&'a Var<$b>> for &'a Expr<$a> {
-      type Output = Expr<$a>;
+      type Output = Expr<$r>;
 
       fn $meth_name(self, rhs: &'a Var<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
@@ -1421,7 +1435,7 @@ macro_rules! impl_binop_Expr {
 
     // &var OP &var
     impl<'a> ops::$op<&'a Var<$b>> for &'a Var<$a> {
-      type Output = Expr<$a>;
+      type Output = Expr<$r>;
 
       fn $meth_name(self, rhs: &'a Var<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(
@@ -1433,7 +1447,7 @@ macro_rules! impl_binop_Expr {
 
     // expr OP t, where t is automatically lifted
     impl<'a> ops::$op<$b> for Expr<$a> {
-      type Output = Expr<$a>;
+      type Output = Expr<$r>;
 
       fn $meth_name(self, rhs: $b) -> Self::Output {
         let rhs = Expr::from(rhs);
@@ -1443,7 +1457,7 @@ macro_rules! impl_binop_Expr {
 
     // var OP t, where t is automatically lifted
     impl<'a> ops::$op<$b> for Var<$a> {
-      type Output = Expr<$a>;
+      type Output = Expr<$r>;
 
       fn $meth_name(self, rhs: $b) -> Self::Output {
         let rhs = Expr::from(rhs);
@@ -1456,7 +1470,7 @@ macro_rules! impl_binop_Expr {
 
     // &expr OP t, where t is automatically lifted
     impl<'a> ops::$op<$b> for &'a Expr<$a> {
-      type Output = Expr<$a>;
+      type Output = Expr<$r>;
 
       fn $meth_name(self, rhs: $b) -> Self::Output {
         let rhs: Expr<$b> = rhs.into();
@@ -1469,7 +1483,7 @@ macro_rules! impl_binop_Expr {
 
     // &var OP t, where t is automatically lifted
     impl<'a> ops::$op<$b> for &'a Var<$a> {
-      type Output = Expr<$a>;
+      type Output = Expr<$r>;
 
       fn $meth_name(self, rhs: $b) -> Self::Output {
         let rhs: Expr<$b> = rhs.into();
@@ -1537,6 +1551,16 @@ macro_rules! impl_binarith_Expr {
     impl_binop_Expr!($op, $meth_name, V3<f32>, f32);
     impl_binop_Expr!($op, $meth_name, V4<f32>, V4<f32>);
     impl_binop_Expr!($op, $meth_name, V4<f32>, f32);
+
+    impl_binop_Expr!($op, $meth_name, M22, M22);
+    impl_binop_Expr!($op, $meth_name, M22, V2<f32>);
+    impl_binop_Expr!($op, $meth_name, V2<f32>, M22);
+    impl_binop_Expr!($op, $meth_name, M33, M33);
+    impl_binop_Expr!($op, $meth_name, M33, V3<f32>);
+    impl_binop_Expr!($op, $meth_name, V3<f32>, M33);
+    impl_binop_Expr!($op, $meth_name, M44, M44);
+    impl_binop_Expr!($op, $meth_name, M44, V4<f32>);
+    impl_binop_Expr!($op, $meth_name, V4<f32>, M44);
   };
 }
 
@@ -3348,24 +3372,30 @@ impl<T, const M: usize, const N: usize> From<[[T; N]; M]> for Matrix<[[T; N]; M]
 }
 
 macro_rules! make_mat_ty {
-  ($t:ident, $m:expr, $n:expr, $mdim:ident) => {
+  ($t:ident, $lit:ident, $m:expr, $n:expr, $mdim:ident) => {
     pub type $t = Matrix<[[f32; $n]; $m]>;
 
     impl ToPrimType for Matrix<[[f32; $n]; $m]> {
       const PRIM_TYPE: PrimType = PrimType::Matrix(MatrixDim::$mdim);
     }
+
+    impl From<Matrix<[[f32; $n]; $m]>> for Expr<Matrix<[[f32; $n]; $m]>> {
+      fn from(matrix: Matrix<[[f32; $n]; $m]>) -> Self {
+        Self::new(ErasedExpr::$lit(matrix))
+      }
+    }
   };
 }
 
-make_mat_ty!(M22, 2, 2, D22);
-make_mat_ty!(M23, 2, 3, D23);
-make_mat_ty!(M24, 2, 4, D24);
-make_mat_ty!(M32, 3, 2, D32);
-make_mat_ty!(M33, 3, 3, D33);
-make_mat_ty!(M34, 3, 4, D34);
-make_mat_ty!(M42, 4, 2, D42);
-make_mat_ty!(M43, 4, 3, D43);
-make_mat_ty!(M44, 4, 4, D44);
+make_mat_ty!(M22, LitM22, 2, 2, D22);
+// make_mat_ty!(M23, LitM23, 2, 3, D23);
+// make_mat_ty!(M24, LitM24, 2, 4, D24);
+// make_mat_ty!(M32, LitM32, 3, 2, D32);
+make_mat_ty!(M33, LitM33, 3, 3, D33);
+// make_mat_ty!(M34, LitM34, 3, 4, D34);
+// make_mat_ty!(M42, LitM42, 4, 2, D42);
+// make_mat_ty!(M43, LitM43, 4, 3, D43);
+make_mat_ty!(M44, LitM44, 4, 4, D44);
 
 /// Matrix dimension.
 ///

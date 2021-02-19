@@ -300,6 +300,11 @@ fn write_expr_to_str(output: &mut String, expr: &ErasedExpr) -> Result<(), Write
       )
     }
     ErasedExpr::LitBool4([x, y, z, w]) => *output += &format!("bvec4({}, {}, {}, {})", x, y, z, w),
+
+    ErasedExpr::LitM22(m) => write_matrix(output, "mat22", &m.0),
+    ErasedExpr::LitM33(m) => write_matrix(output, "mat33", &m.0),
+    ErasedExpr::LitM44(m) => write_matrix(output, "mat44", &m.0),
+
     ErasedExpr::Array(ty, items) => {
       write_type_to_str(output, ty)?;
       *output += "(";
@@ -906,4 +911,67 @@ fn write_type_to_str(output: &mut String, ty: &Type) -> Result<(), WriteError> {
 fn write_indented(output: &mut String, indent: &str, t: &str) {
   *output += &indent;
   *output += t;
+}
+
+fn write_matrix<const M: usize, const N: usize>(
+  output: &mut String,
+  ctor_name: &str,
+  m: &[[f32; N]; M],
+) {
+  *output += ctor_name;
+  *output += "(";
+
+  // first dimension
+  *output += &float_to_str(m[0][0]);
+  for i in 1..N {
+    *output += ", ";
+    *output += &float_to_str(m[0][i]);
+  }
+
+  // general case
+  for y in 1..M {
+    for i in 0..N {
+      *output += ", ";
+      *output += &float_to_str(m[y][i]);
+    }
+  }
+
+  *output += ")";
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn matrices() {
+    let mut output = String::new();
+
+    write_matrix(&mut output, "mat22", &[[1., 2.], [3., 4.]]);
+    assert_eq!(output, "mat22(1., 2., 3., 4.)");
+
+    output.clear();
+    write_matrix(
+      &mut output,
+      "mat33",
+      &[[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]],
+    );
+    assert_eq!(output, "mat33(1., 2., 3., 4., 5., 6., 7., 8., 9.)");
+
+    output.clear();
+    write_matrix(
+      &mut output,
+      "mat44",
+      &[
+        [1., 2., 3., 4.],
+        [5., 6., 7., 8.],
+        [9., 10., 11., 12.],
+        [13., 14., 15., 16.],
+      ],
+    );
+    assert_eq!(
+      output,
+      "mat44(1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16.)"
+    );
+  }
 }
