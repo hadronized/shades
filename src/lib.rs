@@ -3335,6 +3335,66 @@ pub enum Dim {
   D4,
 }
 
+/// Matrix wrapper.
+///
+/// This type represents a matrix of a given dimension, deduced from the wrapped type.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct Matrix<T>(T);
+
+impl<T, const M: usize, const N: usize> From<[[T; N]; M]> for Matrix<[[T; N]; M]> {
+  fn from(a: [[T; N]; M]) -> Self {
+    Matrix(a)
+  }
+}
+
+macro_rules! make_mat_ty {
+  ($t:ident, $m:expr, $n:expr, $mdim:ident) => {
+    pub type $t = Matrix<[[f32; $n]; $m]>;
+
+    impl ToPrimType for Matrix<[[f32; $n]; $m]> {
+      const PRIM_TYPE: PrimType = PrimType::Matrix(MatrixDim::$mdim);
+    }
+  };
+}
+
+make_mat_ty!(M22, 2, 2, D22);
+make_mat_ty!(M23, 2, 3, D23);
+make_mat_ty!(M24, 2, 4, D24);
+make_mat_ty!(M32, 3, 2, D32);
+make_mat_ty!(M33, 3, 3, D33);
+make_mat_ty!(M34, 3, 4, D34);
+make_mat_ty!(M42, 4, 2, D42);
+make_mat_ty!(M43, 4, 3, D43);
+make_mat_ty!(M44, 4, 4, D44);
+
+/// Matrix dimension.
+///
+/// Matrices can have several dimensions. Most of the time, you will be interested in squared dimensions, e.g. 2×2, 3×3
+/// and 4×4. However, other dimensions exist.
+///
+/// > Note: matrices are expressed in column-major.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum MatrixDim {
+  /// Squared 2 dimension.
+  D22,
+  /// 2×3 dimension.
+  D23,
+  /// 2×4 dimension.
+  D24,
+  /// 3×2 dimension.
+  D32,
+  /// Squared 3 dimension.
+  D33,
+  /// 3×4 dimension.
+  D34,
+  /// 4×2 dimension.
+  D42,
+  /// 4×3 dimension.
+  D43,
+  /// Squared 4 dimension.
+  D44,
+}
+
 /// Type representation — akin to [`PrimType`] glued with array dimensions, if any.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Type {
@@ -3351,6 +3411,7 @@ pub struct Type {
 ///
 /// Types without array dimensions are known as _primitive types_ and are exhaustively constructed thanks to
 /// [`PrimType`].
+#[non_exhaustive]
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum PrimType {
   /// An integral type.
@@ -3372,6 +3433,11 @@ pub enum PrimType {
   ///
   /// The [`Dim`] argument represents the vector dimension — do not confuse it with an array dimension.
   Bool(Dim),
+
+  /// A N×M floating matrix.
+  ///
+  /// The [`MatrixDim`] provides the information required to know the exact dimension of the matrix.
+  Matrix(MatrixDim),
 }
 
 /// Class of types that are recognized by the EDSL.

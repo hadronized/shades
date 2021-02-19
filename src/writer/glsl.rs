@@ -2,7 +2,7 @@
 
 use crate::{
   BuiltIn, Dim, ErasedExpr, ErasedFun, ErasedFunHandle, ErasedReturn, ErasedScope, FragmentBuiltIn,
-  GeometryBuiltIn, PrimType, ScopeInstr, ScopedHandle, Shader, ShaderDecl, Swizzle,
+  GeometryBuiltIn, MatrixDim, PrimType, ScopeInstr, ScopedHandle, Shader, ShaderDecl, Swizzle,
   SwizzleSelector, TessCtrlBuiltIn, TessEvalBuiltIn, Type, VertexBuiltIn,
 };
 use std::fmt;
@@ -842,29 +842,51 @@ fn write_frag_builtin_to_str(
   Ok(())
 }
 
-fn write_type_to_str(output: &mut String, ty: &Type) -> Result<(), WriteError> {
-  let ty_str = match ty.prim_ty {
+fn write_prim_type_to_str(output: &mut String, prim_ty: &PrimType) -> Result<(), WriteError> {
+  let ty_str = match prim_ty {
+    // ints
     PrimType::Int(Dim::Scalar) => "int",
     PrimType::Int(Dim::D2) => "ivec2",
     PrimType::Int(Dim::D3) => "ivec3",
     PrimType::Int(Dim::D4) => "ivec4",
 
+    // uints
     PrimType::UInt(Dim::Scalar) => "uint",
     PrimType::UInt(Dim::D2) => "uvec2",
     PrimType::UInt(Dim::D3) => "uvec3",
     PrimType::UInt(Dim::D4) => "uvec4",
 
+    // floats
     PrimType::Float(Dim::Scalar) => "float",
     PrimType::Float(Dim::D2) => "vec2",
     PrimType::Float(Dim::D3) => "vec3",
     PrimType::Float(Dim::D4) => "vec4",
 
+    // booleans
     PrimType::Bool(Dim::Scalar) => "bool",
     PrimType::Bool(Dim::D2) => "bvec2",
     PrimType::Bool(Dim::D3) => "bvec3",
     PrimType::Bool(Dim::D4) => "bvec4",
+
+    // matrices
+    PrimType::Matrix(MatrixDim::D22) => "mat22",
+    PrimType::Matrix(MatrixDim::D23) => "mat23",
+    PrimType::Matrix(MatrixDim::D24) => "mat24",
+    PrimType::Matrix(MatrixDim::D32) => "mat32",
+    PrimType::Matrix(MatrixDim::D33) => "mat33",
+    PrimType::Matrix(MatrixDim::D34) => "mat34",
+    PrimType::Matrix(MatrixDim::D42) => "mat42",
+    PrimType::Matrix(MatrixDim::D43) => "mat43",
+    PrimType::Matrix(MatrixDim::D44) => "mat44",
   };
+
   *output += ty_str;
+
+  Ok(())
+}
+
+fn write_type_to_str(output: &mut String, ty: &Type) -> Result<(), WriteError> {
+  write_prim_type_to_str(output, &ty.prim_ty)?;
 
   // array notation
   if !ty.array_dims.is_empty() {
