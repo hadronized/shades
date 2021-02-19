@@ -3772,6 +3772,32 @@ macro_rules! outputs {
   }
 }
 
+/// Uniform declaration.
+///
+/// # Examples
+///
+/// ```
+/// use shades::{Scope, ShaderBuilder, V3, uniforms, vec4};
+///
+/// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+///   uniforms!(s,
+///     time: f32
+///   );
+///
+///   s.main_fun(|s: &mut Scope<()>| {
+///     s.set(vertex.position, vec4!(time, 0., 0., 1.));
+///   })
+/// });
+/// ```
+#[macro_export]
+macro_rules! uniforms {
+  ($s:ident, $( $name:ident : $t:ty ),+) => {
+    $(
+      let $name = unsafe { $s.uniform::<$t>(stringify!($name)) };
+    )+
+  }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 enum BuiltIn {
   Vertex(VertexBuiltIn),

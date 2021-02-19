@@ -1,3 +1,9 @@
+# 0.3.1
+
+> Feb 19, 2021
+
+- Add the `uniforms!` macro to safely create uniforms.
+
 # 0.3
 
 > Feb 19, 2021
