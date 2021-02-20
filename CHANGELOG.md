@@ -1,3 +1,9 @@
+# 0.3.4
+
+> Feb 20, 2021
+
+- Fix matrices types in the GLSL writer.
+
 # 0.3.3
 
 > Feb 20, 2021

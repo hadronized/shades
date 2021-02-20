@@ -301,9 +301,9 @@ fn write_expr_to_str(output: &mut String, expr: &ErasedExpr) -> Result<(), Write
     }
     ErasedExpr::LitBool4([x, y, z, w]) => *output += &format!("bvec4({}, {}, {}, {})", x, y, z, w),
 
-    ErasedExpr::LitM22(m) => write_matrix(output, "mat22", &m.0),
-    ErasedExpr::LitM33(m) => write_matrix(output, "mat33", &m.0),
-    ErasedExpr::LitM44(m) => write_matrix(output, "mat44", &m.0),
+    ErasedExpr::LitM22(m) => write_matrix(output, "mat2", &m.0),
+    ErasedExpr::LitM33(m) => write_matrix(output, "mat3", &m.0),
+    ErasedExpr::LitM44(m) => write_matrix(output, "mat4", &m.0),
 
     ErasedExpr::Array(ty, items) => {
       write_type_to_str(output, ty)?;
@@ -874,15 +874,15 @@ fn write_prim_type_to_str(output: &mut String, prim_ty: &PrimType) -> Result<(),
     PrimType::Bool(Dim::D4) => "bvec4",
 
     // matrices
-    PrimType::Matrix(MatrixDim::D22) => "mat22",
+    PrimType::Matrix(MatrixDim::D22) => "mat2",
     PrimType::Matrix(MatrixDim::D23) => "mat23",
     PrimType::Matrix(MatrixDim::D24) => "mat24",
     PrimType::Matrix(MatrixDim::D32) => "mat32",
-    PrimType::Matrix(MatrixDim::D33) => "mat33",
+    PrimType::Matrix(MatrixDim::D33) => "mat3",
     PrimType::Matrix(MatrixDim::D34) => "mat34",
     PrimType::Matrix(MatrixDim::D42) => "mat42",
     PrimType::Matrix(MatrixDim::D43) => "mat43",
-    PrimType::Matrix(MatrixDim::D44) => "mat44",
+    PrimType::Matrix(MatrixDim::D44) => "mat4",
   };
 
   *output += ty_str;
@@ -947,21 +947,21 @@ mod tests {
   fn matrices() {
     let mut output = String::new();
 
-    write_matrix(&mut output, "mat22", &[[1., 2.], [3., 4.]]);
-    assert_eq!(output, "mat22(1., 2., 3., 4.)");
+    write_matrix(&mut output, "mat2", &[[1., 2.], [3., 4.]]);
+    assert_eq!(output, "mat2(1., 2., 3., 4.)");
 
     output.clear();
     write_matrix(
       &mut output,
-      "mat33",
+      "mat3",
       &[[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]],
     );
-    assert_eq!(output, "mat33(1., 2., 3., 4., 5., 6., 7., 8., 9.)");
+    assert_eq!(output, "mat3(1., 2., 3., 4., 5., 6., 7., 8., 9.)");
 
     output.clear();
     write_matrix(
       &mut output,
-      "mat44",
+      "mat4",
       &[
         [1., 2., 3., 4.],
         [5., 6., 7., 8.],
@@ -971,7 +971,7 @@ mod tests {
     );
     assert_eq!(
       output,
-      "mat44(1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16.)"
+      "mat4(1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16.)"
     );
   }
 }
