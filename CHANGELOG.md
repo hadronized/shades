@@ -1,3 +1,9 @@
+# 0.3.3
+
+> Feb 20, 2021
+
+- Fix matrices binary operators.
+
 # 0.3.2
 
 > Feb 20, 2021

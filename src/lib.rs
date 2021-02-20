@@ -1551,16 +1551,6 @@ macro_rules! impl_binarith_Expr {
     impl_binop_Expr!($op, $meth_name, V3<f32>, f32);
     impl_binop_Expr!($op, $meth_name, V4<f32>, V4<f32>);
     impl_binop_Expr!($op, $meth_name, V4<f32>, f32);
-
-    impl_binop_Expr!($op, $meth_name, M22, M22);
-    impl_binop_Expr!($op, $meth_name, M22, V2<f32>);
-    impl_binop_Expr!($op, $meth_name, V2<f32>, M22);
-    impl_binop_Expr!($op, $meth_name, M33, M33);
-    impl_binop_Expr!($op, $meth_name, M33, V3<f32>);
-    impl_binop_Expr!($op, $meth_name, V3<f32>, M33);
-    impl_binop_Expr!($op, $meth_name, M44, M44);
-    impl_binop_Expr!($op, $meth_name, M44, V4<f32>);
-    impl_binop_Expr!($op, $meth_name, V4<f32>, M44);
   };
 }
 
@@ -1576,6 +1566,16 @@ impl_binop_Expr!(Rem, rem, V3<f32>, V3<f32>);
 impl_binop_Expr!(Rem, rem, V3<f32>, f32);
 impl_binop_Expr!(Rem, rem, V4<f32>, V4<f32>);
 impl_binop_Expr!(Rem, rem, V4<f32>, f32);
+
+impl_binop_Expr!(Mul, mul, M22, M22);
+impl_binop_Expr!(Mul, mul, M22, V2<f32>, V2<f32>);
+impl_binop_Expr!(Mul, mul, V2<f32>, M22, M22);
+impl_binop_Expr!(Mul, mul, M33, M33);
+impl_binop_Expr!(Mul, mul, M33, V3<f32>, V3<f32>);
+impl_binop_Expr!(Mul, mul, V3<f32>, M33, M33);
+impl_binop_Expr!(Mul, mul, M44, M44);
+impl_binop_Expr!(Mul, mul, M44, V4<f32>, V4<f32>);
+impl_binop_Expr!(Mul, mul, V4<f32>, M44, M44);
 
 macro_rules! impl_binshift_Expr {
   ($op:ident, $meth_name:ident, $ty:ty) => {
