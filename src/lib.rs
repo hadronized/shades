@@ -1230,23 +1230,39 @@ macro_rules! impl_Neg_Expr {
         Expr::new(ErasedExpr::Neg(Box::new(self.erased.clone())))
       }
     }
+
+    impl ops::Neg for Var<$t> {
+      type Output = Expr<$t>;
+
+      fn neg(self) -> Self::Output {
+        Expr::new(ErasedExpr::Neg(Box::new(self.0.erased)))
+      }
+    }
+
+    impl<'a> ops::Neg for &'a Var<$t> {
+      type Output = Expr<$t>;
+
+      fn neg(self) -> Self::Output {
+        Expr::new(ErasedExpr::Neg(Box::new(self.0.erased.clone())))
+      }
+    }
   };
 }
 
-impl_Neg_Expr!(i32);
-impl_Neg_Expr!(V2<i32>);
-impl_Neg_Expr!(V3<i32>);
-impl_Neg_Expr!(V4<i32>);
+impl_Neg!(i32);
+impl_Neg!(V2<i32>);
+impl_Neg!(V3<i32>);
+impl_Neg!(V4<i32>);
 
-impl_Neg_Expr!(u32);
-impl_Neg_Expr!(V2<u32>);
-impl_Neg_Expr!(V3<u32>);
-impl_Neg_Expr!(V4<u32>);
+impl_Neg!(u32);
+impl_Neg!(V2<u32>);
+impl_Neg!(V3<u32>);
+impl_Neg!(V4<u32>);
 
-impl_Neg_Expr!(f32);
-impl_Neg_Expr!(V2<f32>);
-impl_Neg_Expr!(V3<f32>);
-impl_Neg_Expr!(V4<f32>);
+impl_Neg!(f32);
+impl_Neg!(V2<f32>);
+impl_Neg!(V3<f32>);
+impl_Neg!(V4<f32>);
 
 // binary arithmetic and logical (+, -, *, /, %)
 // binop
