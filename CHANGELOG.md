@@ -1,3 +1,11 @@
+# 0.3.5
+
+> Feb 21, 2021
+
+- Change the way `writer::glsl` writers work internally: they now use `std::fmt::Write` instead of using directly
+  `String`.
+- Add the `shades::writer::glsl::write_shader` that uses `std::fmt::Write` directly.
+
 # 0.3.4
 
 > Feb 20, 2021
