@@ -10,103 +10,87 @@ use std::fmt;
 // Number of space an indent level represents.
 const INDENT_SPACES: usize = 2;
 
-#[derive(Debug)]
-pub enum WriteError {}
-
-impl fmt::Display for WriteError {
-  fn fmt(&self, _f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-    Ok(()) // TODO: remove me
-  }
-}
-
-impl std::error::Error for WriteError {}
-
-pub fn write_shader_to_str(shader: impl AsRef<Shader>) -> Result<String, WriteError> {
+/// Write a [`Shader`] to a [`String`].
+pub fn write_shader_to_str(shader: impl AsRef<Shader>) -> Result<String, fmt::Error> {
   let mut output = String::new();
-
-  for decl in &shader.as_ref().builder.decls {
-    match decl {
-      ShaderDecl::Main(fun) => write_main_fun_to_str(&mut output, fun)?,
-      ShaderDecl::FunDef(handle, fun) => write_fun_def_to_str(&mut output, *handle, fun)?,
-      ShaderDecl::Const(handle, ty, ref constant) => {
-        write_constant_to_str(&mut output, *handle, ty, constant)?
-      }
-      ShaderDecl::In(name, ty) => write_input_to_str(&mut output, name, ty)?,
-      ShaderDecl::Out(name, ty) => write_output_to_str(&mut output, name, ty)?,
-      ShaderDecl::Uniform(name, ty) => write_uniform_to_str(&mut output, name, ty)?,
-    }
-  }
-
+  write_shader(&mut output, shader)?;
   Ok(output)
 }
 
-fn write_main_fun_to_str(output: &mut String, fun: &ErasedFun) -> Result<(), WriteError> {
-  *output += "\nvoid main() {\n";
-  write_scope_to_str(output, &fun.scope, 1)?;
-  *output += "}";
+/// Write a [`Shader`] to a [`fmt::Write`](std::fmt::Write).
+pub fn write_shader(f: &mut impl fmt::Write, shader: impl AsRef<Shader>) -> Result<(), fmt::Error> {
+  for decl in &shader.as_ref().builder.decls {
+    match decl {
+      ShaderDecl::Main(fun) => write_main_fun(f, fun)?,
+      ShaderDecl::FunDef(handle, fun) => write_fun_def(f, *handle, fun)?,
+      ShaderDecl::Const(handle, ty, ref constant) => write_constant(f, *handle, ty, constant)?,
+      ShaderDecl::In(name, ty) => write_input(f, name, ty)?,
+      ShaderDecl::Out(name, ty) => write_output(f, name, ty)?,
+      ShaderDecl::Uniform(name, ty) => write_uniform(f, name, ty)?,
+    }
+  }
+
   Ok(())
 }
 
-fn write_fun_def_to_str(
-  output: &mut String,
-  handle: u16,
-  fun: &ErasedFun,
-) -> Result<(), WriteError> {
+fn write_main_fun(f: &mut impl fmt::Write, fun: &ErasedFun) -> Result<(), fmt::Error> {
+  f.write_str("\nvoid main() {\n")?;
+  write_scope(f, &fun.scope, 1)?;
+  f.write_str("}")
+}
+
+fn write_fun_def(f: &mut impl fmt::Write, handle: u16, fun: &ErasedFun) -> Result<(), fmt::Error> {
   // just for aesthetics :')
-  *output += "\n";
+  f.write_str("\n")?;
 
   let ret_expr = match &fun.ret {
     ErasedReturn::Void => {
-      *output += "void";
+      f.write_str("void")?;
       None
     }
 
     ErasedReturn::Expr(ref ty, expr) => {
-      write_type_to_str(output, ty)?;
+      write_type(f, ty)?;
       Some(expr)
     }
   };
 
-  *output += " ";
-  write_fun_handle(output, handle)?;
+  f.write_str(" ")?;
+  write_user_fun_handle(f, handle)?;
 
-  *output += "(";
+  f.write_str("(")?;
   if !fun.args.is_empty() {
-    write_type_to_str(output, &fun.args[0])?;
-    *output += " arg_0";
+    write_type(f, &fun.args[0])?;
+    f.write_str("arg_0")?;
 
     for (i, arg) in fun.args.iter().enumerate().skip(1) {
-      *output += ", ";
+      f.write_str(", ")?;
 
-      write_type_to_str(output, arg)?;
-      *output += &format!(" arg_{}", i);
+      write_type(f, arg)?;
+      write!(f, " arg_{}", i)?;
     }
   }
-  *output += ") {\n";
+  f.write_str(") {\n")?;
 
-  write_scope_to_str(output, &fun.scope, 1)?;
+  write_scope(f, &fun.scope, 1)?;
 
   if let Some(ref expr) = ret_expr {
-    *output += &" ".repeat(INDENT_SPACES);
-    *output += "return ";
-    write_expr_to_str(output, expr)?;
-    *output += ";";
+    write_indent(f, 1)?;
+    f.write_str("return ")?;
+    write_expr(f, expr)?;
+    f.write_str(";")?;
   }
 
-  *output += "\n}\n";
-  Ok(())
+  f.write_str("\n}\n")
 }
 
-fn write_scope_to_str(
-  output: &mut String,
+fn write_scope(
+  f: &mut impl fmt::Write,
   scope: &ErasedScope,
   indent_lvl: usize,
-) -> Result<(), WriteError> {
-  let indent = " ".repeat(indent_lvl * INDENT_SPACES);
-
+) -> Result<(), fmt::Error> {
   for instr in &scope.instructions {
-    // put the indent level
-    *output += &indent;
+    write_indent(f, indent_lvl)?;
 
     match instr {
       ScopeInstr::VarDecl {
@@ -114,46 +98,54 @@ fn write_scope_to_str(
         handle,
         init_value,
       } => {
-        write_type_to_str(output, ty)?;
-        *output += " ";
-        write_scoped_handle_to_str(output, handle)?;
-        *output += " = ";
-        write_expr_to_str(output, init_value)?;
-        *output += ";";
+        write_type(f, ty)?;
+        f.write_str(" ")?;
+        write_scoped_handle(f, handle)?;
+        f.write_str(" = ")?;
+        write_expr(f, init_value)?;
+        f.write_str(";")?;
       }
 
       ScopeInstr::Return(ret) => match ret {
-        ErasedReturn::Void => *output += "return;",
+        ErasedReturn::Void => {
+          f.write_str("return;")?;
+        }
+
         ErasedReturn::Expr(_, expr) => {
-          *output += "return ";
-          write_expr_to_str(output, expr)?;
-          *output += ";";
+          f.write_str("return ")?;
+          write_expr(f, expr)?;
+          f.write_str(";")?;
         }
       },
 
-      ScopeInstr::Continue => *output += "continue;",
-      ScopeInstr::Break => *output += "break;",
+      ScopeInstr::Continue => {
+        f.write_str("continue;")?;
+      }
+
+      ScopeInstr::Break => {
+        f.write_str("break;")?;
+      }
 
       ScopeInstr::If { condition, scope } => {
-        *output += "if (";
-        write_expr_to_str(output, condition)?;
-        *output += ") {\n";
-        write_scope_to_str(output, scope, indent_lvl + 1)?;
-        write_indented(output, &indent, "}");
+        f.write_str("if (")?;
+        write_expr(f, condition)?;
+        f.write_str(") {\n")?;
+        write_scope(f, scope, indent_lvl + 1)?;
+        write_indented(f, indent_lvl, "}")?;
       }
 
       ScopeInstr::ElseIf { condition, scope } => {
-        *output += " else if (";
-        write_expr_to_str(output, condition)?;
-        *output += ") {\n";
-        write_scope_to_str(output, scope, indent_lvl + 1)?;
-        write_indented(output, &indent, "}");
+        f.write_str(" else if (")?;
+        write_expr(f, condition)?;
+        f.write_str(") {\n")?;
+        write_scope(f, scope, indent_lvl + 1)?;
+        write_indented(f, indent_lvl, "}")?;
       }
 
       ScopeInstr::Else { scope } => {
-        *output += " else {\n";
-        write_scope_to_str(output, scope, indent_lvl + 1)?;
-        write_indented(output, &indent, "}");
+        f.write_str("else {\n")?;
+        write_scope(f, scope, indent_lvl + 1)?;
+        write_indented(f, indent_lvl, "}")?;
       }
 
       ScopeInstr::For {
@@ -164,365 +156,344 @@ fn write_scope_to_str(
         post_expr,
         scope,
       } => {
-        *output += "for (";
+        f.write_str("for (")?;
 
         // initialization
-        write_type_to_str(output, init_ty)?;
-        *output += " ";
-        write_scoped_handle_to_str(output, init_handle)?;
-        *output += " = ";
-        write_expr_to_str(output, init_expr)?;
-        *output += "; ";
+        write_type(f, init_ty)?;
+        f.write_str(" ")?;
+        write_scoped_handle(f, init_handle)?;
+        f.write_str(" = ")?;
+        write_expr(f, init_expr)?;
+        f.write_str("; ")?;
 
         // condition
-        write_expr_to_str(output, condition)?;
-        *output += "; ";
+        write_expr(f, condition)?;
+        f.write_str("; ")?;
 
         // iteration; we basically write <init-expr> = <next-expr> in a fold-like way, so we need to re-use the
         // init_handle
-        write_scoped_handle_to_str(output, init_handle)?;
-        *output += " = ";
-        write_expr_to_str(output, post_expr)?;
-        *output += ") {\n";
+        write_scoped_handle(f, init_handle)?;
+        f.write_str(" = ")?;
+        write_expr(f, post_expr)?;
+        f.write_str(") {\n")?;
 
         // scope
-        write_scope_to_str(output, scope, indent_lvl + 1)?;
-        *output += "}";
+        write_scope(f, scope, indent_lvl + 1)?;
+        f.write_str("}")?;
       }
 
       ScopeInstr::While { condition, scope } => {
-        *output += "while (";
-        write_expr_to_str(output, condition)?;
-        *output += ") {\n";
-        write_scope_to_str(output, scope, indent_lvl + 1)?;
-        write_indented(output, &indent, "}");
+        f.write_str("while (")?;
+        write_expr(f, condition)?;
+        f.write_str(") {\n")?;
+        write_scope(f, scope, indent_lvl + 1)?;
+        write_indented(f, indent_lvl, "}")?;
       }
 
       ScopeInstr::MutateVar { var, expr } => {
-        write_expr_to_str(output, var)?;
-        *output += " = ";
-        write_expr_to_str(output, expr)?;
-        *output += ";";
+        write_expr(f, var)?;
+        f.write_str(" = ")?;
+        write_expr(f, expr)?;
+        f.write_str(";")?;
       }
     }
 
-    *output += "\n";
+    f.write_str("\n")?;
   }
 
   Ok(())
 }
 
-fn write_constant_to_str(
-  output: &mut String,
+fn write_constant(
+  f: &mut impl fmt::Write,
   handle: u16,
   ty: &Type,
   constant: &ErasedExpr,
-) -> Result<(), WriteError> {
-  *output += "const ";
-  write_type_to_str(output, ty)?;
-  *output += " ";
-  write_scoped_handle_to_str(output, &ScopedHandle::global(handle))?;
-  *output += " = ";
-  write_expr_to_str(output, constant)?;
-  *output += ";\n";
-
-  Ok(())
+) -> Result<(), fmt::Error> {
+  f.write_str("const ")?;
+  write_type(f, ty)?;
+  f.write_str(" ")?;
+  write_scoped_handle(f, &ScopedHandle::global(handle))?;
+  f.write_str(" = ")?;
+  write_expr(f, constant)?;
+  f.write_str(";\n")
 }
 
-fn write_input_to_str(output: &mut String, name: &str, ty: &Type) -> Result<(), WriteError> {
-  *output += "in ";
-  write_type_to_str(output, ty)?;
-
-  *output += " ";
-  *output += name;
-  *output += ";\n";
-
-  Ok(())
+fn write_input(f: &mut impl fmt::Write, name: &str, ty: &Type) -> Result<(), fmt::Error> {
+  f.write_str("in ")?;
+  write_type(f, ty)?;
+  write!(f, " {};\n", name)
 }
 
-fn write_output_to_str(output: &mut String, name: &str, ty: &Type) -> Result<(), WriteError> {
-  *output += "out ";
-  write_type_to_str(output, ty)?;
-
-  *output += " ";
-  *output += name;
-  *output += ";\n";
-
-  Ok(())
+fn write_output(f: &mut impl fmt::Write, name: &str, ty: &Type) -> Result<(), fmt::Error> {
+  f.write_str("out ")?;
+  write_type(f, ty)?;
+  write!(f, " {};\n", name)
 }
 
-fn write_uniform_to_str(output: &mut String, name: &str, ty: &Type) -> Result<(), WriteError> {
-  *output += "uniform ";
-  write_type_to_str(output, ty)?;
-
-  *output += " ";
-  *output += name;
-  *output += ";\n";
-
-  Ok(())
+fn write_uniform(f: &mut impl fmt::Write, name: &str, ty: &Type) -> Result<(), fmt::Error> {
+  f.write_str("uniform ")?;
+  write_type(f, ty)?;
+  write!(f, " {};\n", name)
 }
 
-fn write_expr_to_str(output: &mut String, expr: &ErasedExpr) -> Result<(), WriteError> {
+fn write_expr(f: &mut impl fmt::Write, expr: &ErasedExpr) -> Result<(), fmt::Error> {
   match expr {
-    ErasedExpr::LitInt(x) => *output += &format!("{}", x),
-    ErasedExpr::LitUInt(x) => *output += &format!("{}", x),
-    ErasedExpr::LitFloat(x) => *output += &format!("{}", float_to_str(*x)),
-    ErasedExpr::LitBool(x) => *output += &format!("{}", x),
+    ErasedExpr::LitInt(x) => write!(f, "{}", x),
+    ErasedExpr::LitUInt(x) => write!(f, "{}", x),
+    ErasedExpr::LitFloat(x) => write!(f, "{}", write_f32(*x)),
+    ErasedExpr::LitBool(x) => write!(f, "{}", x),
 
-    ErasedExpr::LitInt2([x, y]) => *output += &format!("ivec2({}, {})", x, y),
-    ErasedExpr::LitUInt2([x, y]) => *output += &format!("uvec2({}, {})", x, y),
-    ErasedExpr::LitFloat2([x, y]) => {
-      *output += &format!("vec2({}, {})", float_to_str(*x), float_to_str(*y))
-    }
-    ErasedExpr::LitBool2([x, y]) => *output += &format!("bvec2({}, {})", x, y),
+    ErasedExpr::LitInt2([x, y]) => write!(f, "ivec2({}, {})", x, y),
+    ErasedExpr::LitUInt2([x, y]) => write!(f, "uvec2({}, {})", x, y),
+    ErasedExpr::LitFloat2([x, y]) => write!(f, "vec2({}, {})", write_f32(*x), write_f32(*y)),
 
-    ErasedExpr::LitInt3([x, y, z]) => *output += &format!("ivec3({}, {}, {})", x, y, z),
-    ErasedExpr::LitUInt3([x, y, z]) => *output += &format!("uvec3({}, {}, {})", x, y, z),
-    ErasedExpr::LitFloat3([x, y, z]) => {
-      *output += &format!(
-        "vec3({}, {}, {})",
-        float_to_str(*x),
-        float_to_str(*y),
-        float_to_str(*z)
-      )
-    }
-    ErasedExpr::LitBool3([x, y, z]) => *output += &format!("bvec3({}, {}, {})", x, y, z),
+    ErasedExpr::LitBool2([x, y]) => write!(f, "bvec2({}, {})", x, y),
 
-    ErasedExpr::LitInt4([x, y, z, w]) => *output += &format!("ivec4({}, {}, {}, {})", x, y, z, w),
-    ErasedExpr::LitUInt4([x, y, z, w]) => *output += &format!("uvec4({}, {}, {}, {})", x, y, z, w),
-    ErasedExpr::LitFloat4([x, y, z, w]) => {
-      *output += &format!(
-        "vec4({}, {}, {}, {})",
-        float_to_str(*x),
-        float_to_str(*y),
-        float_to_str(*z),
-        float_to_str(*w)
-      )
-    }
-    ErasedExpr::LitBool4([x, y, z, w]) => *output += &format!("bvec4({}, {}, {}, {})", x, y, z, w),
+    ErasedExpr::LitInt3([x, y, z]) => write!(f, "ivec3({}, {}, {})", x, y, z),
+    ErasedExpr::LitUInt3([x, y, z]) => write!(f, "uvec3({}, {}, {})", x, y, z),
+    ErasedExpr::LitFloat3([x, y, z]) => write!(
+      f,
+      "vec3({}, {}, {})",
+      write_f32(*x),
+      write_f32(*y),
+      write_f32(*z)
+    ),
+    ErasedExpr::LitBool3([x, y, z]) => write!(f, "bvec3({}, {}, {})", x, y, z),
 
-    ErasedExpr::LitM22(m) => write_matrix(output, "mat2", &m.0),
-    ErasedExpr::LitM33(m) => write_matrix(output, "mat3", &m.0),
-    ErasedExpr::LitM44(m) => write_matrix(output, "mat4", &m.0),
+    ErasedExpr::LitInt4([x, y, z, w]) => write!(f, "ivec4({}, {}, {}, {})", x, y, z, w),
+    ErasedExpr::LitUInt4([x, y, z, w]) => write!(f, "uvec4({}, {}, {}, {})", x, y, z, w),
+    ErasedExpr::LitFloat4([x, y, z, w]) => write!(
+      f,
+      "vec4({}, {}, {}, {})",
+      write_f32(*x),
+      write_f32(*y),
+      write_f32(*z),
+      write_f32(*w)
+    ),
+
+    ErasedExpr::LitBool4([x, y, z, w]) => write!(f, "bvec4({}, {}, {}, {})", x, y, z, w),
+
+    ErasedExpr::LitM22(m) => write_matrix(f, "mat2", &m.0),
+    ErasedExpr::LitM33(m) => write_matrix(f, "mat3", &m.0),
+    ErasedExpr::LitM44(m) => write_matrix(f, "mat4", &m.0),
 
     ErasedExpr::Array(ty, items) => {
-      write_type_to_str(output, ty)?;
-      *output += "(";
+      write_type(f, ty)?;
+      f.write_str("(")?;
 
-      write_expr_to_str(output, &items[0])?;
+      write_expr(f, &items[0])?;
       for item in &items[1..] {
-        *output += ", ";
-        write_expr_to_str(output, item)?;
+        f.write_str(",")?;
+        write_expr(f, item)?;
       }
 
-      *output += ")";
+      f.write_str(")")
     }
 
-    ErasedExpr::Var(handle) => write_mut_var_to_str(output, handle)?,
+    ErasedExpr::Var(handle) => write_var(f, handle),
 
     ErasedExpr::Not(e) => {
-      *output += "!";
-      write_expr_to_str(output, e)?;
+      f.write_str("!")?;
+      write_expr(f, e)
     }
 
     ErasedExpr::And(a, b) => {
-      *output += "(";
-      write_expr_to_str(output, a)?;
-      *output += " && ";
-      write_expr_to_str(output, b)?;
-      *output += ")";
+      f.write_str("()")?;
+      write_expr(f, a)?;
+      f.write_str("&&")?;
+      write_expr(f, b)?;
+      f.write_str(")")
     }
 
     ErasedExpr::Or(a, b) => {
-      *output += "(";
-      write_expr_to_str(output, a)?;
-      *output += " || ";
-      write_expr_to_str(output, b)?;
-      *output += ")";
+      f.write_str("(")?;
+      write_expr(f, a)?;
+      f.write_str(" || ")?;
+      write_expr(f, b)?;
+      f.write_str(")")
     }
 
     ErasedExpr::Xor(a, b) => {
-      *output += "(";
-      write_expr_to_str(output, a)?;
-      *output += " ^^ ";
-      write_expr_to_str(output, b)?;
-      *output += ")";
+      f.write_str("(")?;
+      write_expr(f, a)?;
+      f.write_str(" ^^ ")?;
+      write_expr(f, b)?;
+      f.write_str(")")
     }
 
     ErasedExpr::BitAnd(a, b) => {
-      *output += "(";
-      write_expr_to_str(output, a)?;
-      *output += " & ";
-      write_expr_to_str(output, b)?;
-      *output += ")";
+      f.write_str("(")?;
+      write_expr(f, a)?;
+      f.write_str(" & ")?;
+      write_expr(f, b)?;
+      f.write_str(")")
     }
 
     ErasedExpr::BitOr(a, b) => {
-      *output += "(";
-      write_expr_to_str(output, a)?;
-      *output += " | ";
-      write_expr_to_str(output, b)?;
-      *output += ")";
+      f.write_str("(")?;
+      write_expr(f, a)?;
+      f.write_str(" | ")?;
+      write_expr(f, b)?;
+      f.write_str(")")
     }
 
     ErasedExpr::BitXor(a, b) => {
-      *output += "(";
-      write_expr_to_str(output, a)?;
-      *output += " ^ ";
-      write_expr_to_str(output, b)?;
-      *output += ")";
+      f.write_str("(")?;
+      write_expr(f, a)?;
+      f.write_str(" ^ ")?;
+      write_expr(f, b)?;
+      f.write_str(")")
     }
 
     ErasedExpr::Neg(e) => {
-      *output += "-(";
-      write_expr_to_str(output, e)?;
-      *output += ")";
+      f.write_str("-(")?;
+      write_expr(f, e)?;
+      f.write_str(")")
     }
 
     ErasedExpr::Add(a, b) => {
-      *output += "(";
-      write_expr_to_str(output, a)?;
-      *output += " + ";
-      write_expr_to_str(output, b)?;
-      *output += ")";
+      f.write_str("(")?;
+      write_expr(f, a)?;
+      f.write_str(" + ")?;
+      write_expr(f, b)?;
+      f.write_str(")")
     }
 
     ErasedExpr::Sub(a, b) => {
-      *output += "(";
-      write_expr_to_str(output, a)?;
-      *output += " - ";
-      write_expr_to_str(output, b)?;
-      *output += ")";
+      f.write_str("(")?;
+      write_expr(f, a)?;
+      f.write_str(" - ")?;
+      write_expr(f, b)?;
+      f.write_str(")")
     }
 
     ErasedExpr::Mul(a, b) => {
-      *output += "(";
-      write_expr_to_str(output, a)?;
-      *output += " * ";
-      write_expr_to_str(output, b)?;
-      *output += ")";
+      f.write_str("(")?;
+      write_expr(f, a)?;
+      f.write_str(" * ")?;
+      write_expr(f, b)?;
+      f.write_str(")")
     }
 
     ErasedExpr::Div(a, b) => {
-      *output += "(";
-      write_expr_to_str(output, a)?;
-      *output += " / ";
-      write_expr_to_str(output, b)?;
-      *output += ")";
+      f.write_str("(")?;
+      write_expr(f, a)?;
+      f.write_str(" / ")?;
+      write_expr(f, b)?;
+      f.write_str(")")
     }
 
     ErasedExpr::Rem(a, b) => {
-      *output += "mod(";
-      write_expr_to_str(output, a)?;
-      *output += ", ";
-      write_expr_to_str(output, b)?;
-      *output += ")";
+      f.write_str("mod(")?;
+      write_expr(f, a)?;
+      f.write_str(", ")?;
+      write_expr(f, b)?;
+      f.write_str(")")
     }
 
     ErasedExpr::Shl(a, b) => {
-      *output += "(";
-      write_expr_to_str(output, a)?;
-      *output += " << ";
-      write_expr_to_str(output, b)?;
-      *output += ")";
+      f.write_str("(")?;
+      write_expr(f, a)?;
+      f.write_str(" << ")?;
+      write_expr(f, b)?;
+      f.write_str(")")
     }
 
     ErasedExpr::Shr(a, b) => {
-      *output += "(";
-      write_expr_to_str(output, a)?;
-      *output += " >> ";
-      write_expr_to_str(output, b)?;
-      *output += ")";
+      f.write_str("(")?;
+      write_expr(f, a)?;
+      f.write_str(" >> ")?;
+      write_expr(f, b)?;
+      f.write_str(")")
     }
 
     ErasedExpr::Eq(a, b) => {
-      *output += "(";
-      write_expr_to_str(output, a)?;
-      *output += " == ";
-      write_expr_to_str(output, b)?;
-      *output += ")";
+      f.write_str("(")?;
+      write_expr(f, a)?;
+      f.write_str(" == ")?;
+      write_expr(f, b)?;
+      f.write_str(")")
     }
 
     ErasedExpr::Neq(a, b) => {
-      *output += "(";
-      write_expr_to_str(output, a)?;
-      *output += " != ";
-      write_expr_to_str(output, b)?;
-      *output += ")";
+      f.write_str("(")?;
+      write_expr(f, a)?;
+      f.write_str(" != ")?;
+      write_expr(f, b)?;
+      f.write_str(")")
     }
 
     ErasedExpr::Lt(a, b) => {
-      *output += "(";
-      write_expr_to_str(output, a)?;
-      *output += " < ";
-      write_expr_to_str(output, b)?;
-      *output += ")";
+      f.write_str("(")?;
+      write_expr(f, a)?;
+      f.write_str(" < ")?;
+      write_expr(f, b)?;
+      f.write_str(")")
     }
 
     ErasedExpr::Lte(a, b) => {
-      *output += "(";
-      write_expr_to_str(output, a)?;
-      *output += " <= ";
-      write_expr_to_str(output, b)?;
-      *output += ")";
+      f.write_str("(")?;
+      write_expr(f, a)?;
+      f.write_str(" <= ")?;
+      write_expr(f, b)?;
+      f.write_str(")")
     }
 
     ErasedExpr::Gt(a, b) => {
-      *output += "(";
-      write_expr_to_str(output, a)?;
-      *output += " > ";
-      write_expr_to_str(output, b)?;
-      *output += ")";
+      f.write_str("(")?;
+      write_expr(f, a)?;
+      f.write_str(" > ")?;
+      write_expr(f, b)?;
+      f.write_str(")")
     }
 
     ErasedExpr::Gte(a, b) => {
-      *output += "(";
-      write_expr_to_str(output, a)?;
-      *output += " >= ";
-      write_expr_to_str(output, b)?;
-      *output += ")";
+      f.write_str("(")?;
+      write_expr(f, a)?;
+      f.write_str(" >= ")?;
+      write_expr(f, b)?;
+      f.write_str(")")
     }
 
-    ErasedExpr::FunCall(f, args) => {
-      write_fun_handle_to_str(output, f)?;
-      *output += "(";
+    ErasedExpr::FunCall(fun, args) => {
+      write_fun_handle(f, fun)?;
+      f.write_str("(")?;
 
       if !args.is_empty() {
-        write_expr_to_str(output, &args[0])?;
+        write_expr(f, &args[0])?;
       }
 
       for arg in &args[1..] {
-        *output += ", ";
-        write_expr_to_str(output, arg)?;
+        f.write_str(", ")?;
+        write_expr(f, arg)?;
       }
 
-      *output += ")";
+      f.write_str(")")
     }
 
     ErasedExpr::Swizzle(e, s) => {
-      write_expr_to_str(output, e)?;
-      *output += ".";
-      write_swizzle_to_str(output, s)?;
+      write_expr(f, e)?;
+      f.write_str(".")?;
+      write_swizzle(f, s)
     }
 
     ErasedExpr::Field { object, field } => {
-      write_expr_to_str(output, object)?;
-      *output += ".";
-      write_expr_to_str(output, field)?;
+      write_expr(f, object)?;
+      f.write_str(".")?;
+      write_expr(f, field)
     }
 
     ErasedExpr::ArrayLookup { object, index } => {
-      write_expr_to_str(output, object)?;
-      *output += "[";
-      write_expr_to_str(output, index)?;
-      *output += "]";
+      write_expr(f, object)?;
+      f.write_str("[")?;
+      write_expr(f, index)?;
+      f.write_str("]")
     }
   }
-
-  Ok(())
 }
 
-fn float_to_str(f: f32) -> String {
+fn write_f32(f: f32) -> String {
   if f == 0. {
     return "0.".to_owned();
   }
@@ -539,315 +510,287 @@ fn float_to_str(f: f32) -> String {
   }
 }
 
-fn write_swizzle_to_str(output: &mut String, s: &Swizzle) -> Result<(), WriteError> {
+fn write_swizzle(f: &mut impl fmt::Write, s: &Swizzle) -> Result<(), fmt::Error> {
   match s {
-    Swizzle::D1(a) => write_swizzle_sel_to_str(output, a)?,
+    Swizzle::D1(a) => write_swizzle_sel(f, a),
 
     Swizzle::D2(a, b) => {
-      write_swizzle_sel_to_str(output, a)?;
-      write_swizzle_sel_to_str(output, b)?;
+      write_swizzle_sel(f, a)?;
+      write_swizzle_sel(f, b)
     }
 
     Swizzle::D3(a, b, c) => {
-      write_swizzle_sel_to_str(output, a)?;
-      write_swizzle_sel_to_str(output, b)?;
-      write_swizzle_sel_to_str(output, c)?;
+      write_swizzle_sel(f, a)?;
+      write_swizzle_sel(f, b)?;
+      write_swizzle_sel(f, c)
     }
 
     Swizzle::D4(a, b, c, d) => {
-      write_swizzle_sel_to_str(output, a)?;
-      write_swizzle_sel_to_str(output, b)?;
-      write_swizzle_sel_to_str(output, c)?;
-      write_swizzle_sel_to_str(output, d)?;
+      write_swizzle_sel(f, a)?;
+      write_swizzle_sel(f, b)?;
+      write_swizzle_sel(f, c)?;
+      write_swizzle_sel(f, d)
     }
   }
-
-  Ok(())
 }
 
-fn write_swizzle_sel_to_str(output: &mut String, d: &SwizzleSelector) -> Result<(), WriteError> {
+fn write_swizzle_sel(f: &mut impl fmt::Write, d: &SwizzleSelector) -> Result<(), fmt::Error> {
   match d {
-    SwizzleSelector::X => *output += "x",
-    SwizzleSelector::Y => *output += "y",
-    SwizzleSelector::Z => *output += "z",
-    SwizzleSelector::W => *output += "w",
+    SwizzleSelector::X => f.write_str("x"),
+    SwizzleSelector::Y => f.write_str("y"),
+    SwizzleSelector::Z => f.write_str("z"),
+    SwizzleSelector::W => f.write_str("w"),
   }
-
-  Ok(())
 }
 
-fn write_fun_handle_to_str(output: &mut String, f: &ErasedFunHandle) -> Result<(), WriteError> {
-  match f {
-    ErasedFunHandle::Vec2 => *output += "vec2",
-    ErasedFunHandle::Vec3 => *output += "vec3",
-    ErasedFunHandle::Vec4 => *output += "vec4",
-    ErasedFunHandle::Radians => *output += "radians",
-    ErasedFunHandle::Degrees => *output += "degrees",
-    ErasedFunHandle::Sin => *output += "sin",
-    ErasedFunHandle::Cos => *output += "cos",
-    ErasedFunHandle::Tan => *output += "tan",
-    ErasedFunHandle::ASin => *output += "asin",
-    ErasedFunHandle::ACos => *output += "acos",
-    ErasedFunHandle::ATan => *output += "atan",
-    ErasedFunHandle::SinH => *output += "asinh",
-    ErasedFunHandle::CosH => *output += "cosh",
-    ErasedFunHandle::TanH => *output += "tanh",
-    ErasedFunHandle::ASinH => *output += "asinh",
-    ErasedFunHandle::ACosH => *output += "acosh",
-    ErasedFunHandle::ATanH => *output += "atanh",
-    ErasedFunHandle::Pow => *output += "pow",
-    ErasedFunHandle::Exp => *output += "exp",
-    ErasedFunHandle::Exp2 => *output += "exp2",
-    ErasedFunHandle::Log => *output += "log",
-    ErasedFunHandle::Log2 => *output += "log2",
-    ErasedFunHandle::Sqrt => *output += "sqrt",
-    ErasedFunHandle::InverseSqrt => *output += "inversesqrt",
-    ErasedFunHandle::Abs => *output += "abs",
-    ErasedFunHandle::Sign => *output += "sign",
-    ErasedFunHandle::Floor => *output += "floor",
-    ErasedFunHandle::Trunc => *output += "trunc",
-    ErasedFunHandle::Round => *output += "round",
-    ErasedFunHandle::RoundEven => *output += "roundEven",
-    ErasedFunHandle::Ceil => *output += "ceil",
-    ErasedFunHandle::Fract => *output += "fract",
-    ErasedFunHandle::Min => *output += "min",
-    ErasedFunHandle::Max => *output += "max",
-    ErasedFunHandle::Clamp => *output += "clamp",
-    ErasedFunHandle::Mix => *output += "mix",
-    ErasedFunHandle::Step => *output += "step",
-    ErasedFunHandle::SmoothStep => *output += "smoothstep",
-    ErasedFunHandle::IsNan => *output += "isnan",
-    ErasedFunHandle::IsInf => *output += "isinf",
-    ErasedFunHandle::FloatBitsToInt => *output += "floatBitsToInt",
-    ErasedFunHandle::IntBitsToFloat => *output += "intBitsToFloat",
-    ErasedFunHandle::UIntBitsToFloat => *output += "uIntBitsToFloat",
-    ErasedFunHandle::FMA => *output += "fma",
-    ErasedFunHandle::Frexp => *output += "frexp",
-    ErasedFunHandle::Ldexp => *output += "ldexp",
-    ErasedFunHandle::PackUnorm2x16 => *output += "packUnorm2x16",
-    ErasedFunHandle::PackSnorm2x16 => *output += "packSnorm2x16",
-    ErasedFunHandle::PackUnorm4x8 => *output += "packUnorm4x8",
-    ErasedFunHandle::PackSnorm4x8 => *output += "packSnorm4x8",
-    ErasedFunHandle::UnpackUnorm2x16 => *output += "unpackUnorm2x16",
-    ErasedFunHandle::UnpackSnorm2x16 => *output += "unpackSnorm2x16",
-    ErasedFunHandle::UnpackUnorm4x8 => *output += "unpackUnorm4x8",
-    ErasedFunHandle::UnpackSnorm4x8 => *output += "unpackSnorm4x8",
-    ErasedFunHandle::PackHalf2x16 => *output += "packHalf2x16",
-    ErasedFunHandle::UnpackHalf2x16 => *output += "unpackHalf2x16",
-    ErasedFunHandle::Length => *output += "length",
-    ErasedFunHandle::Distance => *output += "distance",
-    ErasedFunHandle::Dot => *output += "dot",
-    ErasedFunHandle::Cross => *output += "cross",
-    ErasedFunHandle::Normalize => *output += "normalize",
-    ErasedFunHandle::FaceForward => *output += "faceforward",
-    ErasedFunHandle::Reflect => *output += "reflect",
-    ErasedFunHandle::Refract => *output += "refract",
-    ErasedFunHandle::VLt => *output += "lessThan",
-    ErasedFunHandle::VLte => *output += "lessThanEqual",
-    ErasedFunHandle::VGt => *output += "greaterThan",
-    ErasedFunHandle::VGte => *output += "greaterThanEqual",
-    ErasedFunHandle::VEq => *output += "equal",
-    ErasedFunHandle::VNeq => *output += "notEqual",
-    ErasedFunHandle::VAny => *output += "any",
-    ErasedFunHandle::VAll => *output += "all",
-    ErasedFunHandle::VNot => *output += "not",
-    ErasedFunHandle::UAddCarry => *output += "uaddCarry",
-    ErasedFunHandle::USubBorrow => *output += "usubBorrow",
-    ErasedFunHandle::UMulExtended => *output += "umulExtended",
-    ErasedFunHandle::IMulExtended => *output += "imulExtended",
-    ErasedFunHandle::BitfieldExtract => *output += "bitfieldExtract",
-    ErasedFunHandle::BitfieldInsert => *output += "bitfieldInsert",
-    ErasedFunHandle::BitfieldReverse => *output += "bitfieldReverse",
-    ErasedFunHandle::BitCount => *output += "bitCount",
-    ErasedFunHandle::FindLSB => *output += "findLSB",
-    ErasedFunHandle::FindMSB => *output += "findMSB",
-    ErasedFunHandle::EmitStreamVertex => *output += "EmitStreamVertex",
-    ErasedFunHandle::EndStreamPrimitive => *output += "EndStreamPrimitive",
-    ErasedFunHandle::EmitVertex => *output += "EmitVertex",
-    ErasedFunHandle::EndPrimitive => *output += "EndPrimitive",
-    ErasedFunHandle::DFDX => *output += "dfdx",
-    ErasedFunHandle::DFDY => *output += "dfdy",
-    ErasedFunHandle::DFDXFine => *output += "dfdxFine",
-    ErasedFunHandle::DFDYFine => *output += "dfdyFine",
-    ErasedFunHandle::DFDXCoarse => *output += "dfdxCoarse",
-    ErasedFunHandle::DFDYCoarse => *output += "dfdyCoarse",
-    ErasedFunHandle::FWidth => *output += "fwidth",
-    ErasedFunHandle::FWidthFine => *output += "fwidthFine",
-    ErasedFunHandle::FWidthCoarse => *output += "fwidthCoarse",
-    ErasedFunHandle::InterpolateAtCentroid => *output += "interpolateAtCentroid",
-    ErasedFunHandle::InterpolateAtSample => *output += "interpolateAtSample",
-    ErasedFunHandle::InterpolateAtOffset => *output += "interpolateAtOffset",
-    ErasedFunHandle::Barrier => *output += "barrier",
-    ErasedFunHandle::MemoryBarrier => *output += "memoryBarrier",
-    ErasedFunHandle::MemoryBarrierAtomic => *output += "memoryBarrierAtomic",
-    ErasedFunHandle::MemoryBarrierBuffer => *output += "memoryBarrierBuffer",
-    ErasedFunHandle::MemoryBarrierShared => *output += "memoryBarrierShared",
-    ErasedFunHandle::MemoryBarrierImage => *output += "memoryBarrierImage",
-    ErasedFunHandle::GroupMemoryBarrier => *output += "groupMemoryBarrier",
-    ErasedFunHandle::AnyInvocation => *output += "anyInvocation",
-    ErasedFunHandle::AllInvocations => *output += "allInvocations",
-    ErasedFunHandle::AllInvocationsEqual => *output += "allInvocationsEqual",
-    ErasedFunHandle::UserDefined(handle) => write_fun_handle(output, *handle)?,
+fn write_fun_handle(f: &mut impl fmt::Write, fun: &ErasedFunHandle) -> Result<(), fmt::Error> {
+  match fun {
+    ErasedFunHandle::Vec2 => f.write_str("vec2"),
+    ErasedFunHandle::Vec3 => f.write_str("vec3"),
+    ErasedFunHandle::Vec4 => f.write_str("vec4"),
+    ErasedFunHandle::Radians => f.write_str("radians"),
+    ErasedFunHandle::Degrees => f.write_str("degrees"),
+    ErasedFunHandle::Sin => f.write_str("sin"),
+    ErasedFunHandle::Cos => f.write_str("cos"),
+    ErasedFunHandle::Tan => f.write_str("tan"),
+    ErasedFunHandle::ASin => f.write_str("asin"),
+    ErasedFunHandle::ACos => f.write_str("acos"),
+    ErasedFunHandle::ATan => f.write_str("atan"),
+    ErasedFunHandle::SinH => f.write_str("asinh"),
+    ErasedFunHandle::CosH => f.write_str("cosh"),
+    ErasedFunHandle::TanH => f.write_str("tanh"),
+    ErasedFunHandle::ASinH => f.write_str("asinh"),
+    ErasedFunHandle::ACosH => f.write_str("acosh"),
+    ErasedFunHandle::ATanH => f.write_str("atanh"),
+    ErasedFunHandle::Pow => f.write_str("pow"),
+    ErasedFunHandle::Exp => f.write_str("exp"),
+    ErasedFunHandle::Exp2 => f.write_str("exp2"),
+    ErasedFunHandle::Log => f.write_str("log"),
+    ErasedFunHandle::Log2 => f.write_str("log2"),
+    ErasedFunHandle::Sqrt => f.write_str("sqrt"),
+    ErasedFunHandle::InverseSqrt => f.write_str("inversesqrt"),
+    ErasedFunHandle::Abs => f.write_str("abs"),
+    ErasedFunHandle::Sign => f.write_str("sign"),
+    ErasedFunHandle::Floor => f.write_str("floor"),
+    ErasedFunHandle::Trunc => f.write_str("trunc"),
+    ErasedFunHandle::Round => f.write_str("round"),
+    ErasedFunHandle::RoundEven => f.write_str("roundEven"),
+    ErasedFunHandle::Ceil => f.write_str("ceil"),
+    ErasedFunHandle::Fract => f.write_str("fract"),
+    ErasedFunHandle::Min => f.write_str("min"),
+    ErasedFunHandle::Max => f.write_str("max"),
+    ErasedFunHandle::Clamp => f.write_str("clamp"),
+    ErasedFunHandle::Mix => f.write_str("mix"),
+    ErasedFunHandle::Step => f.write_str("step"),
+    ErasedFunHandle::SmoothStep => f.write_str("smoothstep"),
+    ErasedFunHandle::IsNan => f.write_str("isnan"),
+    ErasedFunHandle::IsInf => f.write_str("isinf"),
+    ErasedFunHandle::FloatBitsToInt => f.write_str("floatBitsToInt"),
+    ErasedFunHandle::IntBitsToFloat => f.write_str("intBitsToFloat"),
+    ErasedFunHandle::UIntBitsToFloat => f.write_str("uIntBitsToFloat"),
+    ErasedFunHandle::FMA => f.write_str("fma"),
+    ErasedFunHandle::Frexp => f.write_str("frexp"),
+    ErasedFunHandle::Ldexp => f.write_str("ldexp"),
+    ErasedFunHandle::PackUnorm2x16 => f.write_str("packUnorm2x16"),
+    ErasedFunHandle::PackSnorm2x16 => f.write_str("packSnorm2x16"),
+    ErasedFunHandle::PackUnorm4x8 => f.write_str("packUnorm4x8"),
+    ErasedFunHandle::PackSnorm4x8 => f.write_str("packSnorm4x8"),
+    ErasedFunHandle::UnpackUnorm2x16 => f.write_str("unpackUnorm2x16"),
+    ErasedFunHandle::UnpackSnorm2x16 => f.write_str("unpackSnorm2x16"),
+    ErasedFunHandle::UnpackUnorm4x8 => f.write_str("unpackUnorm4x8"),
+    ErasedFunHandle::UnpackSnorm4x8 => f.write_str("unpackSnorm4x8"),
+    ErasedFunHandle::PackHalf2x16 => f.write_str("packHalf2x16"),
+    ErasedFunHandle::UnpackHalf2x16 => f.write_str("unpackHalf2x16"),
+    ErasedFunHandle::Length => f.write_str("length"),
+    ErasedFunHandle::Distance => f.write_str("distance"),
+    ErasedFunHandle::Dot => f.write_str("dot"),
+    ErasedFunHandle::Cross => f.write_str("cross"),
+    ErasedFunHandle::Normalize => f.write_str("normalize"),
+    ErasedFunHandle::FaceForward => f.write_str("faceforward"),
+    ErasedFunHandle::Reflect => f.write_str("reflect"),
+    ErasedFunHandle::Refract => f.write_str("refract"),
+    ErasedFunHandle::VLt => f.write_str("lessThan"),
+    ErasedFunHandle::VLte => f.write_str("lessThanEqual"),
+    ErasedFunHandle::VGt => f.write_str("greaterThan"),
+    ErasedFunHandle::VGte => f.write_str("greaterThanEqual"),
+    ErasedFunHandle::VEq => f.write_str("equal"),
+    ErasedFunHandle::VNeq => f.write_str("notEqual"),
+    ErasedFunHandle::VAny => f.write_str("any"),
+    ErasedFunHandle::VAll => f.write_str("all"),
+    ErasedFunHandle::VNot => f.write_str("not"),
+    ErasedFunHandle::UAddCarry => f.write_str("uaddCarry"),
+    ErasedFunHandle::USubBorrow => f.write_str("usubBorrow"),
+    ErasedFunHandle::UMulExtended => f.write_str("umulExtended"),
+    ErasedFunHandle::IMulExtended => f.write_str("imulExtended"),
+    ErasedFunHandle::BitfieldExtract => f.write_str("bitfieldExtract"),
+    ErasedFunHandle::BitfieldInsert => f.write_str("bitfieldInsert"),
+    ErasedFunHandle::BitfieldReverse => f.write_str("bitfieldReverse"),
+    ErasedFunHandle::BitCount => f.write_str("bitCount"),
+    ErasedFunHandle::FindLSB => f.write_str("findLSB"),
+    ErasedFunHandle::FindMSB => f.write_str("findMSB"),
+    ErasedFunHandle::EmitStreamVertex => f.write_str("EmitStreamVertex"),
+    ErasedFunHandle::EndStreamPrimitive => f.write_str("EndStreamPrimitive"),
+    ErasedFunHandle::EmitVertex => f.write_str("EmitVertex"),
+    ErasedFunHandle::EndPrimitive => f.write_str("EndPrimitive"),
+    ErasedFunHandle::DFDX => f.write_str("dfdx"),
+    ErasedFunHandle::DFDY => f.write_str("dfdy"),
+    ErasedFunHandle::DFDXFine => f.write_str("dfdxFine"),
+    ErasedFunHandle::DFDYFine => f.write_str("dfdyFine"),
+    ErasedFunHandle::DFDXCoarse => f.write_str("dfdxCoarse"),
+    ErasedFunHandle::DFDYCoarse => f.write_str("dfdyCoarse"),
+    ErasedFunHandle::FWidth => f.write_str("fwidth"),
+    ErasedFunHandle::FWidthFine => f.write_str("fwidthFine"),
+    ErasedFunHandle::FWidthCoarse => f.write_str("fwidthCoarse"),
+    ErasedFunHandle::InterpolateAtCentroid => f.write_str("interpolateAtCentroid"),
+    ErasedFunHandle::InterpolateAtSample => f.write_str("interpolateAtSample"),
+    ErasedFunHandle::InterpolateAtOffset => f.write_str("interpolateAtOffset"),
+    ErasedFunHandle::Barrier => f.write_str("barrier"),
+    ErasedFunHandle::MemoryBarrier => f.write_str("memoryBarrier"),
+    ErasedFunHandle::MemoryBarrierAtomic => f.write_str("memoryBarrierAtomic"),
+    ErasedFunHandle::MemoryBarrierBuffer => f.write_str("memoryBarrierBuffer"),
+    ErasedFunHandle::MemoryBarrierShared => f.write_str("memoryBarrierShared"),
+    ErasedFunHandle::MemoryBarrierImage => f.write_str("memoryBarrierImage"),
+    ErasedFunHandle::GroupMemoryBarrier => f.write_str("groupMemoryBarrier"),
+    ErasedFunHandle::AnyInvocation => f.write_str("anyInvocation"),
+    ErasedFunHandle::AllInvocations => f.write_str("allInvocations"),
+    ErasedFunHandle::AllInvocationsEqual => f.write_str("allInvocationsEqual"),
+    ErasedFunHandle::UserDefined(handle) => write_user_fun_handle(f, *handle),
   }
-
-  Ok(())
 }
 
-fn write_fun_handle(output: &mut String, handle: u16) -> Result<(), WriteError> {
-  *output += &format!("fun_{}", handle);
-  Ok(())
+fn write_user_fun_handle(f: &mut impl fmt::Write, handle: u16) -> Result<(), fmt::Error> {
+  write!(f, "fun_{}", handle)
 }
 
-fn write_mut_var_to_str(output: &mut String, handle: &ScopedHandle) -> Result<(), WriteError> {
-  write_scoped_handle_to_str(output, handle)
+fn write_var(f: &mut impl fmt::Write, handle: &ScopedHandle) -> Result<(), fmt::Error> {
+  write_scoped_handle(f, handle)
 }
 
-fn write_scoped_handle_to_str(
-  output: &mut String,
-  handle: &ScopedHandle,
-) -> Result<(), WriteError> {
+fn write_scoped_handle(f: &mut impl fmt::Write, handle: &ScopedHandle) -> Result<(), fmt::Error> {
   match handle {
-    ScopedHandle::BuiltIn(builtin) => write_builtin_to_str(output, builtin)?,
+    ScopedHandle::BuiltIn(builtin) => write_builtin(f, builtin),
 
     ScopedHandle::Global(handle) => {
-      *output += &format!("glob_{}", handle);
+      write!(f, "glob_{}", handle)
     }
 
     ScopedHandle::FunArg(handle) => {
-      *output += &format!("arg_{}", handle);
+      write!(f, "arg_{}", handle)
     }
 
     ScopedHandle::FunVar { subscope, handle } => {
-      *output += &format!("var_{}_{}", subscope, handle);
+      write!(f, "var_{}_{}", subscope, handle)
     }
 
-    ScopedHandle::Input(name) => *output += &name,
+    ScopedHandle::Input(name) => f.write_str(name),
 
-    ScopedHandle::Output(name) => *output += &name,
+    ScopedHandle::Output(name) => f.write_str(name),
 
-    ScopedHandle::Uniform(name) => *output += &name,
+    ScopedHandle::Uniform(name) => f.write_str(name),
   }
-
-  Ok(())
 }
 
-fn write_builtin_to_str(output: &mut String, builtin: &BuiltIn) -> Result<(), WriteError> {
+fn write_builtin(f: &mut impl fmt::Write, builtin: &BuiltIn) -> Result<(), fmt::Error> {
   match builtin {
-    BuiltIn::Vertex(builtin) => write_vert_builtin_to_str(output, builtin),
-    BuiltIn::TessCtrl(builtin) => write_tess_ctrl_builtin_to_str(output, builtin),
-    BuiltIn::TessEval(builtin) => write_tess_eval_builtin_to_str(output, builtin),
-    BuiltIn::Geometry(builtin) => write_geo_builtin_to_str(output, builtin),
-    BuiltIn::Fragment(builtin) => write_frag_builtin_to_str(output, builtin),
+    BuiltIn::Vertex(builtin) => write_vert_builtin(f, builtin),
+    BuiltIn::TessCtrl(builtin) => write_tess_ctrl_builtin(f, builtin),
+    BuiltIn::TessEval(builtin) => write_tess_eval_builtin(f, builtin),
+    BuiltIn::Geometry(builtin) => write_geo_builtin(f, builtin),
+    BuiltIn::Fragment(builtin) => write_frag_builtin(f, builtin),
   }
 }
 
-fn write_vert_builtin_to_str(
-  output: &mut String,
-  builtin: &VertexBuiltIn,
-) -> Result<(), WriteError> {
+fn write_vert_builtin(f: &mut impl fmt::Write, builtin: &VertexBuiltIn) -> Result<(), fmt::Error> {
   match builtin {
-    VertexBuiltIn::VertexID => *output += "gl_VertexID",
-    VertexBuiltIn::InstanceID => *output += "gl_InstanceID",
-    VertexBuiltIn::BaseVertex => *output += "gl_BaseVertex",
-    VertexBuiltIn::BaseInstance => *output += "gl_BaseInstance",
-    VertexBuiltIn::Position => *output += "gl_Position",
-    VertexBuiltIn::PointSize => *output += "gl_PointSize",
-    VertexBuiltIn::ClipDistance => *output += "gl_ClipDistance",
+    VertexBuiltIn::VertexID => f.write_str("gl_VertexID"),
+    VertexBuiltIn::InstanceID => f.write_str("gl_InstanceID"),
+    VertexBuiltIn::BaseVertex => f.write_str("gl_BaseVertex"),
+    VertexBuiltIn::BaseInstance => f.write_str("gl_BaseInstance"),
+    VertexBuiltIn::Position => f.write_str("gl_Position"),
+    VertexBuiltIn::PointSize => f.write_str("gl_PointSize"),
+    VertexBuiltIn::ClipDistance => f.write_str("gl_ClipDistance"),
   }
-
-  Ok(())
 }
 
-fn write_tess_ctrl_builtin_to_str(
-  output: &mut String,
+fn write_tess_ctrl_builtin(
+  f: &mut impl fmt::Write,
   builtin: &TessCtrlBuiltIn,
-) -> Result<(), WriteError> {
+) -> Result<(), fmt::Error> {
   match builtin {
-    TessCtrlBuiltIn::MaxPatchVerticesIn => *output += "gl_MaxPatchVerticesIn",
-    TessCtrlBuiltIn::PatchVerticesIn => *output += "gl_PatchVerticesIn",
-    TessCtrlBuiltIn::PrimitiveID => *output += "gl_PrimitiveID",
-    TessCtrlBuiltIn::InvocationID => *output += "gl_InvocationID",
-    TessCtrlBuiltIn::TessellationLevelOuter => *output += "gl_TessellationLevelOuter",
-    TessCtrlBuiltIn::TessellationLevelInner => *output += "gl_TessellationLevelInner",
-    TessCtrlBuiltIn::In => *output += "gl_In",
-    TessCtrlBuiltIn::Out => *output += "gl_Out",
-    TessCtrlBuiltIn::Position => *output += "gl_Position",
-    TessCtrlBuiltIn::PointSize => *output += "gl_PointSize",
-    TessCtrlBuiltIn::ClipDistance => *output += "gl_ClipDistance",
-    TessCtrlBuiltIn::CullDistance => *output += "gl_CullDistance",
+    TessCtrlBuiltIn::MaxPatchVerticesIn => f.write_str("gl_MaxPatchVerticesIn"),
+    TessCtrlBuiltIn::PatchVerticesIn => f.write_str("gl_PatchVerticesIn"),
+    TessCtrlBuiltIn::PrimitiveID => f.write_str("gl_PrimitiveID"),
+    TessCtrlBuiltIn::InvocationID => f.write_str("gl_InvocationID"),
+    TessCtrlBuiltIn::TessellationLevelOuter => f.write_str("gl_TessellationLevelOuter"),
+    TessCtrlBuiltIn::TessellationLevelInner => f.write_str("gl_TessellationLevelInner"),
+    TessCtrlBuiltIn::In => f.write_str("gl_In"),
+    TessCtrlBuiltIn::Out => f.write_str("gl_Out"),
+    TessCtrlBuiltIn::Position => f.write_str("gl_Position"),
+    TessCtrlBuiltIn::PointSize => f.write_str("gl_PointSize"),
+    TessCtrlBuiltIn::ClipDistance => f.write_str("gl_ClipDistance"),
+    TessCtrlBuiltIn::CullDistance => f.write_str("gl_CullDistance"),
   }
-
-  Ok(())
 }
 
-fn write_tess_eval_builtin_to_str(
-  output: &mut String,
+fn write_tess_eval_builtin(
+  f: &mut impl fmt::Write,
   builtin: &TessEvalBuiltIn,
-) -> Result<(), WriteError> {
+) -> Result<(), fmt::Error> {
   match builtin {
-    TessEvalBuiltIn::TessCoord => *output += "gl_TessCoord",
-    TessEvalBuiltIn::MaxPatchVerticesIn => *output += "gl_MaxPatchVerticesIn",
-    TessEvalBuiltIn::PatchVerticesIn => *output += "gl_PatchVerticesIn",
-    TessEvalBuiltIn::PrimitiveID => *output += "gl_PrimitiveID",
-    TessEvalBuiltIn::TessellationLevelOuter => *output += "gl_TessellationLevelOuter",
-    TessEvalBuiltIn::TessellationLevelInner => *output += "gl_TessellationLevelInner",
-    TessEvalBuiltIn::In => *output += "gl_In",
-    TessEvalBuiltIn::Out => *output += "gl_Out",
-    TessEvalBuiltIn::Position => *output += "gl_Position",
-    TessEvalBuiltIn::PointSize => *output += "gl_PointSize",
-    TessEvalBuiltIn::ClipDistance => *output += "gl_ClipDistance",
-    TessEvalBuiltIn::CullDistance => *output += "gl_CullDistance",
+    TessEvalBuiltIn::TessCoord => f.write_str("gl_TessCoord"),
+    TessEvalBuiltIn::MaxPatchVerticesIn => f.write_str("gl_MaxPatchVerticesIn"),
+    TessEvalBuiltIn::PatchVerticesIn => f.write_str("gl_PatchVerticesIn"),
+    TessEvalBuiltIn::PrimitiveID => f.write_str("gl_PrimitiveID"),
+    TessEvalBuiltIn::TessellationLevelOuter => f.write_str("gl_TessellationLevelOuter"),
+    TessEvalBuiltIn::TessellationLevelInner => f.write_str("gl_TessellationLevelInner"),
+    TessEvalBuiltIn::In => f.write_str("gl_In"),
+    TessEvalBuiltIn::Out => f.write_str("gl_Out"),
+    TessEvalBuiltIn::Position => f.write_str("gl_Position"),
+    TessEvalBuiltIn::PointSize => f.write_str("gl_PointSize"),
+    TessEvalBuiltIn::ClipDistance => f.write_str("gl_ClipDistance"),
+    TessEvalBuiltIn::CullDistance => f.write_str("gl_CullDistance"),
   }
-
-  Ok(())
 }
 
-fn write_geo_builtin_to_str(
-  output: &mut String,
-  builtin: &GeometryBuiltIn,
-) -> Result<(), WriteError> {
+fn write_geo_builtin(f: &mut impl fmt::Write, builtin: &GeometryBuiltIn) -> Result<(), fmt::Error> {
   match builtin {
-    GeometryBuiltIn::In => *output += "gl_In",
-    GeometryBuiltIn::Out => *output += "gl_Out",
-    GeometryBuiltIn::Position => *output += "gl_Position",
-    GeometryBuiltIn::PointSize => *output += "gl_PointSize",
-    GeometryBuiltIn::ClipDistance => *output += "gl_ClipDistance",
-    GeometryBuiltIn::CullDistance => *output += "gl_CullDistance",
-    GeometryBuiltIn::PrimitiveID => *output += "gl_PrimitiveID",
-    GeometryBuiltIn::PrimitiveIDIn => *output += "gl_PrimitiveIDIn",
-    GeometryBuiltIn::InvocationID => *output += "gl_InvocationID",
-    GeometryBuiltIn::Layer => *output += "gl_Layer",
-    GeometryBuiltIn::ViewportIndex => *output += "gl_ViewportIndex",
+    GeometryBuiltIn::In => f.write_str("gl_In"),
+    GeometryBuiltIn::Out => f.write_str("gl_Out"),
+    GeometryBuiltIn::Position => f.write_str("gl_Position"),
+    GeometryBuiltIn::PointSize => f.write_str("gl_PointSize"),
+    GeometryBuiltIn::ClipDistance => f.write_str("gl_ClipDistance"),
+    GeometryBuiltIn::CullDistance => f.write_str("gl_CullDistance"),
+    GeometryBuiltIn::PrimitiveID => f.write_str("gl_PrimitiveID"),
+    GeometryBuiltIn::PrimitiveIDIn => f.write_str("gl_PrimitiveIDIn"),
+    GeometryBuiltIn::InvocationID => f.write_str("gl_InvocationID"),
+    GeometryBuiltIn::Layer => f.write_str("gl_Layer"),
+    GeometryBuiltIn::ViewportIndex => f.write_str("gl_ViewportIndex"),
   }
-
-  Ok(())
 }
 
-fn write_frag_builtin_to_str(
-  output: &mut String,
+fn write_frag_builtin(
+  f: &mut impl fmt::Write,
   builtin: &FragmentBuiltIn,
-) -> Result<(), WriteError> {
+) -> Result<(), fmt::Error> {
   match builtin {
-    FragmentBuiltIn::FragCoord => *output += "gl_FragCoord",
-    FragmentBuiltIn::FrontFacing => *output += "gl_FrontFacing",
-    FragmentBuiltIn::PointCoord => *output += "gl_PointCoord",
-    FragmentBuiltIn::SampleID => *output += "gl_SampleID",
-    FragmentBuiltIn::SamplePosition => *output += "gl_SamplePosition",
-    FragmentBuiltIn::SampleMaskIn => *output += "gl_SampleMaskIn",
-    FragmentBuiltIn::ClipDistance => *output += "gl_ClipDistance",
-    FragmentBuiltIn::CullDistance => *output += "gl_CullDistance",
-    FragmentBuiltIn::PrimitiveID => *output += "gl_PrimitiveID",
-    FragmentBuiltIn::Layer => *output += "gl_Layer",
-    FragmentBuiltIn::ViewportIndex => *output += "gl_ViewportIndex",
-    FragmentBuiltIn::FragDepth => *output += "gl_FragDepth",
-    FragmentBuiltIn::SampleMask => *output += "gl_SampleMask",
-    FragmentBuiltIn::HelperInvocation => *output += "gl_HelperInvocation",
+    FragmentBuiltIn::FragCoord => f.write_str("gl_FragCoord"),
+    FragmentBuiltIn::FrontFacing => f.write_str("gl_FrontFacing"),
+    FragmentBuiltIn::PointCoord => f.write_str("gl_PointCoord"),
+    FragmentBuiltIn::SampleID => f.write_str("gl_SampleID"),
+    FragmentBuiltIn::SamplePosition => f.write_str("gl_SamplePosition"),
+    FragmentBuiltIn::SampleMaskIn => f.write_str("gl_SampleMaskIn"),
+    FragmentBuiltIn::ClipDistance => f.write_str("gl_ClipDistance"),
+    FragmentBuiltIn::CullDistance => f.write_str("gl_CullDistance"),
+    FragmentBuiltIn::PrimitiveID => f.write_str("gl_PrimitiveID"),
+    FragmentBuiltIn::Layer => f.write_str("gl_Layer"),
+    FragmentBuiltIn::ViewportIndex => f.write_str("gl_ViewportIndex"),
+    FragmentBuiltIn::FragDepth => f.write_str("gl_FragDepth"),
+    FragmentBuiltIn::SampleMask => f.write_str("gl_SampleMask"),
+    FragmentBuiltIn::HelperInvocation => f.write_str("gl_HelperInvocation"),
   }
-
-  Ok(())
 }
 
-fn write_prim_type_to_str(output: &mut String, prim_ty: &PrimType) -> Result<(), WriteError> {
+fn write_prim_type(f: &mut impl fmt::Write, prim_ty: &PrimType) -> Result<(), fmt::Error> {
   let ty_str = match prim_ty {
     // ints
     PrimType::Int(Dim::Scalar) => "int",
@@ -885,58 +828,62 @@ fn write_prim_type_to_str(output: &mut String, prim_ty: &PrimType) -> Result<(),
     PrimType::Matrix(MatrixDim::D44) => "mat4",
   };
 
-  *output += ty_str;
-
-  Ok(())
+  f.write_str(ty_str)
 }
 
-fn write_type_to_str(output: &mut String, ty: &Type) -> Result<(), WriteError> {
-  write_prim_type_to_str(output, &ty.prim_ty)?;
+fn write_type(f: &mut impl fmt::Write, ty: &Type) -> Result<(), fmt::Error> {
+  write_prim_type(f, &ty.prim_ty)?;
 
   // array notation
   if !ty.array_dims.is_empty() {
-    *output += "[";
+    f.write_str("[")?;
 
-    *output += &ty.array_dims[0].to_string();
+    write!(f, "{}", &ty.array_dims[0])?;
     for dim in &ty.array_dims[1..] {
-      *output += &format!("][{}", dim);
+      write!(f, "][{}", dim)?;
     }
 
-    *output += "]";
+    f.write_str("]")
+  } else {
+    Ok(())
   }
-
-  Ok(())
 }
 
-fn write_indented(output: &mut String, indent: &str, t: &str) {
-  *output += &indent;
-  *output += t;
+fn write_indented(f: &mut impl fmt::Write, indent_lvl: usize, t: &str) -> Result<(), fmt::Error> {
+  write_indent(f, indent_lvl)?;
+  f.write_str(t)
+}
+
+fn write_indent(f: &mut impl fmt::Write, indent_lvl: usize) -> Result<(), fmt::Error> {
+  write!(
+    f,
+    "{indent:<width$}",
+    indent = INDENT_SPACES,
+    width = indent_lvl
+  )
 }
 
 fn write_matrix<const M: usize, const N: usize>(
-  output: &mut String,
+  f: &mut impl fmt::Write,
   ctor_name: &str,
   m: &[[f32; N]; M],
-) {
-  *output += ctor_name;
-  *output += "(";
+) -> Result<(), fmt::Error> {
+  write!(f, "{}(", ctor_name)?;
 
   // first dimension
-  *output += &float_to_str(m[0][0]);
+  write!(f, "{}", write_f32(m[0][0]))?;
   for i in 1..N {
-    *output += ", ";
-    *output += &float_to_str(m[0][i]);
+    write!(f, ", {}", write_f32(m[0][i]))?;
   }
 
   // general case
   for y in 1..M {
     for i in 0..N {
-      *output += ", ";
-      *output += &float_to_str(m[y][i]);
+      write!(f, ", {}", write_f32(m[y][i]))?;
     }
   }
 
-  *output += ")";
+  f.write_str(")")
 }
 
 #[cfg(test)]
@@ -947,7 +894,7 @@ mod tests {
   fn matrices() {
     let mut output = String::new();
 
-    write_matrix(&mut output, "mat2", &[[1., 2.], [3., 4.]]);
+    write_matrix(&mut output, "mat2", &[[1., 2.], [3., 4.]]).unwrap();
     assert_eq!(output, "mat2(1., 2., 3., 4.)");
 
     output.clear();
@@ -955,7 +902,8 @@ mod tests {
       &mut output,
       "mat3",
       &[[1., 2., 3.], [4., 5., 6.], [7., 8., 9.]],
-    );
+    )
+    .unwrap();
     assert_eq!(output, "mat3(1., 2., 3., 4., 5., 6., 7., 8., 9.)");
 
     output.clear();
@@ -968,7 +916,8 @@ mod tests {
         [9., 10., 11., 12.],
         [13., 14., 15., 16.],
       ],
-    );
+    )
+    .unwrap();
     assert_eq!(
       output,
       "mat4(1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16.)"
