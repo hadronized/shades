@@ -1204,6 +1204,22 @@ macro_rules! impl_Not_Expr {
         Expr::new(ErasedExpr::Not(Box::new(self.erased.clone())))
       }
     }
+
+    impl ops::Not for Var<$t> {
+      type Output = Expr<$t>;
+
+      fn not(self) -> Self::Output {
+        Expr::new(ErasedExpr::Not(Box::new(self.0.erased)))
+      }
+    }
+
+    impl<'a> ops::Not for &'a Var<$t> {
+      type Output = Expr<$t>;
+
+      fn not(self) -> Self::Output {
+        Expr::new(ErasedExpr::Not(Box::new(self.0.erased.clone())))
+      }
+    }
   };
 }
 
@@ -1213,7 +1229,7 @@ impl_Not_Expr!(V3<bool>);
 impl_Not_Expr!(V4<bool>);
 
 // neg
-macro_rules! impl_Neg_Expr {
+macro_rules! impl_Neg {
   ($t:ty) => {
     impl ops::Neg for Expr<$t> {
       type Output = Self;
