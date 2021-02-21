@@ -858,8 +858,8 @@ fn write_indent(f: &mut impl fmt::Write, indent_lvl: usize) -> Result<(), fmt::E
   write!(
     f,
     "{indent:<width$}",
-    indent = INDENT_SPACES,
-    width = indent_lvl
+    indent = " ",
+    width = INDENT_SPACES * indent_lvl
   )
 }
 
