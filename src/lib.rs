@@ -3622,12 +3622,16 @@ pub enum Swizzle {
 /// - [[`SwizzleSelector`]; 3]: to implement `sw!(.xxx)`.
 /// - [[`SwizzleSelector`]; 4]: to implement `sw!(.xxxx)`.
 pub trait Swizzlable<S> {
-  fn swizzle(&self, sw: S) -> Self;
+  type Output;
+
+  fn swizzle(&self, sw: S) -> Self::Output;
 }
 
 // 2D
 impl<T> Swizzlable<SwizzleSelector> for Expr<V2<T>> {
-  fn swizzle(&self, x: SwizzleSelector) -> Self {
+  type Output = Expr<T>;
+
+  fn swizzle(&self, x: SwizzleSelector) -> Self::Output {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
       Swizzle::D1(x),
@@ -3636,7 +3640,9 @@ impl<T> Swizzlable<SwizzleSelector> for Expr<V2<T>> {
 }
 
 impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<V2<T>> {
-  fn swizzle(&self, [x, y]: [SwizzleSelector; 2]) -> Self {
+  type Output = Self;
+
+  fn swizzle(&self, [x, y]: [SwizzleSelector; 2]) -> Self::Output {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
       Swizzle::D2(x, y),
@@ -3646,7 +3652,9 @@ impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<V2<T>> {
 
 // 3D
 impl<T> Swizzlable<SwizzleSelector> for Expr<V3<T>> {
-  fn swizzle(&self, x: SwizzleSelector) -> Self {
+  type Output = Expr<T>;
+
+  fn swizzle(&self, x: SwizzleSelector) -> Self::Output {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
       Swizzle::D1(x),
@@ -3655,7 +3663,9 @@ impl<T> Swizzlable<SwizzleSelector> for Expr<V3<T>> {
 }
 
 impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<V3<T>> {
-  fn swizzle(&self, [x, y]: [SwizzleSelector; 2]) -> Self {
+  type Output = Expr<V2<T>>;
+
+  fn swizzle(&self, [x, y]: [SwizzleSelector; 2]) -> Self::Output {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
       Swizzle::D2(x, y),
@@ -3664,7 +3674,9 @@ impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<V3<T>> {
 }
 
 impl<T> Swizzlable<[SwizzleSelector; 3]> for Expr<V3<T>> {
-  fn swizzle(&self, [x, y, z]: [SwizzleSelector; 3]) -> Self {
+  type Output = Self;
+
+  fn swizzle(&self, [x, y, z]: [SwizzleSelector; 3]) -> Self::Output {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
       Swizzle::D3(x, y, z),
@@ -3674,7 +3686,9 @@ impl<T> Swizzlable<[SwizzleSelector; 3]> for Expr<V3<T>> {
 
 // 4D
 impl<T> Swizzlable<SwizzleSelector> for Expr<V4<T>> {
-  fn swizzle(&self, x: SwizzleSelector) -> Self {
+  type Output = Expr<T>;
+
+  fn swizzle(&self, x: SwizzleSelector) -> Self::Output {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
       Swizzle::D1(x),
@@ -3683,7 +3697,9 @@ impl<T> Swizzlable<SwizzleSelector> for Expr<V4<T>> {
 }
 
 impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<V4<T>> {
-  fn swizzle(&self, [x, y]: [SwizzleSelector; 2]) -> Self {
+  type Output = Expr<V2<T>>;
+
+  fn swizzle(&self, [x, y]: [SwizzleSelector; 2]) -> Self::Output {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
       Swizzle::D2(x, y),
@@ -3692,7 +3708,9 @@ impl<T> Swizzlable<[SwizzleSelector; 2]> for Expr<V4<T>> {
 }
 
 impl<T> Swizzlable<[SwizzleSelector; 3]> for Expr<V4<T>> {
-  fn swizzle(&self, [x, y, z]: [SwizzleSelector; 3]) -> Self {
+  type Output = Expr<V3<T>>;
+
+  fn swizzle(&self, [x, y, z]: [SwizzleSelector; 3]) -> Self::Output {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
       Swizzle::D3(x, y, z),
@@ -3701,13 +3719,88 @@ impl<T> Swizzlable<[SwizzleSelector; 3]> for Expr<V4<T>> {
 }
 
 impl<T> Swizzlable<[SwizzleSelector; 4]> for Expr<V4<T>> {
-  fn swizzle(&self, [x, y, z, w]: [SwizzleSelector; 4]) -> Self {
+  type Output = Self;
+
+  fn swizzle(&self, [x, y, z, w]: [SwizzleSelector; 4]) -> Self::Output {
     Expr::new(ErasedExpr::Swizzle(
       Box::new(self.erased.clone()),
       Swizzle::D4(x, y, z, w),
     ))
   }
 }
+
+/// Expressions having a `x` or `r` coordinate.
+///
+/// Akin to swizzling with `.x` or `.r`, but easier.
+pub trait HasX {
+  type Output;
+
+  fn x(&self) -> Self::Output;
+  fn r(&self) -> Self::Output {
+    self.x()
+  }
+}
+
+/// Expressions having a `y` or `g` coordinate.
+///
+/// Akin to swizzling with `.y` or `.g`, but easier.
+pub trait HasY {
+  type Output;
+
+  fn y(&self) -> Self::Output;
+  fn g(&self) -> Self::Output {
+    self.y()
+  }
+}
+
+/// Expressions having a `z` or `b` coordinate.
+///
+/// Akin to swizzling with `.z` or `.b`, but easier.
+pub trait HasZ {
+  type Output;
+
+  fn z(&self) -> Self::Output;
+  fn b(&self) -> Self::Output {
+    self.z()
+  }
+}
+
+/// Expressions having a `w` or `a` coordinate.
+///
+/// Akin to swizzling with `.w` or `.a`, but easier.
+pub trait HasW {
+  type Output;
+
+  fn w(&self) -> Self::Output;
+  fn a(&self) -> Self::Output {
+    self.w()
+  }
+}
+
+macro_rules! impl_has_k {
+  ($trait:ident, $name:ident, $selector:ident, $t:ident) => {
+    impl<T> $trait for Expr<$t<T>> {
+      type Output = Expr<T>;
+
+      fn $name(&self) -> Self::Output {
+        self.swizzle(SwizzleSelector::$selector)
+      }
+    }
+  };
+}
+
+impl_has_k!(HasX, x, X, V2);
+impl_has_k!(HasX, x, X, V3);
+impl_has_k!(HasX, x, X, V4);
+
+impl_has_k!(HasY, y, Y, V2);
+impl_has_k!(HasY, y, Y, V3);
+impl_has_k!(HasY, y, Y, V4);
+
+impl_has_k!(HasZ, z, Z, V3);
+impl_has_k!(HasZ, z, Z, V4);
+
+impl_has_k!(HasW, w, W, V4);
 
 /// Swizzle macro.
 ///
@@ -3773,11 +3866,11 @@ macro_rules! sw_extract {
   };
 
   (w) => {
-    $crate::SwizzleSelector::Z
+    $crate::SwizzleSelector::W
   };
 
   (a) => {
-    $crate::SwizzleSelector::Z
+    $crate::SwizzleSelector::W
   };
 }
 
@@ -5395,8 +5488,8 @@ mod tests {
   fn swizzling() {
     let mut scope = Scope::<()>::new(0);
     let foo = scope.var(lit![1, 2]);
-    let foo_xy = sw!(foo, .x.y);
-    let foo_xx = sw!(foo, .x.x);
+    let foo_xy: Expr<V2<_>> = sw!(foo, .x.y);
+    let foo_xx: Expr<V2<_>> = sw!(foo, .x.x);
 
     assert_eq!(
       foo_xy.erased,
@@ -5683,5 +5776,19 @@ mod tests {
         ]
       )
     );
+  }
+
+  #[test]
+  fn has_x_y_z_w() {
+    let xyzw: Expr<V4<i32>> = lit!(1, 2, 3, 4);
+    let x: Expr<i32> = sw!(xyzw, .x);
+    let y: Expr<i32> = sw!(xyzw, .y);
+    let z: Expr<i32> = sw!(xyzw, .z);
+    let w: Expr<i32> = sw!(xyzw, .w);
+
+    assert_eq!(xyzw.x().erased, x.erased);
+    assert_eq!(xyzw.y().erased, y.erased);
+    assert_eq!(xyzw.z().erased, z.erased);
+    assert_eq!(xyzw.w().erased, w.erased);
   }
 }
