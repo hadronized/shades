@@ -4983,7 +4983,7 @@ impl_Floating!(V2<f32>);
 impl_Floating!(V3<f32>);
 impl_Floating!(V4<f32>);
 
-trait Bounded: Sized {
+pub trait Bounded: Sized {
   fn min(&self, rhs: impl Into<Self>) -> Self;
 
   fn max(&self, rhs: impl Into<Self>) -> Self;
