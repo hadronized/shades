@@ -1847,6 +1847,10 @@ macro_rules! lit {
   ($a:expr, $b:expr, $c:expr, $d:expr) => {
     $crate::Expr::from($crate::V4::from([$a, $b, $c, $d]))
   };
+
+  ([ $($item:expr),* ]) => {
+    $crate::Expr::from([ $($item),* ])
+  }
 }
 
 /// Create 2D scalar vectors via different forms.
@@ -5692,6 +5696,7 @@ mod tests {
   fn array_creation() {
     let _ = Expr::from([1, 2, 3]);
     let _ = Expr::from(&[1, 2, 3]);
+    let _ = lit!([vec2!(1., 2.)]);
     let two_d = Expr::from([[1, 2], [3, 4]]);
 
     assert_eq!(
