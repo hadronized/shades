@@ -1837,7 +1837,7 @@ macro_rules! lit {
   };
 
   ($a:expr, $b:expr) => {
-    $crate::Expr::from(V2::from([$a, $b]))
+    $crate::Expr::from($crate::V2::from([$a, $b]))
   };
 
   ($a:expr, $b:expr, $c:expr) => {
