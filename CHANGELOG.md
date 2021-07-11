@@ -1,3 +1,13 @@
+# 0.3.6
+
+> Jul 12, 2021
+
+- Allow to call `Neg` and `Not` on `Var<T>`.
+- Add `HasX`, `HasY`, `HasZ` and `HasW` to make it easier to get `VN<_>` values.
+- Add `Bounded` to the public interface.
+- Fix `lit!` for `V2`.
+- Add support for array literals.
+
 # 0.3.5
 
 > Feb 21, 2021
