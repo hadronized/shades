@@ -39,11 +39,12 @@
 //! Another important point is the choice of using an EDSL. Some people would argue that Rust has other interesting and
 //! powerful ways to achieve the same goal. It is important to notice that this crate doesn’t provide a compiler to compile
 //! Rust code to a shading language. Instead, it provides a Rust crate that will still generate the shading code at runtime.
-//! Other alternatives would be using a [proc-macro]. Several crates who do this:
+//! Other alternatives would be using a [proc-macro]. Several crates that do this:
 //!
-//! - You can use the [glsl] and [glsl-quasiquote] crates. The first one is a parser for GLSL and the second one allows you
-//!   to write GLSL in a quasi-quoter (`glsl! { /* here */  }`) and get it compiled and check at runtime. It’s still
-//!   [GLSL], though, and the possibilities of runtime combinations are much less than an EDSL.
+//! - You can use the [glsl](https://crates.io/crates/glsl) and [glsl-quasiquote](https://crates.io/crates/glsl-quasiquote)
+//!   crates. The first one is a parser for GLSL and the second one allows you to write GLSL in a quasi-quoter
+//!   (`glsl! { /* here */  }`) and get it compiled and check at runtime. It’s still [GLSL], though, and the possibilities
+//!   of runtime combinations are much less than an EDSL.
 //! - You can use the [rust-gpu] project. It’s a similar project but they use a proc-macro, compiling Rust code
 //!   representing GPU code. It requires a specific toolchain and doesn’t operate at the same level of this crate — it can
 //!   even compile a large part of the `core` library.
@@ -115,52 +116,52 @@ use std::{
   ops::{self, Deref, DerefMut},
 };
 
-/// A fully built shader stage as represented in Rust, obtained by adding the `main` function to a [`ShaderBuilder`].
+/// A fully built shader stage as represented in Rust, obtained by adding the `main` function to a [`StageBuilder`].
 #[derive(Debug)]
-pub struct Shader {
-  pub(crate) builder: ShaderBuilder,
+pub struct Stage {
+  pub(crate) builder: StageBuilder,
 }
 
-impl AsRef<Shader> for Shader {
-  fn as_ref(&self) -> &Shader {
+impl AsRef<Stage> for Stage {
+  fn as_ref(&self) -> &Stage {
     self
   }
 }
 
-/// A shader builder.
+/// A shader stage builder.
 ///
 /// This opaque type is the representation of a shader stage in Rust. It contains constants, uniforms, inputs, outputs and
 /// functions declarations. Such a type is used to build a shader stage and is fully built when the `main` function is
-/// present in its code. See [`ShaderBuilder::main_fun`] for further details.
+/// present in its code. See [`StageBuilder::main_fun`] for further details.
 #[derive(Debug)]
-pub struct ShaderBuilder {
+pub struct StageBuilder {
   pub(crate) decls: Vec<ShaderDecl>,
   next_fun_handle: u16,
   next_global_handle: u16,
 }
 
-impl ShaderBuilder {
+impl StageBuilder {
   /// Create a new _vertex shader_.
   ///
-  /// This method creates a [`Shader`] that can be used as _vertex shader_. This is enforced by the fact only this
-  /// method authorized to build a vertex [`Shader`] by using the [`VertexShaderEnv`] argument passed to the input
+  /// This method creates a [`Stage`] that can be used as _vertex shader_. This is enforced by the fact only this
+  /// method allows to build a vertex [`Stage`] by using the [`VertexShaderEnv`] argument passed to the input
   /// closure.
   ///
-  /// That closure takes as first argument a mutable reference on a [`ShaderBuilder`] and a [`VertexShaderEnv`] as
+  /// That closure takes as first argument a [`StageBuilder`] and a [`VertexShaderEnv`] as
   /// second argument. The [`VertexShaderEnv`] allows you to access to vertex attributes found in any invocation of
   /// a vertex shader. Those are expressions (read-only) and variables (read-write) valid only in vertex shaders.
   ///
   /// # Return
   ///
-  /// This method returns the fully built [`Shader`], which cannot be mutated anymore once it has been built,
+  /// This method returns the fully built [`Stage`], which cannot be mutated anymore once it has been built,
   /// and can be passed to various [`writers`](crate::writer) to generate actual code for target shading languages.
   ///
   /// # Examples
   ///
   /// ```
-  /// use shades::{Scope, ShaderBuilder, V3, inputs, vec4};
+  /// use shades::{Scope, StageBuilder, V3, inputs, vec4};
   ///
-  /// let vertex_shader = ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// let vertex_shader = StageBuilder::new_vertex_shader(|mut s, vertex| {
   ///   inputs!(s, position: V3<f32>);
   ///
   ///   s.main_fun(|s: &mut Scope<()>| {
@@ -168,63 +169,63 @@ impl ShaderBuilder {
   ///   })
   /// });
   /// ```
-  pub fn new_vertex_shader(f: impl FnOnce(Self, VertexShaderEnv) -> Shader) -> Shader {
+  pub fn new_vertex_shader(f: impl FnOnce(Self, VertexShaderEnv) -> Stage) -> Stage {
     f(Self::new(), VertexShaderEnv::new())
   }
 
   /// Create a new _tessellation control shader_.
   ///
-  /// This method creates a [`Shader`] that can be used as _tessellation control shader_. This is enforced by the
-  /// fact only this method authorized to build a tessellation control [`Shader`] by using the [`TessCtrlShaderEnv`]
+  /// This method creates a [`Stage`] that can be used as _tessellation control shader_. This is enforced by the
+  /// fact only this method authorized to build a tessellation control [`Stage`] by using the [`TessCtrlShaderEnv`]
   /// argument passed to the input closure.
   ///
-  /// That closure takes as first argument a mutable reference on a [`ShaderBuilder`] and a [`TessCtrlShaderEnv`] as
+  /// That closure takes as first argument a mutable reference on a [`StageBuilder`] and a [`TessCtrlShaderEnv`] as
   /// second argument. The [`TessCtrlShaderEnv`] allows you to access to tessellation control attributes found in any
   /// invocation of a tessellation control shader. Those are expressions (read-only) and variables (read-write) valid
   /// only in tessellation control shaders.
   ///
   /// # Return
   ///
-  /// This method returns the fully built [`Shader`], which cannot be mutated anymore once it has been built,
+  /// This method returns the fully built [`Stage`], which cannot be mutated anymore once it has been built,
   /// and can be passed to various [`writers`](crate::writer) to generate actual code for target shading languages.
   ///
   /// # Examples
   ///
   /// ```
-  /// use shades::{Scope, ShaderBuilder, V3, vec4};
+  /// use shades::{Scope, StageBuilder, V3, vec4};
   ///
-  /// let tess_ctrl_shader = ShaderBuilder::new_tess_ctrl_shader(|mut s, patch| {
+  /// let tess_ctrl_shader = StageBuilder::new_tess_ctrl_shader(|mut s, patch| {
   ///   s.main_fun(|s: &mut Scope<()>| {
   ///     s.set(patch.tess_level_outer.at(0), 0.1);
   ///   })
   /// });
   /// ```
-  pub fn new_tess_ctrl_shader(f: impl FnOnce(Self, TessCtrlShaderEnv) -> Shader) -> Shader {
+  pub fn new_tess_ctrl_shader(f: impl FnOnce(Self, TessCtrlShaderEnv) -> Stage) -> Stage {
     f(Self::new(), TessCtrlShaderEnv::new())
   }
 
   /// Create a new _tessellation evaluation shader_.
   ///
-  /// This method creates a [`Shader`] that can be used as _tessellation evaluation shader_. This is enforced by the
-  /// fact only this method authorized to build a tessellation evaluation [`Shader`] by using the [`TessEvalShaderEnv`]
+  /// This method creates a [`Stage`] that can be used as _tessellation evaluation shader_. This is enforced by the
+  /// fact only this method authorized to build a tessellation evaluation [`Stage`] by using the [`TessEvalShaderEnv`]
   /// argument passed to the input closure.
   ///
-  /// That closure takes as first argument a mutable reference on a [`ShaderBuilder`] and a [`TessEvalShaderEnv`] as
+  /// That closure takes as first argument a mutable reference on a [`StageBuilder`] and a [`TessEvalShaderEnv`] as
   /// second argument. The [`TessEvalShaderEnv`] allows you to access to tessellation evaluation attributes found in
   /// any invocation of a tessellation evaluation shader. Those are expressions (read-only) and variables (read-write)
   /// valid only in tessellation evaluation shaders.
   ///
   /// # Return
   ///
-  /// This method returns the fully built [`Shader`], which cannot be mutated anymore once it has been built,
+  /// This method returns the fully built [`Stage`], which cannot be mutated anymore once it has been built,
   /// and can be passed to various [`writers`](crate::writer) to generate actual code for target shading languages.
   ///
   /// # Examples
   ///
   /// ```
-  /// use shades::{Scope, ShaderBuilder, V3, inputs, vec4};
+  /// use shades::{Scope, StageBuilder, V3, inputs, vec4};
   ///
-  /// let tess_eval_shader = ShaderBuilder::new_tess_eval_shader(|mut s, patch| {
+  /// let tess_eval_shader = StageBuilder::new_tess_eval_shader(|mut s, patch| {
   ///   inputs!(s, position: V3<f32>);
   ///
   ///   s.main_fun(|s: &mut Scope<()>| {
@@ -232,31 +233,31 @@ impl ShaderBuilder {
   ///   })
   /// });
   /// ```
-  pub fn new_tess_eval_shader(f: impl FnOnce(Self, TessEvalShaderEnv) -> Shader) -> Shader {
+  pub fn new_tess_eval_shader(f: impl FnOnce(Self, TessEvalShaderEnv) -> Stage) -> Stage {
     f(Self::new(), TessEvalShaderEnv::new())
   }
 
   /// Create a new _geometry shader_.
   ///
-  /// This method creates a [`Shader`] that can be used as _geometry shader_. This is enforced by the fact only this
-  /// method authorized to build a geometry [`Shader`] by using the [`GeometryShaderEnv`] argument passed to the input
+  /// This method creates a [`Stage`] that can be used as _geometry shader_. This is enforced by the fact only this
+  /// method authorized to build a geometry [`Stage`] by using the [`GeometryShaderEnv`] argument passed to the input
   /// closure.
   ///
-  /// That closure takes as first argument a mutable reference on a [`ShaderBuilder`] and a [`GeometryShaderEnv`] as
+  /// That closure takes as first argument a mutable reference on a [`StageBuilder`] and a [`GeometryShaderEnv`] as
   /// second argument. The [`GeometryShaderEnv`] allows you to access to geometry attributes found in any invocation of
   /// a geometry shader. Those are expressions (read-only) and variables (read-write) valid only in geometry shaders.
   ///
   /// # Return
   ///
-  /// This method returns the fully built [`Shader`], which cannot be mutated anymore once it has been built,
+  /// This method returns the fully built [`Stage`], which cannot be mutated anymore once it has been built,
   /// and can be passed to various [`writers`](crate::writer) to generate actual code for target shading languages.
   ///
   /// # Examples
   ///
   /// ```
-  /// use shades::{LoopScope, Scope, ShaderBuilder, V3, vec4};
+  /// use shades::{LoopScope, Scope, StageBuilder, V3, vec4};
   ///
-  /// let geo_shader = ShaderBuilder::new_geometry_shader(|mut s, vertex| {
+  /// let geo_shader = StageBuilder::new_geometry_shader(|mut s, vertex| {
   ///   s.main_fun(|s: &mut Scope<()>| {
   ///     s.loop_for(0, |i| i.lt(3), |i| i + 1, |s: &mut LoopScope<()>, i| {
   ///       s.set(vertex.position, vertex.input.at(i).position());
@@ -264,31 +265,31 @@ impl ShaderBuilder {
   ///   })
   /// });
   /// ```
-  pub fn new_geometry_shader(f: impl FnOnce(Self, GeometryShaderEnv) -> Shader) -> Shader {
+  pub fn new_geometry_shader(f: impl FnOnce(Self, GeometryShaderEnv) -> Stage) -> Stage {
     f(Self::new(), GeometryShaderEnv::new())
   }
 
   /// Create a new _fragment shader_.
   ///
-  /// This method creates a [`Shader`] that can be used as _fragment shader_. This is enforced by the fact only this
-  /// method authorized to build a [`ShaderBuilder`] by using the [`FragmentShaderEnv`] argument passed to the input
+  /// This method creates a [`Stage`] that can be used as _fragment shader_. This is enforced by the fact only this
+  /// method authorized to build a [`StageBuilder`] by using the [`FragmentShaderEnv`] argument passed to the input
   /// closure.
   ///
-  /// That closure takes as first argument a mutable reference on a [`ShaderBuilder`] and a [`FragmentShaderEnv`] as
+  /// That closure takes as first argument a mutable reference on a [`StageBuilder`] and a [`FragmentShaderEnv`] as
   /// second argument. The [`FragmentShaderEnv`] allows you to access to fragment attributes found in any invocation of
   /// a fragment shader. Those are expressions (read-only) and variables (read-write) valid only in fragment shaders.
   ///
   /// # Return
   ///
-  /// This method returns the fully built [`Shader`], which cannot be mutated anymore once it has been built,
+  /// This method returns the fully built [`Stage`], which cannot be mutated anymore once it has been built,
   /// and can be passed to various [`writers`](crate::writer) to generate actual code for target shading languages.
   ///
   /// # Examples
   ///
   /// ```
-  /// use shades::{Geometry as _, Scope, ShaderBuilder, V4, outputs, vec4};
+  /// use shades::{Geometry as _, Scope, StageBuilder, V4, outputs, vec4};
   ///
-  /// let geo_shader = ShaderBuilder::new_fragment_shader(|mut s, fragment| {
+  /// let geo_shader = StageBuilder::new_fragment_shader(|mut s, fragment| {
   ///   outputs!(s, color: V4<f32>);
   ///
   ///   s.main_fun(|s: &mut Scope<()>| {
@@ -296,7 +297,7 @@ impl ShaderBuilder {
   ///   })
   /// });
   /// ```
-  pub fn new_fragment_shader(f: impl FnOnce(Self, FragmentShaderEnv) -> Shader) -> Shader {
+  pub fn new_fragment_shader(f: impl FnOnce(Self, FragmentShaderEnv) -> Stage) -> Stage {
     f(Self::new(), FragmentShaderEnv::new())
   }
 
@@ -325,8 +326,8 @@ impl ShaderBuilder {
   /// expression:
   ///
   /// ```
-  /// # use shades::ShaderBuilder;
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::StageBuilder;
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// use shades::{Expr, Scope};
   ///
   /// let f = s.fun(|s: &mut Scope<Expr<f32>>, a: Expr<f32>| a + 1.);
@@ -338,8 +339,8 @@ impl ShaderBuilder {
   /// EDSL:
   ///
   /// ```compile_fail
-  /// # use shades::ShaderBuilder;
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::StageBuilder;
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// use shades::{Expr, Scope};
   ///
   /// let f = s.fun(|s: &mut Scope<Expr<f32>>, a: Expr<f32>| {
@@ -357,8 +358,8 @@ impl ShaderBuilder {
   /// `return` cannot be captured by the EDSL. It means that you will not get the shader code you expect.
   ///
   /// ```
-  /// # use shades::{Expr, Scope, ShaderBuilder};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Expr, Scope, StageBuilder};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// use shades::{Expr, Scope};
   ///
   /// let f = s.fun(|s: &mut Scope<Expr<f32>>, a: Expr<f32>| {
@@ -372,8 +373,8 @@ impl ShaderBuilder {
   /// statement:
   ///
   /// ```
-  /// # use shades::ShaderBuilder;
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::StageBuilder;
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// use shades::{CanEscape as _, EscapeScope, Expr, Scope};
   ///
   /// // don’t do this.
@@ -409,9 +410,9 @@ impl ShaderBuilder {
   /// # Examples
   ///
   /// ```
-  /// use shades::{Exponential as _, Expr, Scope, ShaderBuilder, lit};
+  /// use shades::{Exponential as _, Expr, Scope, StageBuilder, lit};
   ///
-  /// let shader = ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// let shader = StageBuilder::new_vertex_shader(|mut s, vertex| {
   ///   // create a function taking a floating-point number and returning its square
   ///   let square = s.fun(|s: &mut Scope<Expr<f32>>, a: Expr<f32>| {
   ///     a.pow(2.)
@@ -446,29 +447,29 @@ impl ShaderBuilder {
 
   /// Declare the `main` function of the shader stage.
   ///
-  /// This method is very similar to [`ShaderBuilder::fun`] in the sense it declares a function. However, it declares the special
-  /// `main` entry-point of a shader stage, which doesn’t have have argument and returns nothing, and is the only
-  /// way to finalize the building of a [`Shader`].
+  /// This method is very similar to [`StageBuilder::fun`] in the sense it declares a function. However, it declares the special
+  /// `main` entry-point of a shader stage, which doesn’t have any argument and returns nothing, and is the only
+  /// way to finalize the building of a [`Stage`].
   ///
   /// The input closure must take a single argument: a mutable reference on a `Scope<()>`, as the `main` function
   /// cannot return anything.
   ///
   /// # Return
   ///
-  /// The fully built [`Shader`], which cannot be altered anymore.
+  /// The fully built [`Stage`], which cannot be altered anymore.
   ///
   /// # Examples
   ///
   /// ```
-  /// use shades::{Scope, ShaderBuilder};
+  /// use shades::{Scope, StageBuilder};
   ///
-  /// let shader = ShaderBuilder::new_vertex_shader(|s, vertex| {
+  /// let shader = StageBuilder::new_vertex_shader(|s, vertex| {
   ///   s.main_fun(|s: &mut Scope<()>| {
   ///     // …
   ///   })
   /// });
   /// ```
-  pub fn main_fun<F, R>(mut self, f: F) -> Shader
+  pub fn main_fun<F, R>(mut self, f: F) -> Stage
   where
     F: ToFun<R, ()>,
   {
@@ -476,7 +477,7 @@ impl ShaderBuilder {
 
     self.decls.push(ShaderDecl::Main(fundef.erased));
 
-    Shader { builder: self }
+    Stage { builder: self }
   }
 
   /// Declare a new constant, shared between all functions and constants that come next.
@@ -491,8 +492,8 @@ impl ShaderBuilder {
   /// # Examples
   ///
   /// ```
-  /// # use shades::{EscapeScope, Expr, Scope, ShaderBuilder, lit};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{EscapeScope, Expr, Scope, StageBuilder, lit};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// // don’t do this.
   /// let illum_coefficient: Expr<f32> = s.constant(10.);
   /// # s.main_fun(|s: &mut Scope<()>| {})
@@ -784,8 +785,8 @@ where
   /// # Examples
   ///
   /// ```
-  /// # use shades::{Scope, ShaderBuilder};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Scope, StageBuilder};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// use shades::{lit, vec2};
   ///
   /// let _ = lit!(1).eq(1); // 1 == 1;
@@ -811,8 +812,8 @@ where
   /// # Examples
   ///
   /// ```
-  /// # use shades::{Scope, ShaderBuilder};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Scope, StageBuilder};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// use shades::{lit, vec2};
   ///
   /// let _ = lit!(1).neq(1); // 1 != 1;
@@ -954,8 +955,8 @@ where
   /// # Examples
   ///
   /// ```
-  /// # use shades::{Scope, ShaderBuilder};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Scope, StageBuilder};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// use shades::lit;
   ///
   /// let _ = lit!(1).lt(2); // 1 < 2;
@@ -980,8 +981,8 @@ where
   /// # Examples
   ///
   /// ```
-  /// # use shades::{Scope, ShaderBuilder};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Scope, StageBuilder};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// use shades::lit;
   ///
   /// let _ = lit!(1).lte(2); // 1 <= 2;
@@ -1006,8 +1007,8 @@ where
   /// # Examples
   ///
   /// ```
-  /// # use shades::{Scope, ShaderBuilder};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Scope, StageBuilder};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// use shades::lit;
   ///
   /// let _ = lit!(1).gt(2); // 1 > 2;
@@ -1032,8 +1033,8 @@ where
   /// # Examples
   ///
   /// ```
-  /// # use shades::{Scope, ShaderBuilder};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Scope, StageBuilder};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// use shades::lit;
   ///
   /// let _ = lit!(1).lte(2); // 1 <= 2;
@@ -1060,8 +1061,8 @@ impl Expr<bool> {
   /// # Examples
   ///
   /// ```
-  /// # use shades::{Scope, ShaderBuilder};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Scope, StageBuilder};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// use shades::lit;
   ///
   /// let _ = lit!(true).and(false); // true && false
@@ -1086,8 +1087,8 @@ impl Expr<bool> {
   /// # Examples
   ///
   /// ```
-  /// # use shades::{Scope, ShaderBuilder};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Scope, StageBuilder};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// use shades::lit;
   ///
   /// let _ = lit!(true).or(false); // true || false
@@ -1112,8 +1113,8 @@ impl Expr<bool> {
   /// # Examples
   ///
   /// ```
-  /// # use shades::{Scope, ShaderBuilder};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Scope, StageBuilder};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// use shades::lit;
   ///
   /// let _ = lit!(true).xor(false); // true ^^ false
@@ -1141,8 +1142,8 @@ impl<T> Expr<[T]> {
   /// # Examples
   ///
   /// ```
-  /// # use shades::{Scope, ShaderBuilder};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Scope, StageBuilder};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// use shades::lit;
   ///
   /// let _ = lit!([1, 2, 3]).at(2); // [1, 2, 3][2]
@@ -1170,8 +1171,8 @@ impl<T, const N: usize> Expr<[T; N]> {
   /// # Examples
   ///
   /// ```
-  /// # use shades::{Scope, ShaderBuilder};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Scope, StageBuilder};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// use shades::lit;
   ///
   /// let _ = lit!([1, 2, 3]).at(2); // [1, 2, 3][2]
@@ -1820,8 +1821,8 @@ where
 /// # Examples
 ///
 /// ```
-/// # use shades::{Scope, ShaderBuilder};
-/// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+/// # use shades::{Scope, StageBuilder};
+/// # StageBuilder::new_vertex_shader(|mut s, vertex| {
 /// use shades::{lit};
 ///
 /// let _ = lit!(1);
@@ -1863,8 +1864,8 @@ macro_rules! lit {
 /// # Examples
 ///
 /// ```
-/// # use shades::{Scope, ShaderBuilder};
-/// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+/// # use shades::{Scope, StageBuilder};
+/// # StageBuilder::new_vertex_shader(|mut s, vertex| {
 /// use shades::vec2;
 ///
 /// let _ = vec2!(1, 2);
@@ -1894,8 +1895,8 @@ macro_rules! vec2 {
 /// # Examples
 ///
 /// ```
-/// # use shades::{Scope, ShaderBuilder};
-/// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+/// # use shades::{Scope, StageBuilder};
+/// # StageBuilder::new_vertex_shader(|mut s, vertex| {
 /// use shades::{vec2, vec3};
 ///
 /// let _ = vec3!(1, 2, 3);
@@ -1937,8 +1938,8 @@ macro_rules! vec3 {
 /// # Examples
 ///
 /// ```
-/// # use shades::{Scope, ShaderBuilder};
-/// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+/// # use shades::{Scope, StageBuilder};
+/// # StageBuilder::new_vertex_shader(|mut s, vertex| {
 /// use shades::{vec2, vec3, vec4};
 ///
 /// let _ = vec4!(1, 2, 3, 4);
@@ -2025,7 +2026,7 @@ where
 /// You are not supposed to implement this type by yourself. Instead, when creating functions in the EDSL, you just have
 /// to pass lambdas to automatically get the proper function definition lifted into the EDSL.
 ///
-/// See the [`ShaderBuilder::fun`] for further information.
+/// See the [`StageBuilder::fun`] for further information.
 ///
 /// # Caveats
 ///
@@ -2139,7 +2140,7 @@ impl_ToFun_args!(
 
 /// An opaque function handle, used to call user-defined functions.
 ///
-/// Function handles are created with the [`ShaderBuilder::fun`] function, introducing new functions in the EDSL. You
+/// Function handles are created with the [`StageBuilder::fun`] function, introducing new functions in the EDSL. You
 /// can then call the functions in the context of generating new expressions, returning them or creating variables.
 ///
 /// Injecting a function call in the EDSL is done via two current mechanisms:
@@ -2158,8 +2159,8 @@ impl_ToFun_args!(
 /// A unary function squaring its argument, the regular way:
 ///
 /// ```
-/// # use shades::ShaderBuilder;
-/// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+/// # use shades::StageBuilder;
+/// # StageBuilder::new_vertex_shader(|mut s, vertex| {
 /// use shades::{Expr, FunHandle, Scope, lit, vec2};
 ///
 /// let square = s.fun(|s: &mut Scope<Expr<i32>>, a: Expr<i32>| {
@@ -2176,8 +2177,8 @@ impl_ToFun_args!(
 /// The same function but with the `fun-call` feature-gate enabled:
 ///
 /// ```
-/// # use shades::ShaderBuilder;
-/// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+/// # use shades::StageBuilder;
+/// # StageBuilder::new_vertex_shader(|mut s, vertex| {
 /// use shades::{Expr, Scope, lit};
 ///
 /// let square = s.fun(|s: &mut Scope<Expr<i32>>, a: Expr<i32>| {
@@ -2196,8 +2197,8 @@ impl_ToFun_args!(
 /// three arguments:
 ///
 /// ```
-/// # use shades::ShaderBuilder;
-/// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+/// # use shades::StageBuilder;
+/// # StageBuilder::new_vertex_shader(|mut s, vertex| {
 /// use shades::{Expr, Mix as _, Scope, V3, lit, vec3};
 ///
 /// let lerp = s.fun(|s: &mut Scope<Expr<V3<f32>>>, a: Expr<V3<f32>>, b: Expr<V3<f32>>, t: Expr<f32>| {
@@ -2580,8 +2581,8 @@ where
   /// # Examples
   ///
   /// ```
-  /// # use shades::{Scope, ShaderBuilder};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Scope, StageBuilder};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// #   s.main_fun(|s: &mut Scope<()>| {
   /// let v = s.var(3.1415); // assign the literal 3.1415 to v
   /// let q = s.var(v * 2.); // assign v * 2. to q
@@ -2631,9 +2632,9 @@ where
   /// # Examples
   ///
   /// ```
-  /// use shades::{CanEscape as _, LoopScope, Scope, ShaderBuilder};
+  /// use shades::{CanEscape as _, LoopScope, Scope, StageBuilder};
   ///
-  /// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// StageBuilder::new_vertex_shader(|mut s, vertex| {
   ///   s.main_fun(|s: &mut Scope<()>| {
   ///     s.loop_for(0, |i| i.lt(10), |i| i + 1, |s: &mut LoopScope<()>, i| {
   ///       s.when(i.eq(5), |s: &mut LoopScope<()>| {
@@ -2690,9 +2691,9 @@ where
   /// # Examples
   ///
   /// ```
-  /// use shades::{CanEscape as _, LoopScope, Scope, ShaderBuilder};
+  /// use shades::{CanEscape as _, LoopScope, Scope, StageBuilder};
   ///
-  /// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// StageBuilder::new_vertex_shader(|mut s, vertex| {
   ///   s.main_fun(|s: &mut Scope<()>| {
   ///     let i = s.var(10);
   ///
@@ -2721,8 +2722,8 @@ where
   /// # Examples
   ///
   /// ```
-  /// # use shades::{Scope, ShaderBuilder};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Scope, StageBuilder};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// #   s.main_fun(|s: &mut Scope<()>| {
   /// let v = s.var(1); // v = 1
   /// s.set(&v, 10); // v = 10
@@ -2774,8 +2775,8 @@ where
   /// # Examples
   ///
   /// ```
-  /// # use shades::ShaderBuilder;
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::StageBuilder;
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// use shades::{CanEscape as _, Expr, Scope};
   ///
   /// let _fun = s.fun(|s: &mut Scope<Expr<i32>>, arg: Expr<i32>| {
@@ -2805,8 +2806,8 @@ impl EscapeScope<()> {
   /// # Examples
   ///
   /// ```
-  /// # use shades::ShaderBuilder;
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::StageBuilder;
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// use shades::{CanEscape as _, Expr, Scope};
   ///
   /// let _fun = s.fun(|s: &mut Scope<()>, arg: Expr<i32>| {
@@ -2867,8 +2868,8 @@ where
   /// # Examples
   ///
   /// ```
-  /// # use shades::{Scope, ShaderBuilder};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Scope, StageBuilder};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// #   s.main_fun(|s: &mut Scope<()>| {
   /// use shades::CanEscape as _;
   ///
@@ -2887,8 +2888,8 @@ where
   /// # Examples
   ///
   /// ```
-  /// # use shades::{Scope, ShaderBuilder};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Scope, StageBuilder};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// #   s.main_fun(|s: &mut Scope<()>| {
   /// use shades::CanEscape as _;
   ///
@@ -2950,9 +2951,9 @@ where
   /// Early-return:
   ///
   /// ```
-  /// use shades::{CanEscape as _, EscapeScope, Expr, Scope, ShaderBuilder, lit};
+  /// use shades::{CanEscape as _, EscapeScope, Expr, Scope, StageBuilder, lit};
   ///
-  /// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// StageBuilder::new_vertex_shader(|mut s, vertex| {
   ///   let f = s.fun(|s: &mut Scope<Expr<i32>>| {
   ///     s.when(lit!(1).lt(3), |s: &mut EscapeScope<Expr<i32>>| {
   ///       // do something in here
@@ -2974,9 +2975,9 @@ where
   /// Aborting a function:
   ///
   /// ```
-  /// use shades::{CanEscape as _, EscapeScope, Scope, ShaderBuilder, lit};
+  /// use shades::{CanEscape as _, EscapeScope, Scope, StageBuilder, lit};
   ///
-  /// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// StageBuilder::new_vertex_shader(|mut s, vertex| {
   ///   s.main_fun(|s: &mut Scope<()>| {
   ///     s.when(lit!(1).lt(3), |s: &mut EscapeScope<()>| {
   ///       // do something in here
@@ -3081,8 +3082,8 @@ where
   /// # Examples
   ///
   /// ```
-  /// # use shades::{Scope, ShaderBuilder};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Scope, StageBuilder};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// #   s.main_fun(|s: &mut Scope<()>| {
   /// use shades::{CanEscape as _, lit};
   ///
@@ -3125,8 +3126,8 @@ where
   /// # Examples
   ///
   /// ```
-  /// # use shades::{Scope, ShaderBuilder};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Scope, StageBuilder};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// #   s.main_fun(|s: &mut Scope<()>| {
   /// use shades::{CanEscape as _, lit};
   ///
@@ -3145,8 +3146,8 @@ where
   /// Can chain and mix conditional but [`When::or`] cannot be anywhere else but the end of the chain:
   ///
   /// ```
-  /// # use shades::{Scope, ShaderBuilder};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Scope, StageBuilder};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// #   s.main_fun(|s: &mut Scope<()>| {
   /// use shades::{CanEscape as _, lit};
   ///
@@ -3242,8 +3243,8 @@ where
   /// # Examples
   ///
   /// ```
-  /// # use shades::{Scope, ShaderBuilder};
-  /// # ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+  /// # use shades::{Scope, StageBuilder};
+  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
   /// #   s.main_fun(|s: &mut Scope<()>| {
   /// let v = s.var(123); // Var<i32>
   /// let e = v.to_expr(); // Expr<i32>
@@ -3883,9 +3884,9 @@ macro_rules! sw_extract {
 /// # Examples
 ///
 /// ```
-/// use shades::{Scope, ShaderBuilder, Swizzlable, V3, V4, inputs, sw};
+/// use shades::{Scope, StageBuilder, Swizzlable, V3, V4, inputs, sw};
 ///
-/// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+/// StageBuilder::new_vertex_shader(|mut s, vertex| {
 ///   inputs!(s,
 ///     position: V3<f32>,
 ///     color: V4<f32>
@@ -3910,9 +3911,9 @@ macro_rules! inputs {
 /// # Examples
 ///
 /// ```
-/// use shades::{Scope, ShaderBuilder, V3, lit, outputs};
+/// use shades::{Scope, StageBuilder, V3, lit, outputs};
 ///
-/// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+/// StageBuilder::new_vertex_shader(|mut s, vertex| {
 ///   outputs!(s,
 ///     position: V3<f32>
 ///   );
@@ -3936,9 +3937,9 @@ macro_rules! outputs {
 /// # Examples
 ///
 /// ```
-/// use shades::{Scope, ShaderBuilder, V3, uniforms, vec4};
+/// use shades::{Scope, StageBuilder, V3, uniforms, vec4};
 ///
-/// ShaderBuilder::new_vertex_shader(|mut s, vertex| {
+/// StageBuilder::new_vertex_shader(|mut s, vertex| {
 ///   uniforms!(s,
 ///     time: f32
 ///   );
@@ -5420,7 +5421,7 @@ mod tests {
 
   #[test]
   fn fun0() {
-    let mut shader = ShaderBuilder::new();
+    let mut shader = StageBuilder::new();
     let fun = shader.fun(|s: &mut Scope<()>| {
       let _x = s.var(3);
     });
@@ -5450,7 +5451,7 @@ mod tests {
 
   #[test]
   fn fun1() {
-    let mut shader = ShaderBuilder::new();
+    let mut shader = StageBuilder::new();
     let fun = shader.fun(|f: &mut Scope<Expr<i32>>, _arg: Expr<i32>| {
       let x = f.var(lit!(3i32));
       x.into()

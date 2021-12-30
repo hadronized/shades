@@ -1,7 +1,7 @@
-use shades::{lit, CanEscape as _, Expr, Scope, ShaderBuilder, V2};
+use shades::{lit, CanEscape as _, Expr, Scope, StageBuilder, V2};
 
 fn main() {
-  let vertex_shader = ShaderBuilder::new_vertex_shader(|mut shader: ShaderBuilder, vertex| {
+  let vertex_shader = StageBuilder::new_vertex_shader(|mut shader: StageBuilder, vertex| {
     let increment = shader.fun(|_: &mut Scope<Expr<f32>>, a: Expr<f32>| a + lit!(1.));
 
     shader.fun(|_: &mut Scope<()>, _: Expr<[[V2<f32>; 2]; 15]>| ());

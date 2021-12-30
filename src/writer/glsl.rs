@@ -2,7 +2,7 @@
 
 use crate::{
   BuiltIn, Dim, ErasedExpr, ErasedFun, ErasedFunHandle, ErasedReturn, ErasedScope, FragmentBuiltIn,
-  GeometryBuiltIn, MatrixDim, PrimType, ScopeInstr, ScopedHandle, Shader, ShaderDecl, Swizzle,
+  GeometryBuiltIn, MatrixDim, PrimType, ScopeInstr, ScopedHandle, Stage, ShaderDecl, Swizzle,
   SwizzleSelector, TessCtrlBuiltIn, TessEvalBuiltIn, Type, VertexBuiltIn,
 };
 use std::fmt;
@@ -11,14 +11,14 @@ use std::fmt;
 const INDENT_SPACES: usize = 2;
 
 /// Write a [`Shader`] to a [`String`].
-pub fn write_shader_to_str(shader: impl AsRef<Shader>) -> Result<String, fmt::Error> {
+pub fn write_shader_to_str(shader: impl AsRef<Stage>) -> Result<String, fmt::Error> {
   let mut output = String::new();
   write_shader(&mut output, shader)?;
   Ok(output)
 }
 
 /// Write a [`Shader`] to a [`fmt::Write`](std::fmt::Write).
-pub fn write_shader(f: &mut impl fmt::Write, shader: impl AsRef<Shader>) -> Result<(), fmt::Error> {
+pub fn write_shader(f: &mut impl fmt::Write, shader: impl AsRef<Stage>) -> Result<(), fmt::Error> {
   for decl in &shader.as_ref().builder.decls {
     match decl {
       ShaderDecl::Main(fun) => write_main_fun(f, fun)?,
