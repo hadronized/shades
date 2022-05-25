@@ -20,7 +20,7 @@ impl Inputs for MyVertex {
 
 fn main() {
   let vertex_shader = StageBuilder::new_vertex_shader(
-    |mut shader: StageBuilder<MyVertex, (), ()>, vertex, inputs| {
+    |mut shader: StageBuilder<MyVertex, (), ()>, vertex| {
       let increment = shader.fun(|_: &mut Scope<Expr<f32>>, a: Expr<f32>| a + lit!(1.));
 
       shader.fun(|_: &mut Scope<()>, _: Expr<[[V2<f32>; 2]; 15]>| ());
@@ -31,7 +31,7 @@ fn main() {
         s.set(vertex.clip_distance.at(0), increment(x.clone()));
         s.set(
           &vertex.position,
-          vec4!(inputs.pos, 1.) * lit![0., 0.1, 1., -1.],
+          vec4!(vertex.pos, 1.) * lit![0., 0.1, 1., -1.],
         );
 
         s.loop_while(true, |s| {

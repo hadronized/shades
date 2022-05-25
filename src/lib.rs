@@ -197,9 +197,9 @@ where
   /// });
   /// ```
   pub fn new_vertex_shader(
-    f: impl FnOnce(Self, VertexShaderEnv, I::In) -> Stage<I, O, E>,
+    f: impl FnOnce(Self, VertexShaderEnv<I::In>) -> Stage<I, O, E>,
   ) -> Stage<I, O, E> {
-    f(Self::new(), VertexShaderEnv::new(), I::input())
+    f(Self::new(), VertexShaderEnv::new(I::input()))
   }
 
   /// Create a new _tessellation control shader_.
@@ -4065,7 +4065,7 @@ pub enum FragmentBuiltIn {
 
 /// Vertex shader environment.
 #[derive(Debug)]
-pub struct VertexShaderEnv {
+pub struct VertexShaderEnv<I> {
   // inputs
   /// ID of the current vertex.
   pub vertex_id: Expr<i32>,
@@ -4088,10 +4088,13 @@ pub struct VertexShaderEnv {
 
   // Clip distances to user-defined plans.
   pub clip_distance: Var<[f32]>,
+
+  // User-defined inputs.
+  pub user: I,
 }
 
-impl VertexShaderEnv {
-  const fn new() -> Self {
+impl<I> VertexShaderEnv<I> {
+  const fn new(user: I) -> Self {
     let vertex_id = Expr::new(ErasedExpr::new_builtin(BuiltIn::Vertex(
       VertexBuiltIn::VertexID,
     )));
@@ -4122,7 +4125,16 @@ impl VertexShaderEnv {
       position,
       point_size,
       clip_distance,
+      user,
     }
+  }
+}
+
+impl<I> Deref for VertexShaderEnv<I> {
+  type Target = I;
+
+  fn deref(&self) -> &Self::Target {
+    &self.user
   }
 }
 
@@ -5691,7 +5703,7 @@ mod tests {
 
   #[test]
   fn vertex_id_commutative() {
-    let vertex = VertexShaderEnv::new();
+    let vertex = VertexShaderEnv::new(());
 
     let x = lit!(1);
     let _ = &vertex.vertex_id + &x;
@@ -5700,7 +5712,7 @@ mod tests {
 
   #[test]
   fn array_lookup() {
-    let vertex = VertexShaderEnv::new();
+    let vertex = VertexShaderEnv::new(());
     let clip_dist_expr = vertex.clip_distance.at(1);
 
     assert_eq!(
