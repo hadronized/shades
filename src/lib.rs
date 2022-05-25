@@ -126,7 +126,15 @@ pub struct Stage<I, O, E> {
 pub trait Inputs {
   type In;
 
-  const IN: Self::In;
+  fn input() -> Self::In;
+}
+
+impl Inputs for () {
+  type In = ();
+
+  fn input() -> Self::In {
+    ()
+  }
 }
 
 /// Outputs.
@@ -156,7 +164,10 @@ pub struct StageBuilder<I, O, E> {
   _phantom: PhantomData<(I, O, E)>,
 }
 
-impl<I, O, E> StageBuilder<I, O, E> {
+impl<I, O, E> StageBuilder<I, O, E>
+where
+  I: Inputs,
+{
   /// Create a new _vertex shader_.
   ///
   /// This method creates a [`Stage`] that can be used as _vertex shader_. This is enforced by the fact only this
@@ -186,9 +197,9 @@ impl<I, O, E> StageBuilder<I, O, E> {
   /// });
   /// ```
   pub fn new_vertex_shader(
-    f: impl FnOnce(Self, VertexShaderEnv) -> Stage<I, O, E>,
+    f: impl FnOnce(Self, VertexShaderEnv, I::In) -> Stage<I, O, E>,
   ) -> Stage<I, O, E> {
-    f(Self::new(), VertexShaderEnv::new())
+    f(Self::new(), VertexShaderEnv::new(), I::input())
   }
 
   /// Create a new _tessellation control shader_.
@@ -773,6 +784,11 @@ where
       erased,
       _phantom: PhantomData,
     }
+  }
+
+  /// Create a new input.
+  pub const fn new_input(handle: usize) -> Self {
+    Self::new(ErasedExpr::Var(ScopedHandle::Input2(handle)))
   }
 
   /// Equality expression.

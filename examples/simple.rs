@@ -1,8 +1,26 @@
-use shades::{lit, CanEscape as _, Expr, Scope, StageBuilder, V2};
+use shades::{lit, vec4, CanEscape as _, Expr, Inputs, Scope, StageBuilder, V2, V3, V4};
+
+pub struct MyVertex {
+  pos: Expr<V3<f32>>,
+
+  #[allow(dead_code)]
+  color: Expr<V4<f32>>,
+}
+
+impl Inputs for MyVertex {
+  type In = Self;
+
+  fn input() -> Self::In {
+    Self {
+      pos: Expr::new_input(0),
+      color: Expr::new_input(1),
+    }
+  }
+}
 
 fn main() {
-  let vertex_shader =
-    StageBuilder::new_vertex_shader(|mut shader: StageBuilder<(), (), ()>, vertex| {
+  let vertex_shader = StageBuilder::new_vertex_shader(
+    |mut shader: StageBuilder<MyVertex, (), ()>, vertex, inputs| {
       let increment = shader.fun(|_: &mut Scope<Expr<f32>>, a: Expr<f32>| a + lit!(1.));
 
       shader.fun(|_: &mut Scope<()>, _: Expr<[[V2<f32>; 2]; 15]>| ());
@@ -11,7 +29,10 @@ fn main() {
         let x = s.var(1.);
         let _ = s.var([1, 2]);
         s.set(vertex.clip_distance.at(0), increment(x.clone()));
-        s.set(&vertex.position, lit![0., 0.1, 1., -1.]);
+        s.set(
+          &vertex.position,
+          vec4!(inputs.pos, 1.) * lit![0., 0.1, 1., -1.],
+        );
 
         s.loop_while(true, |s| {
           s.when(x.clone().eq(1.), |s| {
@@ -20,7 +41,8 @@ fn main() {
           });
         });
       })
-    });
+    },
+  );
 
   let output = shades::writer::glsl::write_shader_to_str(&vertex_shader).unwrap();
   println!("{}", output);
