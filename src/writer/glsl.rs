@@ -2,7 +2,7 @@
 
 use crate::{
   BuiltIn, Dim, ErasedExpr, ErasedFun, ErasedFunHandle, ErasedReturn, ErasedScope, FragmentBuiltIn,
-  GeometryBuiltIn, MatrixDim, PrimType, ScopeInstr, ScopedHandle, Stage, ShaderDecl, Swizzle,
+  GeometryBuiltIn, MatrixDim, PrimType, ScopeInstr, ScopedHandle, ShaderDecl, Stage, Swizzle,
   SwizzleSelector, TessCtrlBuiltIn, TessEvalBuiltIn, Type, VertexBuiltIn,
 };
 use std::fmt;
@@ -11,15 +11,18 @@ use std::fmt;
 const INDENT_SPACES: usize = 2;
 
 /// Write a [`Shader`] to a [`String`].
-pub fn write_shader_to_str(shader: impl AsRef<Stage>) -> Result<String, fmt::Error> {
+pub fn write_shader_to_str<I, O, E>(shader: &Stage<I, O, E>) -> Result<String, fmt::Error> {
   let mut output = String::new();
   write_shader(&mut output, shader)?;
   Ok(output)
 }
 
 /// Write a [`Shader`] to a [`fmt::Write`](std::fmt::Write).
-pub fn write_shader(f: &mut impl fmt::Write, shader: impl AsRef<Stage>) -> Result<(), fmt::Error> {
-  for decl in &shader.as_ref().builder.decls {
+pub fn write_shader<I, O, E>(
+  f: &mut impl fmt::Write,
+  shader: &Stage<I, O, E>,
+) -> Result<(), fmt::Error> {
+  for decl in &shader.builder.decls {
     match decl {
       ShaderDecl::Main(fun) => write_main_fun(f, fun)?,
       ShaderDecl::FunDef(handle, fun) => write_fun_def(f, *handle, fun)?,
@@ -683,6 +686,8 @@ fn write_scoped_handle(f: &mut impl fmt::Write, handle: &ScopedHandle) -> Result
     }
 
     ScopedHandle::Input(name) => f.write_str(name),
+
+    ScopedHandle::Input2(handle) => write!(f, "in_{}", handle),
 
     ScopedHandle::Output(name) => f.write_str(name),
 

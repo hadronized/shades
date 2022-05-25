@@ -118,14 +118,29 @@ use std::{
 
 /// A fully built shader stage as represented in Rust, obtained by adding the `main` function to a [`StageBuilder`].
 #[derive(Debug)]
-pub struct Stage {
-  pub(crate) builder: StageBuilder,
+pub struct Stage<I, O, E> {
+  pub(crate) builder: StageBuilder<I, O, E>,
 }
 
-impl AsRef<Stage> for Stage {
-  fn as_ref(&self) -> &Stage {
-    self
-  }
+/// Inputs.
+pub trait Inputs {
+  type In;
+
+  const IN: Self::In;
+}
+
+/// Outputs.
+pub trait Outputs {
+  type Out;
+
+  const OUT: Self::Out;
+}
+
+/// Environment.
+pub trait Environment {
+  type Env;
+
+  const ENV: Self::Env;
 }
 
 /// A shader stage builder.
@@ -134,13 +149,14 @@ impl AsRef<Stage> for Stage {
 /// functions declarations. Such a type is used to build a shader stage and is fully built when the `main` function is
 /// present in its code. See [`StageBuilder::main_fun`] for further details.
 #[derive(Debug)]
-pub struct StageBuilder {
+pub struct StageBuilder<I, O, E> {
   pub(crate) decls: Vec<ShaderDecl>,
   next_fun_handle: u16,
   next_global_handle: u16,
+  _phantom: PhantomData<(I, O, E)>,
 }
 
-impl StageBuilder {
+impl<I, O, E> StageBuilder<I, O, E> {
   /// Create a new _vertex shader_.
   ///
   /// This method creates a [`Stage`] that can be used as _vertex shader_. This is enforced by the fact only this
@@ -169,7 +185,9 @@ impl StageBuilder {
   ///   })
   /// });
   /// ```
-  pub fn new_vertex_shader(f: impl FnOnce(Self, VertexShaderEnv) -> Stage) -> Stage {
+  pub fn new_vertex_shader(
+    f: impl FnOnce(Self, VertexShaderEnv) -> Stage<I, O, E>,
+  ) -> Stage<I, O, E> {
     f(Self::new(), VertexShaderEnv::new())
   }
 
@@ -200,7 +218,9 @@ impl StageBuilder {
   ///   })
   /// });
   /// ```
-  pub fn new_tess_ctrl_shader(f: impl FnOnce(Self, TessCtrlShaderEnv) -> Stage) -> Stage {
+  pub fn new_tess_ctrl_shader(
+    f: impl FnOnce(Self, TessCtrlShaderEnv) -> Stage<I, O, E>,
+  ) -> Stage<I, O, E> {
     f(Self::new(), TessCtrlShaderEnv::new())
   }
 
@@ -233,7 +253,9 @@ impl StageBuilder {
   ///   })
   /// });
   /// ```
-  pub fn new_tess_eval_shader(f: impl FnOnce(Self, TessEvalShaderEnv) -> Stage) -> Stage {
+  pub fn new_tess_eval_shader(
+    f: impl FnOnce(Self, TessEvalShaderEnv) -> Stage<I, O, E>,
+  ) -> Stage<I, O, E> {
     f(Self::new(), TessEvalShaderEnv::new())
   }
 
@@ -265,7 +287,9 @@ impl StageBuilder {
   ///   })
   /// });
   /// ```
-  pub fn new_geometry_shader(f: impl FnOnce(Self, GeometryShaderEnv) -> Stage) -> Stage {
+  pub fn new_geometry_shader(
+    f: impl FnOnce(Self, GeometryShaderEnv) -> Stage<I, O, E>,
+  ) -> Stage<I, O, E> {
     f(Self::new(), GeometryShaderEnv::new())
   }
 
@@ -297,7 +321,9 @@ impl StageBuilder {
   ///   })
   /// });
   /// ```
-  pub fn new_fragment_shader(f: impl FnOnce(Self, FragmentShaderEnv) -> Stage) -> Stage {
+  pub fn new_fragment_shader(
+    f: impl FnOnce(Self, FragmentShaderEnv) -> Stage<I, O, E>,
+  ) -> Stage<I, O, E> {
     f(Self::new(), FragmentShaderEnv::new())
   }
 
@@ -307,6 +333,7 @@ impl StageBuilder {
       decls: Vec::new(),
       next_fun_handle: 0,
       next_global_handle: 0,
+      _phantom: PhantomData,
     }
   }
 
@@ -469,7 +496,7 @@ impl StageBuilder {
   ///   })
   /// });
   /// ```
-  pub fn main_fun<F, R>(mut self, f: F) -> Stage
+  pub fn main_fun<F, R>(mut self, f: F) -> Stage<I, O, E>
   where
     F: ToFun<R, ()>,
   {
@@ -511,37 +538,6 @@ impl StageBuilder {
       .push(ShaderDecl::Const(handle, T::ty(), expr.into().erased));
 
     Expr::new(ErasedExpr::Var(ScopedHandle::global(handle)))
-  }
-
-  /// Declare a new input, shared between all functions and constants that come next.
-  ///
-  /// TODO
-  pub unsafe fn input<T>(&mut self, name: &str) -> Var<T>
-  where
-    T: ToType,
-  {
-    let name = name.to_owned();
-    self.decls.push(ShaderDecl::In(name.clone(), T::ty()));
-    Var::new(ScopedHandle::Input(name))
-  }
-
-  /// TODO
-  pub unsafe fn output<T>(&mut self, name: &str) -> Var<T>
-  where
-    T: ToType,
-  {
-    let name = name.to_owned();
-    self.decls.push(ShaderDecl::Out(name.clone(), T::ty()));
-    Var::new(ScopedHandle::Output(name))
-  }
-
-  pub unsafe fn uniform<T>(&mut self, name: &str) -> Var<T>
-  where
-    T: ToType,
-  {
-    let name = name.to_owned();
-    self.decls.push(ShaderDecl::Uniform(name.clone(), T::ty()));
-    Var::new(ScopedHandle::uniform(name))
   }
 }
 
@@ -618,7 +614,7 @@ make_vn!(V4, 4);
 
 /// Representation of an expression.
 #[derive(Clone, Debug, PartialEq)]
-enum ErasedExpr {
+pub enum ErasedExpr {
   // scalars
   LitInt(i32),
   LitUInt(u32),
@@ -686,6 +682,11 @@ impl ErasedExpr {
   const fn new_builtin(builtin: BuiltIn) -> Self {
     ErasedExpr::Var(ScopedHandle::builtin(builtin))
   }
+}
+
+/// Erased expressions.
+pub trait Erased {
+  const ERASED: ErasedExpr;
 }
 
 /// Expression representation.
@@ -2359,7 +2360,7 @@ impl_FunCall_rec!(
 
 /// Erased function handle.
 #[derive(Clone, Debug, PartialEq)]
-enum ErasedFunHandle {
+pub enum ErasedFunHandle {
   // cast operators
   Vec2,
   Vec3,
@@ -3293,7 +3294,7 @@ where
 /// hierarchical: for each scope, a new namespace is created. The depth at which a namespace is located is referred to
 /// as its _subscope_.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-enum ScopedHandle {
+pub enum ScopedHandle {
   BuiltIn(BuiltIn),
   Global(u16),
   FunArg(u16),
@@ -3301,6 +3302,9 @@ enum ScopedHandle {
   Input(String),
   Output(String),
   Uniform(String),
+
+  // new type-sound representation
+  Input2(usize),
 }
 
 impl ScopedHandle {
@@ -3959,7 +3963,7 @@ macro_rules! uniforms {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-enum BuiltIn {
+pub enum BuiltIn {
   Vertex(VertexBuiltIn),
   TessCtrl(TessCtrlBuiltIn),
   TessEval(TessEvalBuiltIn),
@@ -3968,7 +3972,7 @@ enum BuiltIn {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-enum VertexBuiltIn {
+pub enum VertexBuiltIn {
   VertexID,
   InstanceID,
   BaseVertex,
@@ -3979,7 +3983,7 @@ enum VertexBuiltIn {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-enum TessCtrlBuiltIn {
+pub enum TessCtrlBuiltIn {
   MaxPatchVerticesIn,
   PatchVerticesIn,
   PrimitiveID,
@@ -3995,7 +3999,7 @@ enum TessCtrlBuiltIn {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-enum TessEvalBuiltIn {
+pub enum TessEvalBuiltIn {
   TessCoord,
   MaxPatchVerticesIn,
   PatchVerticesIn,
@@ -4011,7 +4015,7 @@ enum TessEvalBuiltIn {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-enum GeometryBuiltIn {
+pub enum GeometryBuiltIn {
   In,
   Out,
   Position,
@@ -4026,7 +4030,7 @@ enum GeometryBuiltIn {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-enum FragmentBuiltIn {
+pub enum FragmentBuiltIn {
   FragCoord,
   FrontFacing,
   PointCoord,
@@ -4071,7 +4075,7 @@ pub struct VertexShaderEnv {
 }
 
 impl VertexShaderEnv {
-  fn new() -> Self {
+  const fn new() -> Self {
     let vertex_id = Expr::new(ErasedExpr::new_builtin(BuiltIn::Vertex(
       VertexBuiltIn::VertexID,
     )));
@@ -4137,7 +4141,7 @@ pub struct TessCtrlShaderEnv {
 }
 
 impl TessCtrlShaderEnv {
-  fn new() -> Self {
+  const fn new() -> Self {
     let max_patch_vertices_in = Expr::new(ErasedExpr::new_builtin(BuiltIn::TessCtrl(
       TessCtrlBuiltIn::MaxPatchVerticesIn,
     )));
@@ -4181,7 +4185,6 @@ impl TessCtrlShaderEnv {
 pub struct TessControlPerVertexIn;
 
 impl Expr<TessControlPerVertexIn> {
-  ///
   pub fn position(&self) -> Expr<V4<f32>> {
     let erased = ErasedExpr::Field {
       object: Box::new(self.erased.clone()),
@@ -4229,7 +4232,7 @@ impl Expr<TessControlPerVertexIn> {
 
 /// Output tessellation control shader environment.
 #[derive(Debug)]
-pub struct TessControlPerVertexOut(());
+pub struct TessControlPerVertexOut;
 
 impl Expr<TessControlPerVertexOut> {
   /// 4D position of the verte.
@@ -4318,7 +4321,7 @@ pub struct TessEvalShaderEnv {
 }
 
 impl TessEvalShaderEnv {
-  fn new() -> Self {
+  const fn new() -> Self {
     let patch_vertices_in = Expr::new(ErasedExpr::new_builtin(BuiltIn::TessEval(
       TessEvalBuiltIn::PatchVerticesIn,
     )));
@@ -4457,7 +4460,7 @@ pub struct GeometryShaderEnv {
 }
 
 impl GeometryShaderEnv {
-  fn new() -> Self {
+  const fn new() -> Self {
     let primitive_id_in = Expr::new(ErasedExpr::new_builtin(BuiltIn::Geometry(
       GeometryBuiltIn::PrimitiveIDIn,
     )));
@@ -4614,7 +4617,7 @@ pub struct FragmentShaderEnv {
 }
 
 impl FragmentShaderEnv {
-  fn new() -> Self {
+  const fn new() -> Self {
     let frag_coord = Expr::new(ErasedExpr::new_builtin(BuiltIn::Fragment(
       FragmentBuiltIn::FragCoord,
     )));
@@ -5421,7 +5424,7 @@ mod tests {
 
   #[test]
   fn fun0() {
-    let mut shader = StageBuilder::new();
+    let mut shader = StageBuilder::<(), (), ()>::new();
     let fun = shader.fun(|s: &mut Scope<()>| {
       let _x = s.var(3);
     });
@@ -5451,7 +5454,7 @@ mod tests {
 
   #[test]
   fn fun1() {
-    let mut shader = StageBuilder::new();
+    let mut shader = StageBuilder::<(), (), ()>::new();
     let fun = shader.fun(|f: &mut Scope<Expr<i32>>, _arg: Expr<i32>| {
       let x = f.var(lit!(3i32));
       x.into()
