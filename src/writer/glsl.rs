@@ -1,9 +1,10 @@
 //! GLSL writers.
 
 use crate::{
-  BuiltIn, Dim, ErasedExpr, ErasedFun, ErasedFunHandle, ErasedReturn, ErasedScope, FragmentBuiltIn,
-  GeometryBuiltIn, MatrixDim, PrimType, ScopeInstr, ScopedHandle, ShaderDecl, Stage, Swizzle,
-  SwizzleSelector, TessCtrlBuiltIn, TessEvalBuiltIn, Type, VertexBuiltIn,
+  BuiltIn, Dim, Environment, ErasedExpr, ErasedFun, ErasedFunHandle, ErasedReturn, ErasedScope,
+  FragmentBuiltIn, GeometryBuiltIn, Inputs, MatrixDim, Outputs, PrimType, ScopeInstr, ScopedHandle,
+  ShaderDecl, Stage, Swizzle, SwizzleSelector, TessCtrlBuiltIn, TessEvalBuiltIn, Type,
+  VertexBuiltIn,
 };
 use std::fmt;
 
@@ -11,7 +12,12 @@ use std::fmt;
 const INDENT_SPACES: usize = 2;
 
 /// Write a [`Shader`] to a [`String`].
-pub fn write_shader_to_str<I, O, E>(shader: &Stage<I, O, E>) -> Result<String, fmt::Error> {
+pub fn write_shader_to_str<I, O, E>(shader: &Stage<I, O, E>) -> Result<String, fmt::Error>
+where
+  I: Inputs,
+  O: Outputs,
+  E: Environment,
+{
   let mut output = String::new();
   write_shader(&mut output, shader)?;
   Ok(output)
@@ -21,15 +27,29 @@ pub fn write_shader_to_str<I, O, E>(shader: &Stage<I, O, E>) -> Result<String, f
 pub fn write_shader<I, O, E>(
   f: &mut impl fmt::Write,
   shader: &Stage<I, O, E>,
-) -> Result<(), fmt::Error> {
+) -> Result<(), fmt::Error>
+where
+  I: Inputs,
+  O: Outputs,
+  E: Environment,
+{
+  for (index, ref ty) in I::input_set() {
+    write_input(f, index, ty)?;
+  }
+
+  for (index, ref ty) in O::output_set() {
+    write_output(f, index, ty)?;
+  }
+
+  for (index, ref ty) in E::env_set() {
+    write_uniform(f, index, ty)?;
+  }
+
   for decl in &shader.builder.decls {
     match decl {
       ShaderDecl::Main(fun) => write_main_fun(f, fun)?,
       ShaderDecl::FunDef(handle, fun) => write_fun_def(f, *handle, fun)?,
       ShaderDecl::Const(handle, ty, ref constant) => write_constant(f, *handle, ty, constant)?,
-      ShaderDecl::In(name, ty) => write_input(f, name, ty)?,
-      ShaderDecl::Out(name, ty) => write_output(f, name, ty)?,
-      ShaderDecl::Uniform(name, ty) => write_uniform(f, name, ty)?,
     }
   }
 
@@ -64,7 +84,7 @@ fn write_fun_def(f: &mut impl fmt::Write, handle: u16, fun: &ErasedFun) -> Resul
   f.write_str("(")?;
   if !fun.args.is_empty() {
     write_type(f, &fun.args[0])?;
-    f.write_str("arg_0")?;
+    f.write_str(" arg_0")?;
 
     for (i, arg) in fun.args.iter().enumerate().skip(1) {
       f.write_str(", ")?;
@@ -222,22 +242,22 @@ fn write_constant(
   f.write_str(";\n")
 }
 
-fn write_input(f: &mut impl fmt::Write, name: &str, ty: &Type) -> Result<(), fmt::Error> {
+fn write_input(f: &mut impl fmt::Write, index: usize, ty: &Type) -> Result<(), fmt::Error> {
   f.write_str("in ")?;
   write_type(f, ty)?;
-  write!(f, " {};\n", name)
+  write!(f, " in_{};\n", index)
 }
 
-fn write_output(f: &mut impl fmt::Write, name: &str, ty: &Type) -> Result<(), fmt::Error> {
+fn write_output(f: &mut impl fmt::Write, index: usize, ty: &Type) -> Result<(), fmt::Error> {
   f.write_str("out ")?;
   write_type(f, ty)?;
-  write!(f, " {};\n", name)
+  write!(f, " out_{};\n", index)
 }
 
-fn write_uniform(f: &mut impl fmt::Write, name: &str, ty: &Type) -> Result<(), fmt::Error> {
+fn write_uniform(f: &mut impl fmt::Write, index: usize, ty: &Type) -> Result<(), fmt::Error> {
   f.write_str("uniform ")?;
   write_type(f, ty)?;
-  write!(f, " {};\n", name)
+  write!(f, " uni_{};\n", index)
 }
 
 fn write_expr(f: &mut impl fmt::Write, expr: &ErasedExpr) -> Result<(), fmt::Error> {

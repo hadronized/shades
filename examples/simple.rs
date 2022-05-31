@@ -1,4 +1,6 @@
-use shades::{lit, vec4, CanEscape as _, Expr, Inputs, Scope, StageBuilder, V2, V3, V4};
+use shades::{
+  lit, vec4, CanEscape as _, Expr, Inputs, Scope, StageBuilder, ToType, Type, V2, V3, V4,
+};
 
 pub struct MyVertex {
   pos: Expr<V3<f32>>,
@@ -16,11 +18,18 @@ impl Inputs for MyVertex {
       color: Expr::new_input(1),
     }
   }
+
+  fn input_set() -> Vec<(usize, Type)> {
+    vec![
+      (0, <V3<f32> as ToType>::ty()),
+      (1, <V4<f32> as ToType>::ty()),
+    ]
+  }
 }
 
 fn main() {
   let vertex_shader = StageBuilder::new_vertex_shader(
-    |mut shader: StageBuilder<MyVertex, (), ()>, vertex| {
+    |mut shader: StageBuilder<MyVertex, (), ()>, input, output| {
       let increment = shader.fun(|_: &mut Scope<Expr<f32>>, a: Expr<f32>| a + lit!(1.));
 
       shader.fun(|_: &mut Scope<()>, _: Expr<[[V2<f32>; 2]; 15]>| ());
@@ -28,10 +37,10 @@ fn main() {
       shader.main_fun(|s: &mut Scope<()>| {
         let x = s.var(1.);
         let _ = s.var([1, 2]);
-        s.set(vertex.clip_distance.at(0), increment(x.clone()));
+        s.set(output.clip_distance.at(0), increment(x.clone()));
         s.set(
-          &vertex.position,
-          vec4!(vertex.pos, 1.) * lit![0., 0.1, 1., -1.],
+          &output.position,
+          vec4!(input.pos, 1.) * lit![0., 0.1, 1., -1.],
         );
 
         s.loop_while(true, |s| {

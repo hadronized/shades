@@ -127,6 +127,7 @@ pub trait Inputs {
   type In;
 
   fn input() -> Self::In;
+  fn input_set() -> Vec<(usize, Type)>;
 }
 
 impl Inputs for () {
@@ -135,20 +136,52 @@ impl Inputs for () {
   fn input() -> Self::In {
     ()
   }
+
+  fn input_set() -> Vec<(usize, Type)> {
+    Vec::new()
+  }
 }
 
 /// Outputs.
 pub trait Outputs {
   type Out;
 
-  const OUT: Self::Out;
+  fn output() -> Self::Out;
+
+  fn output_set() -> Vec<(usize, Type)>;
+}
+
+impl Outputs for () {
+  type Out = ();
+
+  fn output() -> Self::Out {
+    ()
+  }
+
+  fn output_set() -> Vec<(usize, Type)> {
+    Vec::new()
+  }
 }
 
 /// Environment.
 pub trait Environment {
   type Env;
 
-  const ENV: Self::Env;
+  fn env() -> Self::Env;
+
+  fn env_set() -> Vec<(usize, Type)>;
+}
+
+impl Environment for () {
+  type Env = ();
+
+  fn env() -> Self::Env {
+    ()
+  }
+
+  fn env_set() -> Vec<(usize, Type)> {
+    Vec::new()
+  }
 }
 
 /// A shader stage builder.
@@ -167,6 +200,8 @@ pub struct StageBuilder<I, O, E> {
 impl<I, O, E> StageBuilder<I, O, E>
 where
   I: Inputs,
+  O: Outputs,
+  E: Environment,
 {
   /// Create a new _vertex shader_.
   ///
@@ -197,9 +232,13 @@ where
   /// });
   /// ```
   pub fn new_vertex_shader(
-    f: impl FnOnce(Self, VertexShaderEnv<I::In>) -> Stage<I, O, E>,
+    f: impl FnOnce(Self, VertexShaderInputs<I::In>, VertexShaderOutputs<O::Out>) -> Stage<I, O, E>,
   ) -> Stage<I, O, E> {
-    f(Self::new(), VertexShaderEnv::new(I::input()))
+    f(
+      Self::new(),
+      VertexShaderInputs::new(I::input()),
+      VertexShaderOutputs::new(O::output()),
+    )
   }
 
   /// Create a new _tessellation control shader_.
@@ -571,21 +610,6 @@ pub(crate) enum ShaderDecl {
   /// The [`u16`] represents the _handle_ of the constant, and is unique for each shader stage. The [`Type`] is the
   /// the type of the constant expression. [`ErasedExpr`] is the representation of the constant.
   Const(u16, Type, ErasedExpr),
-
-  /// An input definition.
-  ///
-  /// The [`u16`] represents the _handle_ of the input, and is unique for each shader stage. The [`Type`] is the
-  /// the type of the input.
-  In(String, Type),
-
-  /// An output definition.
-  ///
-  /// The [`u16`] represents the _handle_ of the output, and is unique for each shader stage. The [`Type`] is the
-  /// the type of the output.
-  Out(String, Type),
-
-  /// A uniform definition.
-  Uniform(String, Type),
 }
 
 macro_rules! make_vn {
@@ -789,6 +813,10 @@ where
   /// Create a new input.
   pub const fn new_input(handle: usize) -> Self {
     Self::new(ErasedExpr::Var(ScopedHandle::Input2(handle)))
+  }
+
+  pub const fn erased(&self) -> &ErasedExpr {
+    &self.erased
   }
 
   /// Equality expression.
@@ -3339,10 +3367,6 @@ impl ScopedHandle {
   const fn fun_var(subscope: u16, handle: u16) -> Self {
     Self::FunVar { subscope, handle }
   }
-
-  fn uniform(name: impl Into<String>) -> Self {
-    Self::Uniform(name.into())
-  }
 }
 
 #[derive(Debug, PartialEq)]
@@ -4063,10 +4087,9 @@ pub enum FragmentBuiltIn {
   HelperInvocation,
 }
 
-/// Vertex shader environment.
+/// Vertex shader environment inputs.
 #[derive(Debug)]
-pub struct VertexShaderEnv<I> {
-  // inputs
+pub struct VertexShaderInputs<I> {
   /// ID of the current vertex.
   pub vertex_id: Expr<i32>,
 
@@ -4093,7 +4116,7 @@ pub struct VertexShaderEnv<I> {
   pub user: I,
 }
 
-impl<I> VertexShaderEnv<I> {
+impl<I> VertexShaderInputs<I> {
   const fn new(user: I) -> Self {
     let vertex_id = Expr::new(ErasedExpr::new_builtin(BuiltIn::Vertex(
       VertexBuiltIn::VertexID,
@@ -4130,8 +4153,53 @@ impl<I> VertexShaderEnv<I> {
   }
 }
 
-impl<I> Deref for VertexShaderEnv<I> {
+impl<I> Deref for VertexShaderInputs<I> {
   type Target = I;
+
+  fn deref(&self) -> &Self::Target {
+    &self.user
+  }
+}
+
+/// Vertex shader environment outputs.
+#[derive(Debug)]
+pub struct VertexShaderOutputs<O> {
+  /// 4D position of the vertex.
+  pub position: Var<V4<f32>>,
+
+  /// Point size of the vertex.
+  pub point_size: Var<f32>,
+
+  // Clip distances to user-defined plans.
+  pub clip_distance: Var<[f32]>,
+
+  // User-defined outputs.
+  pub user: O,
+}
+
+impl<O> VertexShaderOutputs<O> {
+  const fn new(user: O) -> Self {
+    let position = Var(Expr::new(ErasedExpr::new_builtin(BuiltIn::Vertex(
+      VertexBuiltIn::Position,
+    ))));
+    let point_size = Var(Expr::new(ErasedExpr::new_builtin(BuiltIn::Vertex(
+      VertexBuiltIn::PointSize,
+    ))));
+    let clip_distance = Var(Expr::new(ErasedExpr::new_builtin(BuiltIn::Vertex(
+      VertexBuiltIn::ClipDistance,
+    ))));
+
+    Self {
+      position,
+      point_size,
+      clip_distance,
+      user,
+    }
+  }
+}
+
+impl<O> Deref for VertexShaderOutputs<O> {
+  type Target = O;
 
   fn deref(&self) -> &Self::Target {
     &self.user
@@ -5703,7 +5771,7 @@ mod tests {
 
   #[test]
   fn vertex_id_commutative() {
-    let vertex = VertexShaderEnv::new(());
+    let vertex = VertexShaderInputs::new(());
 
     let x = lit!(1);
     let _ = &vertex.vertex_id + &x;
@@ -5712,7 +5780,7 @@ mod tests {
 
   #[test]
   fn array_lookup() {
-    let vertex = VertexShaderEnv::new(());
+    let vertex = VertexShaderInputs::new(());
     let clip_dist_expr = vertex.clip_distance.at(1);
 
     assert_eq!(
