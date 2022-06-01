@@ -1,5 +1,8 @@
+use crate::{
+  expr::{ErasedExpr, Expr},
+  fun::ErasedFunHandle,
+};
 use std::iter::once;
-use crate::{fun::ErasedFunHandle, expr::{ErasedExpr, Expr}};
 
 macro_rules! make_vn {
   ($t:ident, $dim:expr) => {

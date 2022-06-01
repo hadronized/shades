@@ -1,5 +1,12 @@
-use std::{ops, marker::PhantomData};
-use crate::{types::{M22, M33, M44, Type, V2, V3, V4, ToType}, var::Var, scope::ScopedHandle, fun::ErasedFunHandle, swizzle::Swizzle, builtin::BuiltIn};
+use crate::{
+  builtin::BuiltIn,
+  fun::ErasedFunHandle,
+  scope::ScopedHandle,
+  swizzle::Swizzle,
+  types::{ToType, Type, M22, M33, M44, V2, V3, V4},
+  var::Var,
+};
+use std::{marker::PhantomData, ops};
 
 /// Representation of an expression.
 #[derive(Clone, Debug, PartialEq)]
@@ -1159,7 +1166,10 @@ macro_rules! vec2 {
 
   ($xy:expr, $z:expr) => {{
     use $crate::types::Vec2 as _;
-    $crate::expr::Expr::vec2(($crate::expr::Expr::from(&$xy), $crate::expr::Expr::from(&$z)))
+    $crate::expr::Expr::vec2((
+      $crate::expr::Expr::from(&$xy),
+      $crate::expr::Expr::from(&$z),
+    ))
   }};
 }
 
@@ -1191,7 +1201,10 @@ macro_rules! vec3 {
 
   ($xy:expr, $z:expr) => {{
     use $crate::types::Vec3 as _;
-    $crate::expr::Expr::vec3(($crate::expr::Expr::from(&$xy), $crate::expr::Expr::from(&$z)))
+    $crate::expr::Expr::vec3((
+      $crate::expr::Expr::from(&$xy),
+      $crate::expr::Expr::from(&$z),
+    ))
   }};
 
   ($x:expr, $y:expr, $z:expr) => {{
@@ -1236,7 +1249,10 @@ macro_rules! vec4 {
 
   ($xy:expr, $zw:expr) => {{
     use $crate::types::Vec4 as _;
-    $crate::expr::Expr::vec4(($crate::expr::Expr::from(&$xy), $crate::expr::Expr::from(&$zw)))
+    $crate::expr::Expr::vec4((
+      $crate::expr::Expr::from(&$xy),
+      $crate::expr::Expr::from(&$zw),
+    ))
   }};
 
   ($xy:expr, $z:expr, $w:expr) => {{
@@ -1261,8 +1277,12 @@ macro_rules! vec4 {
 
 #[cfg(test)]
 mod test {
-  use crate::{scope::{ScopeInstr, Scope}, types::{Dim, PrimType}, stdlib::Bounded as _};
   use super::*;
+  use crate::{
+    scope::{Scope, ScopeInstr},
+    stdlib::Bounded as _,
+    types::{Dim, PrimType},
+  };
 
   #[test]
   fn lit() {

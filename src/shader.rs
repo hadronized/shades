@@ -1,4 +1,4 @@
-use crate::{fun::ErasedFun, expr::ErasedExpr, types::Type};
+use crate::{expr::ErasedExpr, fun::ErasedFun, types::Type};
 
 /// Shader declaration.
 ///

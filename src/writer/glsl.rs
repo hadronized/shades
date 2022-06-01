@@ -2,7 +2,21 @@
 
 use std::fmt;
 
-use crate::{stage::Stage, input::Inputs, output::Outputs, env::Environment, shader::ShaderDecl, fun::{ErasedFun, ErasedReturn, ErasedFunHandle}, scope::{ErasedScope, ScopeInstr, ScopedHandle}, types::{Type, PrimType, Dim, MatrixDim}, expr::ErasedExpr, swizzle::{Swizzle, SwizzleSelector}, builtin::{BuiltIn, VertexBuiltIn, TessCtrlBuiltIn, TessEvalBuiltIn, GeometryBuiltIn, FragmentBuiltIn}};
+use crate::{
+  builtin::{
+    BuiltIn, FragmentBuiltIn, GeometryBuiltIn, TessCtrlBuiltIn, TessEvalBuiltIn, VertexBuiltIn,
+  },
+  env::Environment,
+  expr::ErasedExpr,
+  fun::{ErasedFun, ErasedFunHandle, ErasedReturn},
+  input::Inputs,
+  output::Outputs,
+  scope::{ErasedScope, ScopeInstr, ScopedHandle},
+  shader::ShaderDecl,
+  stage::Stage,
+  swizzle::{Swizzle, SwizzleSelector},
+  types::{Dim, MatrixDim, PrimType, Type},
+};
 
 // Number of space an indent level represents.
 const INDENT_SPACES: usize = 2;

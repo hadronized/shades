@@ -306,9 +306,12 @@ macro_rules! sw_extract {
 
 #[cfg(test)]
 mod test {
-  use crate::{scope::{Scope, ScopedHandle}, lit};
+  use crate::{
+    lit,
+    scope::{Scope, ScopedHandle},
+  };
 
-use super::*;
+  use super::*;
 
   #[test]
   fn swizzling() {

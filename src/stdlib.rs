@@ -1,4 +1,8 @@
-use crate::{types::{V2, V3, V4}, fun::ErasedFunHandle, expr::{ErasedExpr, Expr}};
+use crate::{
+  expr::{ErasedExpr, Expr},
+  fun::ErasedFunHandle,
+  types::{V2, V3, V4},
+};
 
 // standard library
 pub trait Trigonometry {

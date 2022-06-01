@@ -1,4 +1,7 @@
-use crate::{expr::{Expr, ErasedExpr}, scope::ScopedHandle};
+use crate::{
+  expr::{ErasedExpr, Expr},
+  scope::ScopedHandle,
+};
 use std::ops;
 
 /// Mutable variable.

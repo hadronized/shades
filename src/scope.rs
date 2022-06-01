@@ -1,5 +1,14 @@
-use std::{marker::PhantomData, ops::{Deref, DerefMut}};
-use crate::{fun::{Return, ErasedReturn}, expr::{Expr, ErasedExpr}, var::Var, types::{ToType, Type}, builtin::BuiltIn};
+use crate::{
+  builtin::BuiltIn,
+  expr::{ErasedExpr, Expr},
+  fun::{ErasedReturn, Return},
+  types::{ToType, Type},
+  var::Var,
+};
+use std::{
+  marker::PhantomData,
+  ops::{Deref, DerefMut},
+};
 
 /// Lexical scope that must output an `R`.
 ///
@@ -755,8 +764,11 @@ pub enum ScopeInstr {
 
 #[cfg(test)]
 mod test {
-  use crate::{types::{V4, PrimType, Dim}, lit};
   use super::*;
+  use crate::{
+    lit,
+    types::{Dim, PrimType, V4},
+  };
 
   #[test]
   fn when() {

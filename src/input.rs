@@ -1,9 +1,11 @@
 use std::ops::Deref;
 
 use crate::{
-  builtin::{BuiltIn, TessCtrlBuiltIn, TessEvalBuiltIn, VertexBuiltIn, GeometryBuiltIn, FragmentBuiltIn},
-  types::{V4, V2, V3, Type},
+  builtin::{
+    BuiltIn, FragmentBuiltIn, GeometryBuiltIn, TessCtrlBuiltIn, TessEvalBuiltIn, VertexBuiltIn,
+  },
   expr::{ErasedExpr, Expr},
+  types::{Type, V2, V3, V4},
 };
 
 /// Inputs.
@@ -448,7 +450,7 @@ pub struct FragmentShaderInputs<I> {
   /// Indicates whether we are in a helper invocation of a fragment shader.
   pub helper_invocation: Expr<bool>,
 
-  pub user: I
+  pub user: I,
 }
 
 impl<I> FragmentShaderInputs<I> {
@@ -509,17 +511,17 @@ impl<I> FragmentShaderInputs<I> {
 }
 
 impl<I> Deref for FragmentShaderInputs<I> {
-    type Target = I;
+  type Target = I;
 
-    fn deref(&self) -> &Self::Target {
+  fn deref(&self) -> &Self::Target {
     &self.user
-    }
+  }
 }
 
 #[cfg(test)]
 mod test {
+  use super::*;
   use crate::lit;
-use super::*;
 
   #[test]
   fn vertex_id_commutative() {
@@ -529,6 +531,4 @@ use super::*;
     let _ = &vertex.vertex_id + &x;
     let _ = x + vertex.vertex_id;
   }
-
 }
-

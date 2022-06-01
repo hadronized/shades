@@ -1,9 +1,14 @@
 use std::ops::Deref;
 
 use crate::{
-  builtin::{BuiltIn, GeometryBuiltIn, VertexBuiltIn, TessCtrlBuiltIn, TessEvalBuiltIn, FragmentBuiltIn},
+  builtin::{
+    BuiltIn, FragmentBuiltIn, GeometryBuiltIn, TessCtrlBuiltIn, TessEvalBuiltIn, VertexBuiltIn,
+  },
+  expr::ErasedExpr,
+  expr::Expr,
   scope::ScopedHandle,
-  expr::Expr, types::{V4, Type}, var::Var, expr::ErasedExpr,
+  types::{Type, V4},
+  var::Var,
 };
 
 /// Outputs.

@@ -1,6 +1,21 @@
 use std::marker::PhantomData;
 
-use crate::{shader::ShaderDecl, input::{Inputs, VertexShaderInputs, TessCtrlShaderInputs, TessEvalShaderInputs, GeometryShaderInputs, FragmentShaderInputs}, output::{Outputs, VertexShaderOutputs, TessCtrlShaderOutputs, TessEvalShaderOutputs, GeometryShaderOutputs, FragmentShaderOutputs}, env::Environment, fun::{FunHandle, ToFun, ErasedFunHandle}, expr::{Expr, ErasedExpr}, scope::ScopedHandle, types::ToType};
+use crate::{
+  env::Environment,
+  expr::{ErasedExpr, Expr},
+  fun::{ErasedFunHandle, FunHandle, ToFun},
+  input::{
+    FragmentShaderInputs, GeometryShaderInputs, Inputs, TessCtrlShaderInputs, TessEvalShaderInputs,
+    VertexShaderInputs,
+  },
+  output::{
+    FragmentShaderOutputs, GeometryShaderOutputs, Outputs, TessCtrlShaderOutputs,
+    TessEvalShaderOutputs, VertexShaderOutputs,
+  },
+  scope::ScopedHandle,
+  shader::ShaderDecl,
+  types::ToType,
+};
 
 /// A fully built shader stage as represented in Rust, obtained by adding the `main` function to a [`StageBuilder`].
 #[derive(Debug)]
@@ -95,7 +110,11 @@ where
   pub fn new_tess_ctrl_shader(
     f: impl FnOnce(Self, TessCtrlShaderInputs<I::In>, TessCtrlShaderOutputs<O::Out>) -> Stage<I, O, E>,
   ) -> Stage<I, O, E> {
-    f(Self::new(), TessCtrlShaderInputs::new(I::input()), TessCtrlShaderOutputs::new(O::output()))
+    f(
+      Self::new(),
+      TessCtrlShaderInputs::new(I::input()),
+      TessCtrlShaderOutputs::new(O::output()),
+    )
   }
 
   /// Create a new _tessellation evaluation shader_.
@@ -130,7 +149,11 @@ where
   pub fn new_tess_eval_shader(
     f: impl FnOnce(Self, TessEvalShaderInputs<I::In>, TessEvalShaderOutputs<O::Out>) -> Stage<I, O, E>,
   ) -> Stage<I, O, E> {
-    f(Self::new(), TessEvalShaderInputs::new(I::input()), TessEvalShaderOutputs::new(O::output()))
+    f(
+      Self::new(),
+      TessEvalShaderInputs::new(I::input()),
+      TessEvalShaderOutputs::new(O::output()),
+    )
   }
 
   /// Create a new _geometry shader_.
@@ -164,7 +187,11 @@ where
   pub fn new_geometry_shader(
     f: impl FnOnce(Self, GeometryShaderInputs<I::In>, GeometryShaderOutputs<O::Out>) -> Stage<I, O, E>,
   ) -> Stage<I, O, E> {
-    f(Self::new(), GeometryShaderInputs::new(I::input()), GeometryShaderOutputs::new(O::output()))
+    f(
+      Self::new(),
+      GeometryShaderInputs::new(I::input()),
+      GeometryShaderOutputs::new(O::output()),
+    )
   }
 
   /// Create a new _fragment shader_.
@@ -198,7 +225,11 @@ where
   pub fn new_fragment_shader(
     f: impl FnOnce(Self, FragmentShaderInputs<I::In>, FragmentShaderOutputs<O::Out>) -> Stage<I, O, E>,
   ) -> Stage<I, O, E> {
-    f(Self::new(), FragmentShaderInputs::new(I::input()), FragmentShaderOutputs::new(O::output()))
+    f(
+      Self::new(),
+      FragmentShaderInputs::new(I::input()),
+      FragmentShaderOutputs::new(O::output()),
+    )
   }
 
   /// Create a new empty shader.

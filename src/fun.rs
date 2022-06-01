@@ -1,6 +1,10 @@
 use std::marker::PhantomData;
 
-use crate::{types::{Type, ToType}, expr::{ErasedExpr, Expr}, scope::{ScopedHandle, Scope, ErasedScope}};
+use crate::{
+  expr::{ErasedExpr, Expr},
+  scope::{ErasedScope, Scope, ScopedHandle},
+  types::{ToType, Type},
+};
 
 /// Function return.
 ///
@@ -246,7 +250,10 @@ pub struct FunHandle<R, A> {
 
 impl<R, A> FunHandle<R, A> {
   pub(crate) fn new(erased: ErasedFunHandle) -> Self {
-    Self { erased, _phantom: PhantomData}
+    Self {
+      erased,
+      _phantom: PhantomData,
+    }
   }
 }
 
@@ -551,8 +558,14 @@ impl ErasedFun {
 
 #[cfg(test)]
 mod test {
-  use crate::{stage::StageBuilder, shader::ShaderDecl, scope::ScopeInstr, types::{Dim, PrimType}, lit};
   use super::*;
+  use crate::{
+    lit,
+    scope::ScopeInstr,
+    shader::ShaderDecl,
+    stage::StageBuilder,
+    types::{Dim, PrimType},
+  };
 
   #[test]
   fn fun0() {
