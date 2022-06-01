@@ -1,5 +1,11 @@
 use shades::{
-  lit, vec4, CanEscape as _, Expr, Inputs, Scope, StageBuilder, ToType, Type, V2, V3, V4,
+  expr::Expr,
+  input::Inputs,
+  lit,
+  scope::{CanEscape as _, Scope},
+  stage::StageBuilder,
+  types::{ToType, Type, V2, V3, V4},
+  vec4,
 };
 
 pub struct MyVertex {

@@ -1,12 +1,8 @@
 //! GLSL writers.
 
-use crate::{
-  BuiltIn, Dim, Environment, ErasedExpr, ErasedFun, ErasedFunHandle, ErasedReturn, ErasedScope,
-  FragmentBuiltIn, GeometryBuiltIn, Inputs, MatrixDim, Outputs, PrimType, ScopeInstr, ScopedHandle,
-  ShaderDecl, Stage, Swizzle, SwizzleSelector, TessCtrlBuiltIn, TessEvalBuiltIn, Type,
-  VertexBuiltIn,
-};
 use std::fmt;
+
+use crate::{stage::Stage, input::Inputs, output::Outputs, env::Environment, shader::ShaderDecl, fun::{ErasedFun, ErasedReturn, ErasedFunHandle}, scope::{ErasedScope, ScopeInstr, ScopedHandle}, types::{Type, PrimType, Dim, MatrixDim}, expr::ErasedExpr, swizzle::{Swizzle, SwizzleSelector}, builtin::{BuiltIn, VertexBuiltIn, TessCtrlBuiltIn, TessEvalBuiltIn, GeometryBuiltIn, FragmentBuiltIn}};
 
 // Number of space an indent level represents.
 const INDENT_SPACES: usize = 2;
