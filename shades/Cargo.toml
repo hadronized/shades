@@ -1,0 +1,23 @@
+[package]
+name = "shades"
+version = "0.4.0-dev"
+license = "BSD-3-Clause"
+authors = ["Dimitri Sabadie <dimitri.sabadie@gmail.com>"]
+description = "An EDSL for shading languages"
+keywords = ["edsl", "shader", "glsl", "spir-v"]
+categories = ["graphics"]
+homepage = "https://github.com/phaazon/shades"
+repository = "https://github.com/phaazon/shades"
+documentation = "https://docs.rs/shades"
+readme = "README.md"
+edition = "2018"
+
+[badges]
+maintenance = { status = "actively-developed" }
+
+[features]
+fun-call = []
+
+[[example]]
+name = "simple"
+required-features = ["fun-call"]

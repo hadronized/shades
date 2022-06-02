@@ -24,7 +24,7 @@ macro_rules! make_vn {
     /// - [`vec4`]: build [`V4<T>`].
     ///
     /// Those three macros can also be used with literals.
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Clone, Copy, Debug, PartialEq)]
     pub struct $t<T>(pub [T; $dim]);
 
     impl<T> From<[T; $dim]> for $t<T> {

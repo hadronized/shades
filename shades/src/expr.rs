@@ -989,15 +989,21 @@ impl_binshifts_Expr!(Shr, shr);
 
 macro_rules! impl_From_Expr_scalar {
   ($t:ty, $q:ident) => {
+    impl Expr<$t> {
+      pub const fn lit(a: $t) -> Expr<$t> {
+        Self::new(ErasedExpr::$q(a))
+      }
+    }
+
     impl From<$t> for Expr<$t> {
       fn from(a: $t) -> Self {
-        Self::new(ErasedExpr::$q(a))
+        Self::lit(a)
       }
     }
 
     impl<'a> From<&'a $t> for Expr<$t> {
       fn from(a: &'a $t) -> Self {
-        Self::new(ErasedExpr::$q(*a))
+        Self::lit(*a)
       }
     }
   };
@@ -1010,15 +1016,21 @@ impl_From_Expr_scalar!(bool, LitBool);
 
 macro_rules! impl_From_Expr_vn {
   ($t:ty, $q:ident) => {
+    impl Expr<$t> {
+      pub const fn lit(a: $t) -> Expr<$t> {
+        Self::new(ErasedExpr::$q(a.0))
+      }
+    }
+
     impl From<$t> for Expr<$t> {
       fn from(a: $t) -> Self {
-        Self::new(ErasedExpr::$q(a.0))
+        Self::lit(a)
       }
     }
 
     impl<'a> From<&'a $t> for Expr<$t> {
       fn from(a: &'a $t) -> Self {
-        Self::new(ErasedExpr::$q(a.0))
+        Self::lit(*a)
       }
     }
   };
