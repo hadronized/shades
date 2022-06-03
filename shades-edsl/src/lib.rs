@@ -1,16 +1,33 @@
 #![allow(dead_code)] // FIXME: remove before publishing
 
+pub mod constant;
+use std::collections::HashMap;
+
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 use syn::{
   parse::{Parse, ParseStream},
-  parse_macro_input, Expr, Ident, Token, Type, UseTree,
+  parse_macro_input, parse_quote,
+  visit_mut::VisitMut,
+  Expr, Ident, Item, ItemFn, Token, Type, UseTree,
 };
 
 #[derive(Debug)]
 struct TopLevel {
   uses: Vec<Use>,
   constants: Vec<Constant>,
+  fns: Vec<Fun>,
+}
+
+impl TopLevel {
+  fn mutate(&mut self) {
+    // TODO: uses
+    // TODO: constants
+
+    for fun in &mut self.fns {
+      fun.mutate();
+    }
+  }
 }
 
 impl ToTokens for TopLevel {
@@ -22,6 +39,10 @@ impl ToTokens for TopLevel {
     for item in &self.constants {
       item.to_tokens(tokens);
     }
+
+    for item in &self.fns {
+      item.to_tokens(tokens);
+    }
   }
 }
 
@@ -29,6 +50,7 @@ impl Parse for TopLevel {
   fn parse(input: ParseStream) -> Result<Self, syn::Error> {
     let mut uses = Vec::new();
     let mut constants = Vec::new();
+    let mut fns = Vec::new();
 
     loop {
       let lookahead = input.lookahead1();
@@ -39,12 +61,18 @@ impl Parse for TopLevel {
       } else if lookahead.peek(Token![const]) {
         constants.push(input.parse()?);
         let _: Token![;] = input.parse()?;
+      } else if lookahead.peek(Token![fn]) {
+        fns.push(input.parse()?);
       } else {
         break;
       }
     }
 
-    Ok(TopLevel { uses, constants })
+    Ok(TopLevel {
+      uses,
+      constants,
+      fns,
+    })
   }
 }
 
@@ -74,50 +102,71 @@ impl Parse for Use {
 }
 
 #[derive(Debug)]
-struct Constant {
-  const_token: Token![const],
-  ident: Ident,
-  colon_token: Token![:],
-  ty: Type,
-  equal_token: Token![=],
-  expr: Expr,
+struct Fun {
+  item_fn: Item,
 }
 
-impl ToTokens for Constant {
-  fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-    let ident = &self.ident;
-    let ty = &self.ty;
-    let expr = &self.expr;
-    let q = quote! {
-      const #ident: shades::expr::Expr<#ty> = shades::expr::Expr::<#ty>::lit(#expr);
-    };
+impl Fun {
+  fn mutate(&mut self) {
+    if let Item::Fn(item_fn) = &self.item_fn {
+      let sig = &item_fn.sig;
 
-    q.to_tokens(tokens);
+      // arguments (rank, ident, ty)
+      let args = sig
+        .inputs
+        .iter()
+        .map(|arg| match arg {
+          syn::FnArg::Receiver(_) => panic!("functions taking self are forbidden"), // TODO
+
+          syn::FnArg::Typed(ty) => {
+            let ident = match &*ty.pat {
+              syn::Pat::Ident(pat_ident) => pat_ident.ident.clone(),
+              _ => parse_quote! { compile_error!("incorrect ident type") },
+            };
+            let ty = &*ty.ty;
+
+            (ident, ty)
+          }
+        })
+        .enumerate()
+        .map(|(rank, (ident, ty))| (rank, ident, ty));
+
+      // ranked idents, which maps a name to its index
+      let ranked_idents = args
+        .clone()
+        .map(|(rank, ident, _)| (ident, rank))
+        .collect::<HashMap<_, _>>();
+
+      // list of type arguments required by shades
+      let ty_list = args.map(|(_, _, ty)| ty.clone()).collect::<Vec<_>>();
+
+      // return type
+      let ret = match sig.output {
+        syn::ReturnType::Default => ().into(),
+        syn::ReturnType::Type(_, ty) => todo!(),
+      };
+    }
   }
 }
 
-impl Parse for Constant {
+impl Parse for Fun {
   fn parse(input: ParseStream) -> syn::Result<Self> {
-    let const_token = input.parse()?;
-    let ident = input.parse()?;
-    let colon_token = input.parse()?;
-    let ty = input.parse()?;
-    let equal_token = input.parse()?;
-    let expr = input.parse()?;
-
-    Ok(Constant {
-      const_token,
-      ident,
-      colon_token,
-      ty,
-      equal_token,
-      expr,
+    let item_fn: ItemFn = input.parse()?;
+    Ok(Fun {
+      item_fn: Item::Fn(item_fn),
     })
+  }
+}
+
+impl ToTokens for Fun {
+  fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+    self.item_fn.to_tokens(tokens);
   }
 }
 
 #[proc_macro]
 pub fn shades(tokens: TokenStream) -> TokenStream {
-  let parsed = parse_macro_input!(tokens as TopLevel);
+  let mut parsed = parse_macro_input!(tokens as TopLevel);
+  parsed.mutate();
   parsed.to_token_stream().into()
 }

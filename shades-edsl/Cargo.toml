@@ -21,7 +21,7 @@ proc-macro = true
 [dependencies]
 proc-macro2 = "1"
 quote = "1"
-syn = { version = "1", features = ["extra-traits", "full"] }
+syn = { version = "1", features = ["extra-traits", "full", "visit-mut"] }
 
 [dev-dependencies]
 shades = { version = "0.4.0-dev", path = "../shades" }
