@@ -12,7 +12,7 @@ statement, removing a lot of abstractions that currently exists just to please `
   * [Automatic scope prefixing](#automatic-scope-prefixing)
   * [Automatic literals lifting and variables transformation](#automatic-literals-lifting-and-variables-transformation)
   * [Sharable blocks](#sharable-blocks)
-* [Alternative approach](#alternative-approach)
+  * [The EDSL](#the-edsl)
 
 <!-- vim-markdown-toc -->
 
@@ -50,7 +50,7 @@ The current code is problematic:
     // …
 ```
 
-Here, we can see that creating the `main` function requires to create a `s` `Scope<()>`, with type ascription, and we
+Here, we can see that creating the `main` function requires to create an `s: Scope<()>`, with type ascription, and we
 have to use that scope whenever we want to do anything with it. Instead, something that would be nicer would be to
 completely hide the scope behind the scene, in a monadic way:
 
@@ -58,14 +58,6 @@ completely hide the scope behind the scene, in a monadic way:
 // …
     let x = 1.;
 ```
-
-We need to “translate” the various functions we currently have:
-
-- `let x = s.var(expr);` can be written `let x = expr;`. While implementing the proc-macro, if we detect an assignment
-  in the AST, we can then rewrite it `let x = __s.var(expr)`, with `__s` being a scope name that is automatically
-  recognized as being the current scope.
-- `s.set(output.clip_distance.at(0), increment(x.clone()));` can be written `output.clip_distance.at(0) = increment(x)`.
-  While implementing the proc-macro, if we detect a mutation in the AST, we can then rewrite it `s.set(var, expr);`.
 
 ## Automatic literals lifting and variables transformation
 
@@ -111,4 +103,11 @@ of doing and it doesn’t scale / is error-prone.
 Instead, we are going to support importing symbols inside shader stages. In order to do so, we will hijack `use`
 statements.
 
-# Alternative approach
+## The EDSL
+
+The EDSL will be written as a procedural macro, and we will have a couple of them. We want to be able to write a _shader
+stage_ using the macro, but we also want to be able to write code that can be `use`d by other pieces of code. So we will
+need two proc-macros:
+
+- `shades!`, that will create a shader stage.
+- `shades_def!`, that will create a new definition that can be used by other `shades_def!` or `shades!` blocks.
