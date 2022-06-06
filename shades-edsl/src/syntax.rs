@@ -1,10 +1,52 @@
 use syn::{
   braced, parenthesized,
-  parse::{Nothing, Parse},
+  parse::Parse,
   punctuated::Punctuated,
   token::{Brace, Paren},
-  Expr, ExprAssign, ExprAssignOp, Ident, Token, Type,
+  Expr, ExprAssign, ExprAssignOp, FnArg, Ident, Token, Type,
 };
+
+/// A stage declaration with its environment.
+#[derive(Debug)]
+pub struct StageDecl {
+  left_or: Token![|],
+  input: Ident,
+  comma_input_token: Token![,],
+  output: Ident,
+  comma_output_token: Token![,],
+  env: Ident,
+  right_or: Token![|],
+  brace_token: Brace,
+  stage_item: StageItem,
+}
+
+impl Parse for StageDecl {
+  fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+    let left_or = input.parse()?;
+    let input_ = input.parse()?;
+    let comma_input_token = input.parse()?;
+    let output = input.parse()?;
+    let comma_output_token = input.parse()?;
+    let env = input.parse()?;
+    let right_or = input.parse()?;
+
+    let stage_input;
+    let brace_token = braced!(stage_input in input);
+    let stage_item = stage_input.parse()?;
+
+    Ok(Self {
+      left_or,
+      input: input_,
+      comma_input_token,
+      output,
+      comma_output_token,
+      env,
+      right_or,
+      brace_token,
+      stage_item,
+    })
+  }
+}
 
 /// A stage.
 ///
@@ -14,11 +56,28 @@ pub struct StageItem {
   glob_decl: Vec<ShaderDeclItem>,
 }
 
+impl Parse for StageItem {
+  fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+    let mut glob_decl = Vec::new();
+
+    loop {
+      let lookahead = input.lookahead1();
+
+      if lookahead.peek(Token![const]) {
+        glob_decl.push(ShaderDeclItem::Const(input.parse()?));
+      } else if lookahead.peek(Token![fn]) {
+        glob_decl.push(ShaderDeclItem::FunDef(input.parse()?));
+      } else {
+        break Ok(StageItem { glob_decl });
+      }
+    }
+  }
+}
+
 #[derive(Debug)]
 pub enum ShaderDeclItem {
   Const(ConstItem),
   FunDef(FunDefItem),
-  Main(FunDefItem),
 }
 
 #[derive(Debug)]
@@ -29,6 +88,7 @@ pub struct ConstItem {
   ty: Type,
   assign_token: Token![=],
   expr: Expr,
+  semi_token: Token![;],
 }
 
 impl Parse for ConstItem {
@@ -39,6 +99,7 @@ impl Parse for ConstItem {
     let ty = input.parse()?;
     let assign_token = input.parse()?;
     let expr = input.parse()?;
+    let semi_token = input.parse()?;
 
     Ok(Self {
       const_token,
@@ -47,6 +108,7 @@ impl Parse for ConstItem {
       ty,
       assign_token,
       expr,
+      semi_token,
     })
   }
 }
@@ -56,7 +118,9 @@ pub struct FunDefItem {
   fn_token: Token![fn],
   name: Ident,
   paren_token: Paren,
-  args: Nothing,
+  args: Punctuated<FnArg, Token![,]>,
+  arrow_token: Token![->],
+  ret_ty: Type,
   brace_token: Brace,
   body: Punctuated<ScopeInstrItem, Token![;]>,
 }
@@ -65,32 +129,29 @@ impl Parse for FunDefItem {
   fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
     let fn_token = input.parse()?;
     let name = input.parse()?;
+
     let args_input;
     let paren_token = parenthesized!(args_input in input);
-    let args = args_input.parse()?;
+    let args = Punctuated::parse_terminated(&args_input)?;
+
+    let arrow_token = input.parse()?;
+    let ret_ty = input.parse()?;
+
     let body_input;
     let brace_token = braced!(body_input in input);
-    let body = body_input.parse()?;
+    let body = Punctuated::parse_terminated(&body_input)?;
 
     Ok(Self {
       fn_token,
       name,
       paren_token,
       args,
+      arrow_token,
+      ret_ty,
       brace_token,
       body,
     })
   }
-}
-
-#[derive(Debug)]
-pub struct MainItem {
-  fn_token: Token![fn],
-  name: Ident,
-  paren_token: Paren,
-  args: Nothing,
-  brace_token: Brace,
-  body: Punctuated<ScopeInstrItem, Token![;]>,
 }
 
 #[derive(Debug)]
@@ -100,8 +161,7 @@ pub enum ScopeInstrItem {
   Continue(ContinueItem),
   Break(BreakItem),
   If(IfItem),
-  ElseIf(ElseIfItem),
-  Else(ElseItem),
+  Else(ElseTailItem),
   // For(ForItem), // TODO
   While(WhileItem),
   // MutateVar(MutateVarItem),
@@ -126,8 +186,14 @@ impl Parse for ScopeInstrItem {
     } else if lookahead.peek(Token![if]) {
       let v = input.parse()?;
       ScopeInstrItem::If(v)
+    } else if lookahead.peek(Token![else]) {
+      let v = input.parse()?;
+      ScopeInstrItem::If(v)
     } else {
-      return Err(input.error("unknown kind of scope instruction"));
+      return Err(input.error(format!(
+        "unknown kind of scope instruction: {:?}",
+        lookahead.error()
+      )));
     };
 
     Ok(v)
@@ -171,7 +237,7 @@ impl Parse for VarDeclItem {
 
 #[derive(Debug)]
 pub struct ReturnItem {
-  return_token: Token![return],
+  return_token: Option<Token![return]>,
   expr: Expr,
 }
 
@@ -217,49 +283,15 @@ impl Parse for IfItem {
   fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
     let if_token = input.parse()?;
 
-    let cond_content;
-    let paren_token = parenthesized!(cond_content in input);
-    let cond_expr = cond_content.parse()?;
+    let cond_input;
+    let paren_token = parenthesized!(cond_input in input);
+    let cond_expr = cond_input.parse()?;
 
-    let body_content;
-    let brace_token = braced!(body_content in input);
-    let body = body_content.parse()?;
-
-    Ok(Self {
-      if_token,
-      paren_token,
-      cond_expr,
-      brace_token,
-      body,
-    })
-  }
-}
-
-#[derive(Debug)]
-pub struct ElseIfItem {
-  else_token: Token![else],
-  if_token: Token![if],
-  paren_token: Paren,
-  cond_expr: Expr,
-  brace_token: Brace,
-  body: Punctuated<ScopeInstrItem, Token![;]>,
-}
-
-impl Parse for ElseIfItem {
-  fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
-    let else_token = input.parse()?;
-    let if_token = input.parse()?;
-
-    let cond_content;
-    let paren_token = parenthesized!(cond_content in input);
-    let cond_expr = cond_content.parse()?;
-
-    let body_content;
-    let brace_token = braced!(body_content in input);
-    let body = body_content.parse()?;
+    let body_input;
+    let brace_token = braced!(body_input in input);
+    let body = Punctuated::parse_terminated(&body_input)?;
 
     Ok(Self {
-      else_token,
       if_token,
       paren_token,
       cond_expr,
@@ -272,23 +304,47 @@ impl Parse for ElseIfItem {
 #[derive(Debug)]
 pub struct ElseItem {
   else_token: Token![else],
-  brace_token: Brace,
-  body: Punctuated<ScopeInstrItem, Token![;]>,
+  else_tail: ElseTailItem,
 }
 
 impl Parse for ElseItem {
   fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
     let else_token = input.parse()?;
-
-    let body_content;
-    let brace_token = parenthesized!(body_content in input);
-    let body = body_content.parse()?;
+    let else_tail = input.parse()?;
 
     Ok(Self {
       else_token,
-      brace_token,
-      body,
+      else_tail,
     })
+  }
+}
+
+#[derive(Debug)]
+pub enum ElseTailItem {
+  If(IfItem),
+
+  Else {
+    brace_token: Brace,
+    body: Punctuated<ScopeInstrItem, Token![;]>,
+  },
+}
+
+impl Parse for ElseTailItem {
+  fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
+    let lookahead = input.lookahead1();
+
+    let tail = if lookahead.peek(Token![if]) {
+      let if_item = input.parse()?;
+      ElseTailItem::If(if_item)
+    } else {
+      let body_input;
+      let brace_token = braced!(body_input in input);
+      let body = Punctuated::parse_terminated(&body_input)?;
+
+      ElseTailItem::Else { brace_token, body }
+    };
+
+    Ok(tail)
   }
 }
 
@@ -305,13 +361,13 @@ impl Parse for WhileItem {
   fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
     let while_token = input.parse()?;
 
-    let cond_content;
-    let paren_token = parenthesized!(cond_content in input);
-    let cond_expr = cond_content.parse()?;
+    let cond_input;
+    let paren_token = parenthesized!(cond_input in input);
+    let cond_expr = cond_input.parse()?;
 
-    let body_content;
-    let brace_token = braced!(body_content in input);
-    let body = body_content.parsee()?;
+    let body_input;
+    let brace_token = braced!(body_input in input);
+    let body = Punctuated::parse_terminated(&body_input)?;
 
     Ok(Self {
       while_token,
