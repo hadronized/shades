@@ -1,14 +1,17 @@
+use quote::{quote, ToTokens};
 use syn::{
   braced, parenthesized,
   parse::Parse,
+  parse_quote,
   punctuated::Punctuated,
-  token::{Brace, Paren},
+  token::{Brace, Paren, Pound},
   Expr, ExprAssign, ExprAssignOp, Ident, Token, Type,
 };
 
 /// A stage declaration with its environment.
 #[derive(Debug)]
 pub struct StageDecl {
+  stage_ty: Ident,
   left_or: Token![|],
   input: FnArgItem,
   comma_input_token: Token![,],
@@ -20,8 +23,40 @@ pub struct StageDecl {
   stage_item: StageItem,
 }
 
+impl ToTokens for StageDecl {
+  fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+    let stage_ty = self.stage_ty.to_string();
+
+    let q = match stage_ty.as_str() {
+      "vertex" => {
+        let input = FnArgItem {
+          pound_token: Some(Pound::default()),
+          ..self.input.clone()
+        };
+        let output = FnArgItem {
+          pound_token: Some(Pound::default()),
+          ..self.output.clone()
+        };
+        // TODO: env
+        let stage = &self.stage_item;
+
+        quote! {
+          shades::stage::StageBuilder::new(|mut __builder, #input, #output| {
+            #stage
+          })
+        }
+      }
+
+      stage => quote! { compile_error(format!("{stage} is not a valid stage type")) },
+    };
+
+    q.to_tokens(tokens);
+  }
+}
+
 impl Parse for StageDecl {
   fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+    let stage_ty = input.parse()?;
     let left_or = input.parse()?;
     let input_ = input.parse()?;
     let comma_input_token = input.parse()?;
@@ -35,6 +70,7 @@ impl Parse for StageDecl {
     let stage_item = stage_input.parse()?;
 
     Ok(Self {
+      stage_ty,
       left_or,
       input: input_,
       comma_input_token,
@@ -54,6 +90,15 @@ impl Parse for StageDecl {
 #[derive(Debug)]
 pub struct StageItem {
   glob_decl: Vec<ShaderDeclItem>,
+}
+
+impl ToTokens for StageItem {
+  fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+    let glob_decl = self.glob_decl.iter();
+    let q = quote! { #(#glob_decl)* };
+
+    q.to_tokens(tokens);
+  }
 }
 
 impl Parse for StageItem {
@@ -80,6 +125,17 @@ pub enum ShaderDeclItem {
   FunDef(FunDefItem),
 }
 
+impl ToTokens for ShaderDeclItem {
+  fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+    let q = match self {
+      ShaderDeclItem::Const(const_item) => quote! { #const_item },
+      ShaderDeclItem::FunDef(fundef_item) => quote! { #fundef_item },
+    };
+
+    q.to_tokens(tokens);
+  }
+}
+
 #[derive(Debug)]
 pub struct ConstItem {
   const_token: Token![const],
@@ -89,6 +145,19 @@ pub struct ConstItem {
   assign_token: Token![=],
   expr: Expr,
   semi_token: Token![;],
+}
+
+impl ToTokens for ConstItem {
+  fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+    let ident = &self.ident;
+    let ty = &self.ty;
+    let expr = &self.expr;
+    let q = quote! {
+      let #ident: shades::expr::Expr<#ty> = __builder.constant(shades::expr::Expl::lit(#expr));
+    };
+
+    q.to_tokens(tokens);
+  }
 }
 
 impl Parse for ConstItem {
@@ -113,12 +182,31 @@ impl Parse for ConstItem {
   }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct FnArgItem {
   ident: Ident,
   colon_token: Token![:],
   pound_token: Option<Token![#]>,
   ty: Type,
+}
+
+impl ToTokens for FnArgItem {
+  fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+    let ident = &self.ident;
+    let ty = if self.pound_token.is_some() {
+      // if we have a #ty, we do not lift the type and use it as verbatim
+      self.ty.clone()
+    } else {
+      // if we don’t have a #ty but just ty, we lift the type in Expr<#ty>
+      let ty = &self.ty;
+      parse_quote! { shades::expr::Expr<#ty> }
+    };
+    let q = quote! {
+      #ident: #ty
+    };
+
+    q.to_tokens(tokens);
+  }
 }
 
 impl Parse for FnArgItem {
@@ -146,7 +234,28 @@ pub struct FunDefItem {
   arrow_token: Token![->],
   ret_ty: Type,
   brace_token: Brace,
-  body: Punctuated<ScopeInstrItem, Token![;]>,
+  body: ScopeInstrItems,
+}
+
+impl ToTokens for FunDefItem {
+  fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+    let name = &self.name;
+    let args = self.args.iter();
+    // let ret_ty = &self.ret_ty;
+    let body = &self.body;
+
+    let q = if name.to_string() == "main" {
+      quote! {
+        __builder.main_fun(|__scope: shades::scope::Scope<()>, #(#args),*| { #body });
+      }
+    } else {
+      quote! {
+       let #name = __builder.fun(|__scope: shades::scope::Scope<()>, #(#args),*| { #body });
+      }
+    };
+
+    q.to_tokens(tokens);
+  }
 }
 
 impl Parse for FunDefItem {
@@ -163,7 +272,7 @@ impl Parse for FunDefItem {
 
     let body_input;
     let brace_token = braced!(body_input in input);
-    let body = Punctuated::parse_terminated(&body_input)?;
+    let body = body_input.parse()?;
 
     Ok(Self {
       fn_token,
@@ -179,6 +288,55 @@ impl Parse for FunDefItem {
 }
 
 #[derive(Debug)]
+pub struct ScopeInstrItems {
+  items: Vec<ScopeInstrItem>,
+}
+
+impl ToTokens for ScopeInstrItems {
+  fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+    let items = &self.items;
+    let q = quote! { #(#items)*};
+    q.to_tokens(tokens);
+  }
+}
+
+impl Parse for ScopeInstrItems {
+  fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
+    let mut items = Vec::new();
+
+    loop {
+      let lookahead = input.lookahead1();
+
+      let v = if lookahead.peek(Token![let]) {
+        let v = input.parse()?;
+        ScopeInstrItem::VarDecl(v)
+      } else if lookahead.peek(Token![return]) {
+        let v = input.parse()?;
+        ScopeInstrItem::Return(v)
+      } else if lookahead.peek(Token![continue]) {
+        let v = input.parse()?;
+        ScopeInstrItem::Continue(v)
+      } else if lookahead.peek(Token![break]) {
+        let v = input.parse()?;
+        ScopeInstrItem::Break(v)
+      } else if lookahead.peek(Token![if]) {
+        let v = input.parse()?;
+        ScopeInstrItem::If(v)
+      } else if lookahead.peek(Token![else]) {
+        let v = input.parse()?;
+        ScopeInstrItem::If(v)
+      } else {
+        break;
+      };
+
+      items.push(v);
+    }
+
+    Ok(Self { items })
+  }
+}
+
+#[derive(Debug)]
 pub enum ScopeInstrItem {
   VarDecl(VarDeclItem),
   Return(ReturnItem),
@@ -189,6 +347,63 @@ pub enum ScopeInstrItem {
   // For(ForItem), // TODO
   While(WhileItem),
   // MutateVar(MutateVarItem),
+}
+
+impl ToTokens for ScopeInstrItem {
+  fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+    let q = match self {
+      ScopeInstrItem::VarDecl(decl) => {
+        // FIXME: lift the whole expression
+        let name = &decl.name;
+        let expr = &decl.expr;
+
+        if let Some((_, ty)) = &decl.ty {
+          quote! {
+            let #name: shades::var::Var<#ty> = __scope.var(shades::expr::Expr::from(#expr));
+          }
+        } else {
+          quote! {
+            let #name = __scope.var(shades::expr::Expr::from(#expr));
+          }
+        }
+      }
+
+      ScopeInstrItem::Return(ret) => {
+        let expr = &ret.expr;
+
+        quote! {
+          __scope.leave(shades::expr::Expr::from(#expr));
+        }
+      }
+
+      ScopeInstrItem::Continue(_) => {
+        quote! {
+          __scope.loop_continue();
+        }
+      }
+
+      ScopeInstrItem::Break(_) => {
+        quote! {
+          __scope.loop_break();
+        }
+      }
+
+      ScopeInstrItem::If(if_item) => {
+        let cond = &if_item.cond_expr;
+        let body = &if_item.body;
+        quote! {
+          __scope.when(#cond, |__scope| {
+            #body
+          }|);
+        }
+      }
+
+      ScopeInstrItem::Else(_) => todo!(),
+      ScopeInstrItem::While(_) => todo!(),
+    };
+
+    q.to_tokens(tokens);
+  }
 }
 
 impl Parse for ScopeInstrItem {
@@ -231,6 +446,7 @@ pub struct VarDeclItem {
   ty: Option<(Token![:], Type)>,
   assign_token: Token![=],
   expr: Expr,
+  semi_token: Token![;],
 }
 
 impl Parse for VarDeclItem {
@@ -248,6 +464,7 @@ impl Parse for VarDeclItem {
     };
     let assign_token = input.parse()?;
     let expr = input.parse()?;
+    let semi_token = input.parse()?;
 
     Ok(Self {
       let_token,
@@ -255,6 +472,7 @@ impl Parse for VarDeclItem {
       ty,
       assign_token,
       expr,
+      semi_token,
     })
   }
 }
@@ -263,34 +481,54 @@ impl Parse for VarDeclItem {
 pub struct ReturnItem {
   return_token: Option<Token![return]>,
   expr: Expr,
+  semi_token: Token![;],
 }
 
 impl Parse for ReturnItem {
   fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
     let return_token = input.parse()?;
     let expr = input.parse()?;
+    let semi_token = input.parse()?;
 
-    Ok(Self { return_token, expr })
+    Ok(Self {
+      return_token,
+      expr,
+      semi_token,
+    })
   }
 }
 
 #[derive(Debug)]
-pub struct ContinueItem(Token![continue]);
+pub struct ContinueItem {
+  continue_token: Token![continue],
+  semi_token: Token![;],
+}
 
 impl Parse for ContinueItem {
   fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
     let continue_token = input.parse()?;
-    Ok(Self(continue_token))
+    let semi_token = input.parse()?;
+    Ok(Self {
+      continue_token,
+      semi_token,
+    })
   }
 }
 
 #[derive(Debug)]
-pub struct BreakItem(Token![break]);
+pub struct BreakItem {
+  break_token: Token![break],
+  semi_token: Token![;],
+}
 
 impl Parse for BreakItem {
   fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
-    let break_item = input.parse()?;
-    Ok(Self(break_item))
+    let break_token = input.parse()?;
+    let semi_token = input.parse()?;
+    Ok(Self {
+      break_token,
+      semi_token,
+    })
   }
 }
 
@@ -300,7 +538,7 @@ pub struct IfItem {
   paren_token: Paren,
   cond_expr: Expr,
   brace_token: Brace,
-  body: Punctuated<ScopeInstrItem, Token![;]>,
+  body: ScopeInstrItems,
 }
 
 impl Parse for IfItem {
@@ -313,7 +551,7 @@ impl Parse for IfItem {
 
     let body_input;
     let brace_token = braced!(body_input in input);
-    let body = Punctuated::parse_terminated(&body_input)?;
+    let body = body_input.parse()?;
 
     Ok(Self {
       if_token,
@@ -349,7 +587,7 @@ pub enum ElseTailItem {
 
   Else {
     brace_token: Brace,
-    body: Punctuated<ScopeInstrItem, Token![;]>,
+    body: ScopeInstrItems,
   },
 }
 
@@ -363,7 +601,7 @@ impl Parse for ElseTailItem {
     } else {
       let body_input;
       let brace_token = braced!(body_input in input);
-      let body = Punctuated::parse_terminated(&body_input)?;
+      let body = body_input.parse()?;
 
       ElseTailItem::Else { brace_token, body }
     };
@@ -378,7 +616,7 @@ pub struct WhileItem {
   paren_token: Paren,
   cond_expr: Expr,
   brace_token: Brace,
-  body: Punctuated<ScopeInstrItem, Token![;]>,
+  body: ScopeInstrItems,
 }
 
 impl Parse for WhileItem {
@@ -391,7 +629,7 @@ impl Parse for WhileItem {
 
     let body_input;
     let brace_token = braced!(body_input in input);
-    let body = Punctuated::parse_terminated(&body_input)?;
+    let body = body_input.parse()?;
 
     Ok(Self {
       while_token,
