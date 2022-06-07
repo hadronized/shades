@@ -3,18 +3,18 @@ use syn::{
   parse::Parse,
   punctuated::Punctuated,
   token::{Brace, Paren},
-  Expr, ExprAssign, ExprAssignOp, FnArg, Ident, Token, Type,
+  Expr, ExprAssign, ExprAssignOp, Ident, Token, Type,
 };
 
 /// A stage declaration with its environment.
 #[derive(Debug)]
 pub struct StageDecl {
   left_or: Token![|],
-  input: Ident,
+  input: FnArgItem,
   comma_input_token: Token![,],
-  output: Ident,
+  output: FnArgItem,
   comma_output_token: Token![,],
-  env: Ident,
+  env: FnArgItem,
   right_or: Token![|],
   brace_token: Brace,
   stage_item: StageItem,
@@ -114,11 +114,35 @@ impl Parse for ConstItem {
 }
 
 #[derive(Debug)]
+pub struct FnArgItem {
+  ident: Ident,
+  colon_token: Token![:],
+  pound_token: Option<Token![#]>,
+  ty: Type,
+}
+
+impl Parse for FnArgItem {
+  fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+    let ident = input.parse()?;
+    let colon_token = input.parse()?;
+    let pound_token = input.parse()?;
+    let ty = input.parse()?;
+
+    Ok(Self {
+      ident,
+      colon_token,
+      pound_token,
+      ty,
+    })
+  }
+}
+
+#[derive(Debug)]
 pub struct FunDefItem {
   fn_token: Token![fn],
   name: Ident,
   paren_token: Paren,
-  args: Punctuated<FnArg, Token![,]>,
+  args: Punctuated<FnArgItem, Token![,]>,
   arrow_token: Token![->],
   ret_ty: Type,
   brace_token: Brace,
