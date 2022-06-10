@@ -322,9 +322,6 @@ impl Parse for ScopeInstrItems {
       } else if lookahead.peek(Token![if]) {
         let v = input.parse()?;
         ScopeInstrItem::If(v)
-      } else if lookahead.peek(Token![else]) {
-        let v = input.parse()?;
-        ScopeInstrItem::If(v)
       } else {
         break;
       };
@@ -343,7 +340,6 @@ pub enum ScopeInstrItem {
   Continue(ContinueItem),
   Break(BreakItem),
   If(IfItem),
-  Else(ElseTailItem),
   // For(ForItem), // TODO
   While(WhileItem),
   // MutateVar(MutateVarItem),
@@ -389,17 +385,18 @@ impl ToTokens for ScopeInstrItem {
       }
 
       ScopeInstrItem::If(if_item) => {
-        let cond = &if_item.cond_expr;
-        let body = &if_item.body;
-        quote! {
-          __scope.when(#cond, |__scope| {
-            #body
-          }|);
-        }
+        quote! { #if_item }
       }
 
-      ScopeInstrItem::Else(_) => todo!(),
-      ScopeInstrItem::While(_) => todo!(),
+      ScopeInstrItem::While(while_item) => {
+        let cond = &while_item.cond_expr;
+        let body = &while_item.body;
+        quote! {
+          __scope.loop_while(#cond, |__scope| {
+            #body
+          })
+        }
+      }
     };
 
     q.to_tokens(tokens);
@@ -423,9 +420,6 @@ impl Parse for ScopeInstrItem {
       let v = input.parse()?;
       ScopeInstrItem::Break(v)
     } else if lookahead.peek(Token![if]) {
-      let v = input.parse()?;
-      ScopeInstrItem::If(v)
-    } else if lookahead.peek(Token![else]) {
       let v = input.parse()?;
       ScopeInstrItem::If(v)
     } else {
@@ -539,6 +533,58 @@ pub struct IfItem {
   cond_expr: Expr,
   brace_token: Brace,
   body: ScopeInstrItems,
+  else_item: Option<ElseItem>,
+}
+
+impl IfItem {
+  fn to_tokens_as_part_of_else(&self, tokens: &mut proc_macro2::TokenStream) {
+    let cond = &self.cond_expr;
+    let body = &self.body;
+
+    let q = quote! {
+      .or_else(#cond, |__scope| {
+        #body
+      })
+    };
+
+    q.to_tokens(tokens);
+
+    match self.else_item {
+      Some(ref else_item) => {
+        let else_tail = &else_item.else_tail;
+        quote! { #else_tail }.to_tokens(tokens);
+      }
+
+      None => {
+        quote! { ; }.to_tokens(tokens);
+      }
+    }
+  }
+}
+
+impl ToTokens for IfItem {
+  fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+    let cond = &self.cond_expr;
+    let body = &self.body;
+
+    let q = quote! {
+    __scope.when(#cond, |__scope| {
+      #body
+    }) };
+
+    q.to_tokens(tokens);
+
+    match self.else_item {
+      Some(ref else_item) => {
+        let else_tail = &else_item.else_tail;
+        quote! { #else_tail }.to_tokens(tokens);
+      }
+
+      None => {
+        quote! { ; }.to_tokens(tokens);
+      }
+    }
+  }
 }
 
 impl Parse for IfItem {
@@ -553,12 +599,19 @@ impl Parse for IfItem {
     let brace_token = braced!(body_input in input);
     let body = body_input.parse()?;
 
+    let else_item = if input.lookahead1().peek(Token![else]) {
+      Some(input.parse()?)
+    } else {
+      None
+    };
+
     Ok(Self {
       if_token,
       paren_token,
       cond_expr,
       brace_token,
       body,
+      else_item,
     })
   }
 }
@@ -583,12 +636,30 @@ impl Parse for ElseItem {
 
 #[derive(Debug)]
 pub enum ElseTailItem {
-  If(IfItem),
+  If(Box<IfItem>),
 
   Else {
     brace_token: Brace,
     body: ScopeInstrItems,
   },
+}
+
+impl ToTokens for ElseTailItem {
+  fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+    match self {
+      ElseTailItem::If(if_item) => {
+        if_item.to_tokens_as_part_of_else(tokens);
+      }
+
+      ElseTailItem::Else { body, .. } => {
+        let q = quote! {
+          .or(|__scope| { #body });
+        };
+
+        q.to_tokens(tokens);
+      }
+    }
+  }
 }
 
 impl Parse for ElseTailItem {

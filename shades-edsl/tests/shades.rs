@@ -16,11 +16,13 @@ fn test_shades() {
     const PI: f32 = std::f32::consts::PI;
 
     fn add(a: i32, b: i32) -> i32 {
-      if (a < 10) {
+      if (a < 1) {
         return a;
+      } else if (b < 10) {
+        return a + b;
+      } else {
+        return 10;
       }
-
-      return a + b;
     }
 
     fn foo(test: #Test) -> () {
