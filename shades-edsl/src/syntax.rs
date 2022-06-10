@@ -5,6 +5,7 @@ use syn::{
   parse_quote,
   punctuated::Punctuated,
   token::{Brace, Paren, Pound},
+  visit_mut::VisitMut,
   Expr, ExprAssign, ExprAssignOp, Ident, Token, Type,
 };
 
@@ -21,6 +22,14 @@ pub struct StageDecl {
   right_or: Token![|],
   brace_token: Brace,
   stage_item: StageItem,
+}
+
+impl StageDecl {
+  pub fn mutate(&mut self) {
+    for item in &mut self.stage_item.glob_decl {
+      item.mutate();
+    }
+  }
 }
 
 impl ToTokens for StageDecl {
@@ -125,6 +134,17 @@ pub enum ShaderDeclItem {
   FunDef(FunDefItem),
 }
 
+impl ShaderDeclItem {
+  fn mutate(&mut self) {
+    match self {
+      ShaderDeclItem::Const(const_item) => const_item.mutate(),
+      ShaderDeclItem::FunDef(_) => {
+        // TODO
+      }
+    }
+  }
+}
+
 impl ToTokens for ShaderDeclItem {
   fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
     let q = match self {
@@ -147,13 +167,19 @@ pub struct ConstItem {
   semi_token: Token![;],
 }
 
+impl ConstItem {
+  fn mutate(&mut self) {
+    ExprVisitor.visit_expr_mut(&mut self.expr);
+  }
+}
+
 impl ToTokens for ConstItem {
   fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
     let ident = &self.ident;
     let ty = &self.ty;
     let expr = &self.expr;
     let q = quote! {
-      let #ident: shades::expr::Expr<#ty> = __builder.constant(shades::expr::Expl::lit(#expr));
+      let #ident: shades::expr::Expr<#ty> = __builder.constant(#expr);
     };
 
     q.to_tokens(tokens);
@@ -716,4 +742,85 @@ impl Parse for WhileItem {
 pub enum MutateVarItem {
   Assign(ExprAssign),
   AssignOp(ExprAssignOp),
+}
+
+/// A visitor that mutates expressions / literals so that we can wrap them in Expr. If the expression is already in
+/// shades::expr::Expr, the expression is left unchanged.
+struct ExprVisitor;
+
+impl VisitMut for ExprVisitor {
+  fn visit_expr_mut(&mut self, i: &mut Expr) {
+    match i {
+      Expr::Array(a) => {
+        for expr in &mut a.elems {
+          self.visit_expr_mut(expr);
+        }
+      }
+
+      Expr::Assign(a) => {
+        self.visit_expr_mut(&mut a.right);
+      }
+
+      Expr::AssignOp(a) => {
+        self.visit_expr_mut(&mut a.right);
+      }
+
+      Expr::Binary(b) => {
+        self.visit_expr_mut(&mut b.left);
+        self.visit_expr_mut(&mut b.right);
+      }
+
+      Expr::Block(b) => {
+        for stmt in &mut b.block.stmts {
+          match stmt {
+            syn::Stmt::Expr(expr) | syn::Stmt::Semi(expr, _) => {
+              self.visit_expr_mut(expr);
+            }
+
+            _ => (),
+          }
+        }
+      }
+
+      Expr::Box(e) => {
+        self.visit_expr_mut(&mut e.expr);
+      }
+
+      Expr::Call(c) => {
+        for arg in &mut c.args {
+          self.visit_expr_mut(arg);
+        }
+      }
+
+      Expr::Cast(c) => {
+        self.visit_expr_mut(&mut c.expr);
+      }
+
+      Expr::Lit(_) => {
+        *i = parse_quote!( shades::expr::Expr::from(#i) );
+      }
+
+      Expr::MethodCall(c) => {
+        for arg in &mut c.args {
+          self.visit_expr_mut(arg);
+        }
+      }
+
+      Expr::Paren(p) => {
+        self.visit_expr_mut(&mut p.expr);
+      }
+
+      Expr::Return(r) => {
+        if let Some(ref mut expr) = r.expr {
+          self.visit_expr_mut(expr);
+        }
+      }
+
+      Expr::Unary(u) => {
+        self.visit_expr_mut(&mut u.expr);
+      }
+
+      _ => (),
+    }
+  }
 }

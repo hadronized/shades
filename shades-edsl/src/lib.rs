@@ -10,7 +10,8 @@ use crate::syntax::StageDecl;
 
 #[proc_macro]
 pub fn shades(tokens: TokenStream) -> TokenStream {
-  let stage = parse_macro_input!(tokens as StageDecl);
+  let mut stage = parse_macro_input!(tokens as StageDecl);
+  stage.mutate();
   panic!("{}", stage.into_token_stream().to_string());
 }
 
