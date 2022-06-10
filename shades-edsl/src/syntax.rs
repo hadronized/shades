@@ -35,22 +35,21 @@ impl StageDecl {
 impl ToTokens for StageDecl {
   fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
     let stage_ty = self.stage_ty.to_string();
+    let input = FnArgItem {
+      pound_token: Some(Pound::default()),
+      ..self.input.clone()
+    };
+    let output = FnArgItem {
+      pound_token: Some(Pound::default()),
+      ..self.output.clone()
+    };
+    // TODO: env
+    let stage = &self.stage_item;
 
     let q = match stage_ty.as_str() {
       "vertex" => {
-        let input = FnArgItem {
-          pound_token: Some(Pound::default()),
-          ..self.input.clone()
-        };
-        let output = FnArgItem {
-          pound_token: Some(Pound::default()),
-          ..self.output.clone()
-        };
-        // TODO: env
-        let stage = &self.stage_item;
-
         quote! {
-          shades::stage::StageBuilder::new(|mut __builder, #input, #output| {
+          shades::stage::StageBuilder::new_vertex_shader(|mut __builder, #input, #output| {
             #stage
           })
         }
