@@ -55,7 +55,7 @@ impl ToTokens for StageDecl {
         }
       }
 
-      stage => quote! { compile_error(format!("{stage} is not a valid stage type")) },
+      stage => quote! { compile_error(format!("{} is not a valid stage type", #stage)) },
     };
 
     q.to_tokens(tokens);
