@@ -926,4 +926,15 @@ mod test {
       }
     );
   }
+
+  #[test]
+  fn while_loop_if() {
+    let mut scope: Scope<Expr<i32>> = Scope::new(0);
+
+    scope.loop_while(lit!(1).lt(lit!(2)), |scope| {
+      scope
+        .when(lit!(1).lt(lit!(2)), |scope| scope.loop_break())
+        .or(|scope| scope.loop_break());
+    });
+  }
 }
