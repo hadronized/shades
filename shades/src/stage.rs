@@ -428,7 +428,7 @@ where
   /// # s.main_fun(|s: &mut Scope<()>| {})
   /// # });
   /// ```
-  pub fn constant<T>(&mut self, expr: impl Into<Expr<T>>) -> Expr<T>
+  pub fn constant<T>(&mut self, expr: Expr<T>) -> Expr<T>
   where
     T: ToType,
   {
@@ -437,7 +437,7 @@ where
 
     self
       .decls
-      .push(ShaderDecl::Const(handle, T::ty(), expr.into().erased));
+      .push(ShaderDecl::Const(handle, T::ty(), expr.erased));
 
     Expr::new(ErasedExpr::Var(ScopedHandle::global(handle)))
   }

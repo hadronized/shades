@@ -100,6 +100,14 @@ pub struct StageItem {
   glob_decl: Vec<ShaderDeclItem>,
 }
 
+impl StageItem {
+  fn mutate(&mut self) {
+    for decl in &mut self.glob_decl {
+      decl.mutate();
+    }
+  }
+}
+
 impl ToTokens for StageItem {
   fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
     let glob_decl = self.glob_decl.iter();
@@ -137,9 +145,7 @@ impl ShaderDeclItem {
   fn mutate(&mut self) {
     match self {
       ShaderDeclItem::Const(const_item) => const_item.mutate(),
-      ShaderDeclItem::FunDef(_) => {
-        // TODO
-      }
+      ShaderDeclItem::FunDef(fun_def_item) => fun_def_item.mutate(),
     }
   }
 }
@@ -168,6 +174,7 @@ pub struct ConstItem {
 
 impl ConstItem {
   fn mutate(&mut self) {
+    ExprVisitor.visit_type_mut(&mut self.ty);
     ExprVisitor.visit_expr_mut(&mut self.expr);
   }
 }
@@ -178,7 +185,7 @@ impl ToTokens for ConstItem {
     let ty = &self.ty;
     let expr = &self.expr;
     let q = quote! {
-      let #ident: shades::expr::Expr<#ty> = __builder.constant(#expr);
+      let #ident: #ty = __builder.constant(#expr);
     };
 
     q.to_tokens(tokens);
@@ -215,17 +222,19 @@ pub struct FnArgItem {
   ty: Type,
 }
 
+impl FnArgItem {
+  fn mutate(&mut self) {
+    if self.pound_token.is_none() {
+      // if we don’t have a #ty but just ty, we lift the type in Expr<#ty>
+      ExprVisitor.visit_type_mut(&mut self.ty);
+    };
+  }
+}
+
 impl ToTokens for FnArgItem {
   fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
     let ident = &self.ident;
-    let ty = if self.pound_token.is_some() {
-      // if we have a #ty, we do not lift the type and use it as verbatim
-      self.ty.clone()
-    } else {
-      // if we don’t have a #ty but just ty, we lift the type in Expr<#ty>
-      let ty = &self.ty;
-      parse_quote! { shades::expr::Expr<#ty> }
-    };
+    let ty = &self.ty;
     let q = quote! {
       #ident: #ty
     };
@@ -262,11 +271,22 @@ pub struct FunDefItem {
   body: ScopeInstrItems,
 }
 
+impl FunDefItem {
+  fn mutate(&mut self) {
+    for arg in self.args.iter_mut() {
+      arg.mutate();
+    }
+
+    self.body.mutate();
+  }
+}
+
 impl ToTokens for FunDefItem {
   fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
     let name = &self.name;
     let args = self.args.iter();
-    // let ret_ty = &self.ret_ty;
+    let args_ty = self.args.iter().map(|arg| &arg.ty);
+    let ret_ty = &self.ret_ty;
     let body = &self.body;
 
     let q = if name.to_string() == "main" {
@@ -275,7 +295,7 @@ impl ToTokens for FunDefItem {
       }
     } else {
       quote! {
-       let #name = __builder.fun(|__scope: shades::scope::Scope<()>, #(#args),*| { #body });
+       let #name: shades::fun::FunHandle<#ret_ty, (#(#args_ty),*)> = __builder.fun(|__scope: shades::scope::Scope<()>, #(#args),*| { #body });
       }
     };
 
@@ -315,6 +335,14 @@ impl Parse for FunDefItem {
 #[derive(Debug)]
 pub struct ScopeInstrItems {
   items: Vec<ScopeInstrItem>,
+}
+
+impl ScopeInstrItems {
+  fn mutate(&mut self) {
+    for item in &mut self.items {
+      item.mutate();
+    }
+  }
 }
 
 impl ToTokens for ScopeInstrItems {
@@ -370,6 +398,18 @@ pub enum ScopeInstrItem {
   // MutateVar(MutateVarItem),
 }
 
+impl ScopeInstrItem {
+  fn mutate(&mut self) {
+    match self {
+      ScopeInstrItem::VarDecl(var_decl) => var_decl.mutate(),
+      ScopeInstrItem::Return(ret) => ret.mutate(),
+      ScopeInstrItem::If(if_) => if_.mutate(),
+      ScopeInstrItem::While(while_) => while_.mutate(),
+      _ => (),
+    }
+  }
+}
+
 impl ToTokens for ScopeInstrItem {
   fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
     let q = match self {
@@ -380,7 +420,7 @@ impl ToTokens for ScopeInstrItem {
 
         if let Some((_, ty)) = &decl.ty {
           quote! {
-            let #name: shades::var::Var<#ty> = __scope.var(shades::expr::Expr::from(#expr));
+            let #name: #ty = __scope.var(shades::expr::Expr::from(#expr));
           }
         } else {
           quote! {
@@ -393,7 +433,8 @@ impl ToTokens for ScopeInstrItem {
         let expr = &ret.expr;
 
         quote! {
-          __scope.leave(shades::expr::Expr::from(#expr));
+          use shades::scope::CanEscape as _;
+          __scope.leave(#expr);
         }
       }
 
@@ -468,6 +509,16 @@ pub struct VarDeclItem {
   semi_token: Token![;],
 }
 
+impl VarDeclItem {
+  fn mutate(&mut self) {
+    if let Some((_, ref mut ty)) = self.ty {
+      ExprVisitor.visit_type_mut(ty);
+    }
+
+    ExprVisitor.visit_expr_mut(&mut self.expr);
+  }
+}
+
 impl Parse for VarDeclItem {
   fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
     let let_token = input.parse()?;
@@ -501,6 +552,12 @@ pub struct ReturnItem {
   return_token: Option<Token![return]>,
   expr: Expr,
   semi_token: Token![;],
+}
+
+impl ReturnItem {
+  fn mutate(&mut self) {
+    ExprVisitor.visit_expr_mut(&mut self.expr);
+  }
 }
 
 impl Parse for ReturnItem {
@@ -559,6 +616,18 @@ pub struct IfItem {
   brace_token: Brace,
   body: ScopeInstrItems,
   else_item: Option<ElseItem>,
+}
+
+impl IfItem {
+  fn mutate(&mut self) {
+    ExprVisitor.visit_expr_mut(&mut self.cond_expr);
+
+    self.body.mutate();
+
+    if let Some(ref mut else_item) = self.else_item {
+      else_item.mutate();
+    }
+  }
 }
 
 impl IfItem {
@@ -647,6 +716,12 @@ pub struct ElseItem {
   else_tail: ElseTailItem,
 }
 
+impl ElseItem {
+  fn mutate(&mut self) {
+    self.else_tail.mutate();
+  }
+}
+
 impl Parse for ElseItem {
   fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
     let else_token = input.parse()?;
@@ -667,6 +742,15 @@ pub enum ElseTailItem {
     brace_token: Brace,
     body: ScopeInstrItems,
   },
+}
+
+impl ElseTailItem {
+  fn mutate(&mut self) {
+    match self {
+      ElseTailItem::If(if_item) => if_item.mutate(),
+      ElseTailItem::Else { body, .. } => body.mutate(),
+    }
+  }
 }
 
 impl ToTokens for ElseTailItem {
@@ -715,6 +799,13 @@ pub struct WhileItem {
   body: ScopeInstrItems,
 }
 
+impl WhileItem {
+  fn mutate(&mut self) {
+    ExprVisitor.visit_expr_mut(&mut self.cond_expr);
+    self.body.mutate();
+  }
+}
+
 impl Parse for WhileItem {
   fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
     let while_token = input.parse()?;
@@ -743,12 +834,23 @@ pub enum MutateVarItem {
   AssignOp(ExprAssignOp),
 }
 
+impl MutateVarItem {
+  fn mutate(&mut self) {
+    todo!()
+  }
+}
+
 /// A visitor that mutates expressions / literals so that we can wrap them in Expr. If the expression is already in
 /// shades::expr::Expr, the expression is left unchanged.
 struct ExprVisitor;
 
 impl VisitMut for ExprVisitor {
+  fn visit_type_mut(&mut self, ty: &mut Type) {
+    *ty = parse_quote! { shades::expr::Expr<#ty> };
+  }
+
   fn visit_expr_mut(&mut self, i: &mut Expr) {
+    return;
     match i {
       Expr::Array(a) => {
         for expr in &mut a.elems {
@@ -795,8 +897,8 @@ impl VisitMut for ExprVisitor {
         self.visit_expr_mut(&mut c.expr);
       }
 
-      Expr::Lit(_) => {
-        *i = parse_quote!( shades::expr::Expr::from(#i) );
+      Expr::Lit(l) => {
+        *i = parse_quote! { shades::expr::Expr::lit(#i) };
       }
 
       Expr::MethodCall(c) => {
@@ -817,6 +919,11 @@ impl VisitMut for ExprVisitor {
 
       Expr::Unary(u) => {
         self.visit_expr_mut(&mut u.expr);
+      }
+
+      Expr::Path(p) => {
+        let e = parse_quote! { shades::expr::Expr::from(#p) };
+        *i = e;
       }
 
       _ => (),
