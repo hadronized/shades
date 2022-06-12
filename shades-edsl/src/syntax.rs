@@ -897,7 +897,7 @@ impl VisitMut for ExprVisitor {
         self.visit_expr_mut(&mut c.expr);
       }
 
-      Expr::Lit(l) => {
+      Expr::Lit(_) => {
         *i = parse_quote! { shades::expr::Expr::lit(#i) };
       }
 
