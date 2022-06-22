@@ -1300,7 +1300,13 @@ mod test {
   fn lit() {
     assert_eq!(lit!(true).erased, ErasedExpr::LitBool(true));
     assert_eq!(lit![1, 2].erased, ErasedExpr::LitInt2([1, 2]));
-    assert_eq!((lit!(1.) + lit!(2.)).erased, ErasedExpr::LitBool(true));
+    assert_eq!(
+      (lit!(1.) + lit!(2.)).erased,
+      ErasedExpr::Add(
+        Box::new(ErasedExpr::LitFloat(1.)),
+        Box::new(ErasedExpr::LitFloat(2.)),
+      )
+    );
   }
 
   #[test]
