@@ -1,5 +1,6 @@
 use crate::{
   builtin::BuiltIn,
+  erased::Erased,
   expr::{ErasedExpr, Expr},
   fun::{ErasedReturn, Return},
   types::{ToType, Type},
@@ -50,11 +51,6 @@ where
       erased: ErasedScope::new(id),
       _phantom: PhantomData,
     }
-  }
-
-  /// Create a new fresh scope under the current scope.
-  fn deeper(&self) -> Self {
-    Scope::new(self.erased.id + 1)
   }
 
   /// Bind an expression to a variable in the current scope.
@@ -225,39 +221,6 @@ where
       expr: value.into().erased,
     });
   }
-}
-
-/// A special kind of [`Scope`] that can also escape expressions out of its parent scope.
-#[derive(Debug)]
-pub struct EscapeScope<R>(Scope<R>);
-
-impl<R> From<EscapeScope<R>> for Scope<R> {
-  fn from(s: EscapeScope<R>) -> Self {
-    s.0
-  }
-}
-
-impl<R> Deref for EscapeScope<R> {
-  type Target = Scope<R>;
-
-  fn deref(&self) -> &Self::Target {
-    &self.0
-  }
-}
-
-impl<R> DerefMut for EscapeScope<R> {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.0
-  }
-}
-
-impl<R> EscapeScope<R>
-where
-  Return: From<R>,
-{
-  fn new(s: Scope<R>) -> Self {
-    Self(s)
-  }
 
   /// Early-return the current function with an expression.
   ///
@@ -266,7 +229,7 @@ where
   /// ```
   /// # use shades::StageBuilder;
   /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// use shades::{CanEscape as _, Expr, Scope};
+  /// use shades::{Expr, Scope};
   ///
   /// let _fun = s.fun(|s: &mut Scope<Expr<i32>>, arg: Expr<i32>| {
   ///   // if arg is less than 10, early-return with 0
@@ -289,7 +252,7 @@ where
   }
 }
 
-impl EscapeScope<()> {
+impl Scope<()> {
   /// Early-abort the current function.
   ///
   /// # Examples
@@ -320,18 +283,30 @@ impl EscapeScope<()> {
   }
 }
 
-/// A special kind of [`EscapeScope`] that can also break loops.
+impl<R> Erased for Scope<R> {
+  type Erased = ErasedScope;
+
+  fn erased(&self) -> &Self::Erased {
+    &self.erased
+  }
+
+  fn erased_mut(&mut self) -> &mut Self::Erased {
+    &mut self.erased
+  }
+}
+
+/// A special kind of [`Scope`] that can also break loops.
 #[derive(Debug)]
-pub struct LoopScope<R>(EscapeScope<R>);
+pub struct LoopScope<R>(Scope<R>);
 
 impl<R> From<LoopScope<R>> for Scope<R> {
   fn from(s: LoopScope<R>) -> Self {
-    s.0.into()
+    s.0
   }
 }
 
 impl<R> Deref for LoopScope<R> {
-  type Target = EscapeScope<R>;
+  type Target = Scope<R>;
 
   fn deref(&self) -> &Self::Target {
     &self.0
@@ -349,7 +324,7 @@ where
   Return: From<R>,
 {
   fn new(s: Scope<R>) -> Self {
-    Self(EscapeScope::new(s))
+    Self(s)
   }
 
   /// Break the current iteration of the nearest loop and continue to the next iteration.
@@ -393,7 +368,19 @@ where
   }
 }
 
-#[derive(Debug, PartialEq)]
+impl<R> Erased for LoopScope<R> {
+  type Erased = ErasedScope;
+
+  fn erased(&self) -> &Self::Erased {
+    &self.erased
+  }
+
+  fn erased_mut(&mut self) -> &mut Self::Erased {
+    &mut self.erased
+  }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct ErasedScope {
   id: u16,
   pub(crate) instructions: Vec<ScopeInstr>,
@@ -410,16 +397,34 @@ impl ErasedScope {
   }
 }
 
-/// Scopes allowing to enter conditional scopes.
-///
-/// Conditional scopes allow to break out of a function by early-return / aborting the function.
-pub trait CanEscape<R>
+/// Go one level deeper in the scope.
+pub trait DeepScope {
+  /// Create a new fresh scope under the current scope.
+  fn deeper(&self) -> Self;
+}
+
+impl<R> DeepScope for Scope<R>
 where
   Return: From<R>,
 {
-  /// Scope type inside the scope of the conditional.
-  type InnerScope;
+  fn deeper(&self) -> Self {
+    Scope::new(self.erased.id + 1)
+  }
+}
 
+impl<R> DeepScope for LoopScope<R>
+where
+  Return: From<R>,
+{
+  fn deeper(&self) -> Self {
+    LoopScope(self.0.deeper())
+  }
+}
+
+/// Scopes allowing to enter conditional scopes.
+///
+/// Conditional scopes allow to break out of a function by early-return / aborting the function.
+pub trait CanEscape: Sized {
   /// Conditional statement — `if`.
   ///
   /// `s.when(cond, |s: &mut EscapeScope<R>| { /* body */ })` inserts a conditional branch in the EDSL using the `cond`
@@ -480,8 +485,8 @@ where
   fn when<'a>(
     &'a mut self,
     condition: impl Into<Expr<bool>>,
-    body: impl FnOnce(&mut Self::InnerScope),
-  ) -> When<'a, R>;
+    body: impl FnOnce(&mut Self),
+  ) -> When<'a, Self>;
 
   /// Complement form of [`Scope::when`].
   ///
@@ -490,52 +495,27 @@ where
   fn unless<'a>(
     &'a mut self,
     condition: impl Into<Expr<bool>>,
-    body: impl FnOnce(&mut Self::InnerScope),
-  ) -> When<'a, R> {
+    body: impl FnOnce(&mut Self),
+  ) -> When<'a, Self> {
     self.when(!condition.into(), body)
   }
 }
 
-impl<R> CanEscape<R> for Scope<R>
+impl<S> CanEscape for S
 where
-  Return: From<R>,
+  S: DeepScope + Erased<Erased = ErasedScope>,
 {
-  type InnerScope = EscapeScope<R>;
-
   fn when<'a>(
     &'a mut self,
     condition: impl Into<Expr<bool>>,
-    body: impl FnOnce(&mut Self::InnerScope),
-  ) -> When<'a, R> {
-    let mut scope = EscapeScope::new(self.deeper());
+    body: impl FnOnce(&mut Self),
+  ) -> When<'a, Self> {
+    let mut scope = self.deeper();
     body(&mut scope);
 
-    self.erased.instructions.push(ScopeInstr::If {
+    self.erased_mut().instructions.push(ScopeInstr::If {
       condition: condition.into().erased,
-      scope: Scope::from(scope).erased,
-    });
-
-    When { parent_scope: self }
-  }
-}
-
-impl<R> CanEscape<R> for LoopScope<R>
-where
-  Return: From<R>,
-{
-  type InnerScope = LoopScope<R>;
-
-  fn when<'a>(
-    &'a mut self,
-    condition: impl Into<Expr<bool>>,
-    body: impl FnOnce(&mut Self::InnerScope),
-  ) -> When<'a, R> {
-    let mut scope = LoopScope::new(self.deeper());
-    body(&mut scope);
-
-    self.erased.instructions.push(ScopeInstr::If {
-      condition: condition.into().erased,
-      scope: Scope::from(scope).erased,
+      scope: scope.erased().clone(),
     });
 
     When { parent_scope: self }
@@ -544,20 +524,20 @@ where
 
 /// Conditional combinator.
 ///
-/// A [`When<R>`] is returned from functions such as [`CanEscape::when`] or [`CanEscape::unless`] and allows to continue
-/// chaining conditional statements, encoding the concept of `else if` and `else` in more traditional languages.
+/// A [`When<S, R>`] is returned from functions such as [`CanEscape::when`] or [`CanEscape::unless`] and allows to
+/// continue chaining conditional statements, encoding the concept of `else if` and `else` in more traditional languages.
 #[derive(Debug)]
-pub struct When<'a, R> {
+pub struct When<'a, S> {
   /// The scope from which this [`When`] expression comes from.
   ///
   /// This will be handy if we want to chain this when with others (corresponding to `else if` and `else`, for
   /// instance).
-  parent_scope: &'a mut Scope<R>,
+  parent_scope: &'a mut S,
 }
 
-impl<R> When<'_, R>
+impl<S> When<'_, S>
 where
-  Return: From<R>,
+  S: DeepScope + Erased<Erased = ErasedScope>,
 {
   /// Add a conditional branch — `else if`.
   ///
@@ -587,21 +567,17 @@ where
   /// #   })
   /// # });
   /// ```
-  pub fn or_else(
-    self,
-    condition: impl Into<Expr<bool>>,
-    body: impl FnOnce(&mut EscapeScope<R>),
-  ) -> Self {
-    let mut scope = EscapeScope::new(self.parent_scope.deeper());
+  pub fn or_else(self, condition: impl Into<Expr<bool>>, body: impl FnOnce(&mut S)) -> Self {
+    let mut scope = self.parent_scope.deeper();
     body(&mut scope);
 
     self
       .parent_scope
-      .erased
+      .erased_mut()
       .instructions
       .push(ScopeInstr::ElseIf {
         condition: condition.into().erased,
-        scope: Scope::from(scope).erased,
+        scope: scope.erased().clone(),
       });
 
     self
@@ -655,16 +631,16 @@ where
   /// #   })
   /// # });
   /// ```
-  pub fn or(self, body: impl FnOnce(&mut EscapeScope<R>)) {
-    let mut scope = EscapeScope::new(self.parent_scope.deeper());
+  pub fn or(self, body: impl FnOnce(&mut S)) {
+    let mut scope = self.parent_scope.deeper();
     body(&mut scope);
 
     self
       .parent_scope
-      .erased
+      .erased_mut()
       .instructions
       .push(ScopeInstr::Else {
-        scope: Scope::from(scope).erased,
+        scope: scope.erased().clone(),
       });
   }
 }
@@ -714,7 +690,7 @@ impl ScopedHandle {
   }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ScopeInstr {
   VarDecl {
     ty: Type,

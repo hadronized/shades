@@ -110,6 +110,7 @@
 
 pub mod builtin;
 pub mod env;
+pub mod erased;
 pub mod expr;
 pub mod fun;
 pub mod input;
