@@ -13,7 +13,7 @@ pub trait Inputs {
   type In;
 
   fn input() -> Self::In;
-  fn input_set() -> Vec<(usize, Type)>;
+  fn input_set() -> Vec<(u16, Type)>;
 }
 
 impl Inputs for () {
@@ -23,7 +23,7 @@ impl Inputs for () {
     ()
   }
 
-  fn input_set() -> Vec<(usize, Type)> {
+  fn input_set() -> Vec<(u16, Type)> {
     Vec::new()
   }
 }

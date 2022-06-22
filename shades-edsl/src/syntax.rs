@@ -35,12 +35,17 @@ impl StageDecl {
 impl ToTokens for StageDecl {
   fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
     let stage_ty = self.stage_ty.to_string();
+    let user_in_ty = &self.input.ty;
+    let user_out_ty = &self.output.ty;
+    let user_env_ty = &self.env.ty;
     let input = FnArgItem {
       pound_token: Some(Pound::default()),
+      ty: parse_quote! { shades::input::VertexShaderInputs<<#user_in_ty as shades::input::Inputs>::In> },
       ..self.input.clone()
     };
     let output = FnArgItem {
       pound_token: Some(Pound::default()),
+      ty: parse_quote! { shades::output::VertexShaderOutputs<<#user_out_ty as shades::output::Outputs>::Out> },
       ..self.output.clone()
     };
     // TODO: env
@@ -49,7 +54,7 @@ impl ToTokens for StageDecl {
     let q = match stage_ty.as_str() {
       "vertex" => {
         quote! {
-          shades::stage::StageBuilder::new_vertex_shader(|mut __builder, #input, #output| {
+          shades::stage::StageBuilder::new_vertex_shader(|mut __builder: shades::stage::StageBuilder::<#user_in_ty, #user_out_ty, #user_env_ty>, #input, #output| {
             #stage
           })
         }
@@ -226,7 +231,7 @@ impl FnArgItem {
   fn mutate(&mut self) {
     if self.pound_token.is_none() {
       // if we don’t have a #ty but just ty, we lift the type in Expr<#ty>
-      ExprVisitor.visit_type_mut(&mut self.ty);
+      // ExprVisitor.visit_type_mut(&mut self.ty);
     };
   }
 }
@@ -284,19 +289,74 @@ impl FunDefItem {
 impl ToTokens for FunDefItem {
   fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
     let name = &self.name;
-    let args = self.args.iter();
-    let args_ty = self.args.iter().map(|arg| &arg.ty);
-    let ret_ty = &self.ret_ty;
     let body = &self.body;
 
-    let q = if name.to_string() == "main" {
-      quote! {
-        __builder.main_fun(|__scope: shades::scope::Scope<()>, #(#args),*| { #body });
-      }
-    } else {
-      quote! {
-       let #name: shades::fun::FunHandle<#ret_ty, (#(#args_ty),*)> = __builder.fun(|__scope: shades::scope::Scope<()>, #(#args),*| { #body });
-      }
+    if name.to_string() == "main" {
+      let q = quote! {
+        // scope everything to prevent leaking them out
+        {
+          // function scope
+          let mut __scope: shades::scope::Scope<()> = shades::scope::Scope::new(0);
+
+          // roll down the statements
+          #body
+
+          // create the function definition
+          use shades::erased::Erased as _;
+          let erased = shades::fun::ErasedFun::new(Vec::new(), None, __scope.to_erased());
+          let fundef = shades::fun::FunDef::<(), ()>::new(erased);
+          __builder.main_fun(fundef)
+        }
+      };
+
+      q.to_tokens(tokens);
+      return;
+    }
+
+    let args_ty = self.args.iter().map(|arg| &arg.ty);
+
+    // function argument types
+    let fn_args_ty = self.args.iter().map(|arg| {
+      let ty = &arg.ty;
+      quote! { <#ty as shades::types::ToType>::ty() }
+    });
+
+    // function argument expression declarations
+    let args_expr_decls = self.args.iter().enumerate().map(|(k, arg)| {
+      let ty = &arg.ty;
+      let ident = &arg.ident;
+      quote! { let #ident: shades::expr::Expr<#ty> = shades::expr::Expr::new_fun_arg(#k as u16); }
+    });
+
+    // function return type
+    let ret_ty = &self.ret_ty;
+    let (quoted_ret_ty, real_ret_ty) = match ret_ty {
+      Type::Tuple(fields) if fields.elems.is_empty() => (quote! { None }, quote! { () }),
+
+      _ => (
+        quote! { Some(<#ret_ty as shades::types::ToType>::ty()) },
+        quote! { shades::expr::Expr<#ret_ty> },
+      ),
+    };
+
+    let q = quote! {
+      // scope everything to prevent leaking them out
+      let #name = {
+        // function scope
+        let mut __scope: shades::scope::Scope<#real_ret_ty> = shades::scope::Scope::new(0);
+
+        // create the function argument expressions so that #body can reference them
+        #(#args_expr_decls)*
+
+        // roll down the statements
+        #body
+
+        // create the function definition
+        use shades::erased::Erased as _;
+        let erased = shades::fun::ErasedFun::new(vec![#(#fn_args_ty),*], #quoted_ret_ty, __scope.to_erased());
+        let fundef = shades::fun::FunDef::<#real_ret_ty, (#(#args_ty),*)>::new(erased);
+        __builder.fun(fundef)
+      };
     };
 
     q.to_tokens(tokens);
@@ -433,7 +493,6 @@ impl ToTokens for ScopeInstrItem {
         let expr = &ret.expr;
 
         quote! {
-          use shades::scope::CanEscape as _;
           __scope.leave(#expr);
         }
       }

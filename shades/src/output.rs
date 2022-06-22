@@ -17,7 +17,7 @@ pub trait Outputs {
 
   fn output() -> Self::Out;
 
-  fn output_set() -> Vec<(usize, Type)>;
+  fn output_set() -> Vec<(u16, Type)>;
 }
 
 impl Outputs for () {
@@ -27,7 +27,7 @@ impl Outputs for () {
     ()
   }
 
-  fn output_set() -> Vec<(usize, Type)> {
+  fn output_set() -> Vec<(u16, Type)> {
     Vec::new()
   }
 }

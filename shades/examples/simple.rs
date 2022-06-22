@@ -2,7 +2,7 @@ use shades::{
   expr::Expr,
   input::Inputs,
   lit,
-  scope::{CanEscape as _, Scope},
+  scope::{Conditional as _, Scope},
   stage::StageBuilder,
   types::{ToType, Type, V2, V3, V4},
   vec4,

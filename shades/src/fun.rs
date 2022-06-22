@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use crate::{
   expr::{ErasedExpr, Expr},
-  scope::{ErasedScope, Scope, ScopedHandle},
+  scope::ErasedScope,
   types::{ToType, Type},
 };
 
@@ -42,127 +42,6 @@ where
     }
   }
 }
-
-/// Function definition injection.
-///
-/// This trait represents _function definition injection_, i.e. types that can provide a function definition — see
-/// [`FunDef`]. Ideally, only a very small number of types can do this: polymorphic types implementing the [`FnOnce`]
-/// trait with different number of arguments. Namely, closures / lambdas with various numbers of arguments.
-///
-/// You are not supposed to implement this type by yourself. Instead, when creating functions in the EDSL, you just have
-/// to pass lambdas to automatically get the proper function definition lifted into the EDSL.
-///
-/// See the [`StageBuilder::fun`] for further information.
-///
-/// # Caveats
-///
-/// This way of doing currently comes with a price: type inference is bad. You will — most of the time — have to
-/// annotate the closure’s arguments. This is currently working on but progress on that matter is slow.
-pub trait ToFun<R, A> {
-  fn build_fn(self) -> FunDef<R, A>;
-}
-
-impl<F, R> ToFun<R, ()> for F
-where
-  Self: FnOnce(&mut Scope<R>) -> R,
-  Return: From<R>,
-{
-  fn build_fn(self) -> FunDef<R, ()> {
-    let mut scope = Scope::new(0);
-    let ret = self(&mut scope);
-
-    let erased = ErasedFun::new(Vec::new(), scope.erased, Return::from(ret).erased);
-
-    FunDef::new(erased)
-  }
-}
-
-macro_rules! impl_ToFun_args {
-  ($($arg:ident , $arg_ident:ident , $arg_rank:expr),*) => {
-    impl<F, R, $($arg),*> ToFun<R, ($(Expr<$arg>),*)> for F
-    where
-      Self: FnOnce(&mut Scope<R>, $(Expr<$arg>),*) -> R,
-      Return: From<R>,
-      $($arg: ToType),*
-    {
-      fn build_fn(self) -> FunDef<R, ($(Expr<$arg>),*)> {
-        $( let $arg_ident = Expr::new(ErasedExpr::Var(ScopedHandle::fun_arg($arg_rank))); )*
-          let args = vec![$( $arg::ty() ),*];
-
-        let mut scope = Scope::new(0);
-        let ret = self(&mut scope, $($arg_ident),*);
-
-        let erased = ErasedFun::new(args, scope.erased, Return::from(ret).erased);
-
-        FunDef::new(erased)
-      }
-    }
-  }
-}
-
-impl<F, R, A> ToFun<R, Expr<A>> for F
-where
-  Self: FnOnce(&mut Scope<R>, Expr<A>) -> R,
-  Return: From<R>,
-  A: ToType,
-{
-  fn build_fn(self) -> FunDef<R, Expr<A>> {
-    let arg = Expr::new(ErasedExpr::Var(ScopedHandle::fun_arg(0)));
-
-    let mut scope = Scope::new(0);
-    let ret = self(&mut scope, arg);
-
-    let erased = ErasedFun::new(vec![A::ty()], scope.erased, Return::from(ret).erased);
-
-    FunDef::new(erased)
-  }
-}
-
-impl_ToFun_args!(A0, a0, 0, A1, a1, 1);
-impl_ToFun_args!(A0, a0, 0, A1, a1, 1, A2, a2, 2);
-impl_ToFun_args!(A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3);
-impl_ToFun_args!(A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4);
-impl_ToFun_args!(A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5);
-impl_ToFun_args!(A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6);
-impl_ToFun_args!(
-  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7
-);
-impl_ToFun_args!(
-  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8, 8
-);
-impl_ToFun_args!(
-  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8,
-  8, A9, a9, 9
-);
-impl_ToFun_args!(
-  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8,
-  8, A9, a9, 9, A10, a10, 10
-);
-impl_ToFun_args!(
-  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8,
-  8, A9, a9, 9, A10, a10, 10, A11, a11, 11
-);
-impl_ToFun_args!(
-  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8,
-  8, A9, a9, 9, A10, a10, 10, A11, a11, 11, A12, a12, 12
-);
-impl_ToFun_args!(
-  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8,
-  8, A9, a9, 9, A10, a10, 10, A11, a11, 11, A12, a12, 12, A13, a13, 13
-);
-impl_ToFun_args!(
-  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8,
-  8, A9, a9, 9, A10, a10, 10, A11, a11, 11, A12, a12, 12, A13, a13, 13, A14, a14, 14
-);
-impl_ToFun_args!(
-  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8,
-  8, A9, a9, 9, A10, a10, 10, A11, a11, 11, A12, a12, 12, A13, a13, 13, A14, a14, 14, A15, a15, 15
-);
-impl_ToFun_args!(
-  A0, a0, 0, A1, a1, 1, A2, a2, 2, A3, a3, 3, A4, a4, 4, A5, a5, 5, A6, a6, 6, A7, a7, 7, A8, a8,
-  8, A9, a9, 9, A10, a10, 10, A11, a11, 11, A12, a12, 12, A13, a13, 13, A14, a14, 14, A15, a15, 15,
-  A16, a16, 16
-);
 
 /// An opaque function handle, used to call user-defined functions.
 ///
@@ -534,7 +413,7 @@ pub struct FunDef<R, A> {
 }
 
 impl<R, A> FunDef<R, A> {
-  fn new(erased: ErasedFun) -> Self {
+  pub fn new(erased: ErasedFun) -> Self {
     Self {
       erased,
       _phantom: PhantomData,
@@ -546,94 +425,16 @@ impl<R, A> FunDef<R, A> {
 #[derive(Debug)]
 pub struct ErasedFun {
   pub(crate) args: Vec<Type>,
+  pub(crate) ret_ty: Option<Type>,
   pub(crate) scope: ErasedScope,
-  pub(crate) ret: ErasedReturn,
 }
 
 impl ErasedFun {
-  fn new(args: Vec<Type>, scope: ErasedScope, ret: ErasedReturn) -> Self {
-    Self { args, scope, ret }
-  }
-}
-
-#[cfg(test)]
-mod test {
-  use super::*;
-  use crate::{
-    lit,
-    scope::ScopeInstr,
-    shader::ShaderDecl,
-    stage::StageBuilder,
-    types::{Dim, PrimType},
-  };
-
-  #[test]
-  fn fun0() {
-    let mut shader = StageBuilder::<(), (), ()>::new();
-    let fun = shader.fun(|s: &mut Scope<()>| {
-      let _x = s.var(3);
-    });
-
-    assert_eq!(fun.erased, ErasedFunHandle::UserDefined(0));
-
-    match shader.decls[0] {
-      ShaderDecl::FunDef(0, ref fun) => {
-        assert_eq!(fun.ret, ErasedReturn::Void);
-        assert_eq!(fun.args, vec![]);
-        assert_eq!(fun.scope.instructions.len(), 1);
-        assert_eq!(
-          fun.scope.instructions[0],
-          ScopeInstr::VarDecl {
-            ty: Type {
-              prim_ty: PrimType::Int(Dim::Scalar),
-              array_dims: Vec::new(),
-            },
-            handle: ScopedHandle::fun_var(0, 0),
-            init_value: ErasedExpr::LitInt(3),
-          }
-        )
-      }
-      _ => panic!("wrong type"),
-    }
-  }
-
-  #[test]
-  fn fun1() {
-    let mut shader = StageBuilder::<(), (), ()>::new();
-    let fun = shader.fun(|f: &mut Scope<Expr<i32>>, _arg: Expr<i32>| {
-      let x = f.var(lit!(3i32));
-      x.into()
-    });
-
-    assert_eq!(fun.erased, ErasedFunHandle::UserDefined(0));
-
-    match shader.decls[0] {
-      ShaderDecl::FunDef(0, ref fun) => {
-        assert_eq!(
-          fun.ret,
-          ErasedReturn::Expr(i32::ty(), ErasedExpr::Var(ScopedHandle::fun_var(0, 0)))
-        );
-        assert_eq!(
-          fun.args,
-          vec![Type {
-            prim_ty: PrimType::Int(Dim::Scalar),
-            array_dims: Vec::new(),
-          }]
-        );
-        assert_eq!(fun.scope.instructions.len(), 1);
-        assert_eq!(
-          fun.scope.instructions[0],
-          ScopeInstr::VarDecl {
-            ty: Type {
-              prim_ty: PrimType::Int(Dim::Scalar),
-              array_dims: Vec::new(),
-            },
-            handle: ScopedHandle::fun_var(0, 0),
-            init_value: ErasedExpr::LitInt(3),
-          }
-        )
-      }
-      _ => panic!("wrong type"),
+  pub fn new(args: Vec<Type>, ret_ty: Option<Type>, scope: ErasedScope) -> Self {
+    Self {
+      args,
+      ret_ty,
+      scope,
     }
   }
 }

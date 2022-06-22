@@ -12,8 +12,8 @@ use crate::syntax::StageDecl;
 pub fn shades(tokens: TokenStream) -> TokenStream {
   let mut stage = parse_macro_input!(tokens as StageDecl);
   stage.mutate();
+
   let ast = stage.into_token_stream();
-  eprintln!("{}", ast.to_string());
   ast.into_token_stream().into()
 }
 

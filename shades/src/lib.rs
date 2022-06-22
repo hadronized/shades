@@ -106,8 +106,6 @@
 //! [rust-gpu]: https://github.com/EmbarkStudios/rust-gpu
 //! [do-notation]: https://crates.io/crates/do-notation
 
-#![cfg_attr(feature = "fun-call", feature(unboxed_closures), feature(fn_traits))]
-
 pub mod builtin;
 pub mod env;
 pub mod erased;

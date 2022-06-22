@@ -76,15 +76,13 @@ fn write_fun_def(f: &mut impl fmt::Write, handle: u16, fun: &ErasedFun) -> Resul
   // just for aesthetics :')
   f.write_str("\n")?;
 
-  let ret_expr = match &fun.ret {
-    ErasedReturn::Void => {
+  match fun.ret_ty {
+    None => {
       f.write_str("void")?;
-      None
     }
 
-    ErasedReturn::Expr(ref ty, expr) => {
+    Some(ref ty) => {
       write_type(f, ty)?;
-      Some(expr)
     }
   };
 
@@ -106,13 +104,6 @@ fn write_fun_def(f: &mut impl fmt::Write, handle: u16, fun: &ErasedFun) -> Resul
   f.write_str(") {\n")?;
 
   write_scope(f, &fun.scope, 1)?;
-
-  if let Some(ref expr) = ret_expr {
-    write_indent(f, 1)?;
-    f.write_str("return ")?;
-    write_expr(f, expr)?;
-    f.write_str(";")?;
-  }
 
   f.write_str("\n}\n")
 }
@@ -252,19 +243,19 @@ fn write_constant(
   f.write_str(";\n")
 }
 
-fn write_input(f: &mut impl fmt::Write, index: usize, ty: &Type) -> Result<(), fmt::Error> {
+fn write_input(f: &mut impl fmt::Write, index: u16, ty: &Type) -> Result<(), fmt::Error> {
   f.write_str("in ")?;
   write_type(f, ty)?;
   write!(f, " in_{};\n", index)
 }
 
-fn write_output(f: &mut impl fmt::Write, index: usize, ty: &Type) -> Result<(), fmt::Error> {
+fn write_output(f: &mut impl fmt::Write, index: u16, ty: &Type) -> Result<(), fmt::Error> {
   f.write_str("out ")?;
   write_type(f, ty)?;
   write!(f, " out_{};\n", index)
 }
 
-fn write_uniform(f: &mut impl fmt::Write, index: usize, ty: &Type) -> Result<(), fmt::Error> {
+fn write_uniform(f: &mut impl fmt::Write, index: u16, ty: &Type) -> Result<(), fmt::Error> {
   f.write_str("uniform ")?;
   write_type(f, ty)?;
   write!(f, " uni_{};\n", index)

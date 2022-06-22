@@ -167,8 +167,13 @@ where
   }
 
   /// Create a new input.
-  pub const fn new_input(handle: usize) -> Self {
+  pub const fn new_input(handle: u16) -> Self {
     Self::new(ErasedExpr::Var(ScopedHandle::Input2(handle)))
+  }
+
+  /// Create a new function argument.
+  pub const fn new_fun_arg(handle: u16) -> Self {
+    Self::new(ErasedExpr::Var(ScopedHandle::FunArg(handle)))
   }
 
   /// Equality expression.

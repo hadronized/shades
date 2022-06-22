@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use crate::{
   env::Environment,
   expr::{ErasedExpr, Expr},
-  fun::{ErasedFunHandle, FunHandle, ToFun},
+  fun::{ErasedFunHandle, FunDef, FunHandle},
   input::{
     FragmentShaderInputs, GeometryShaderInputs, Inputs, TessCtrlShaderInputs, TessEvalShaderInputs,
     VertexShaderInputs,
@@ -361,11 +361,7 @@ where
   ///   })
   /// });
   /// ```
-  pub fn fun<F, R, A>(&mut self, f: F) -> FunHandle<R, A>
-  where
-    F: ToFun<R, A>,
-  {
-    let fundef = f.build_fn();
+  pub fn fun<R, A>(&mut self, fundef: FunDef<R, A>) -> FunHandle<R, A> {
     let handle = self.next_fun_handle;
     self.next_fun_handle += 1;
 
@@ -398,14 +394,8 @@ where
   ///   })
   /// });
   /// ```
-  pub fn main_fun<F, R>(mut self, f: F) -> Stage<I, O, E>
-  where
-    F: ToFun<R, ()>,
-  {
-    let fundef = f.build_fn();
-
+  pub fn main_fun(mut self, fundef: FunDef<(), ()>) -> Stage<I, O, E> {
     self.decls.push(ShaderDecl::Main(fundef.erased));
-
     Stage { builder: self }
   }
 

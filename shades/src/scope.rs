@@ -46,7 +46,7 @@ where
   /// under the scope of ID `p` will get the `p + 1` ID. The reason for this is that variables go out of scope at the
   /// end of the scope they were created in, so it’s safe to reuse the same ID for sibling scopes, as they can’t share
   /// variables.
-  pub(crate) fn new(id: u16) -> Self {
+  pub fn new(id: u16) -> Self {
     Self {
       erased: ErasedScope::new(id),
       _phantom: PhantomData,
@@ -286,6 +286,10 @@ impl Scope<()> {
 impl<R> Erased for Scope<R> {
   type Erased = ErasedScope;
 
+  fn to_erased(self) -> Self::Erased {
+    self.erased
+  }
+
   fn erased(&self) -> &Self::Erased {
     &self.erased
   }
@@ -370,6 +374,10 @@ where
 
 impl<R> Erased for LoopScope<R> {
   type Erased = ErasedScope;
+
+  fn to_erased(self) -> Self::Erased {
+    self.0.erased
+  }
 
   fn erased(&self) -> &Self::Erased {
     &self.erased
@@ -669,7 +677,7 @@ pub enum ScopedHandle {
   Uniform(String),
 
   // new type-sound representation
-  Input2(usize),
+  Input2(u16),
 }
 
 impl ScopedHandle {
@@ -679,10 +687,6 @@ impl ScopedHandle {
 
   pub(crate) const fn global(handle: u16) -> Self {
     Self::Global(handle)
-  }
-
-  pub(crate) const fn fun_arg(handle: u16) -> Self {
-    Self::FunArg(handle)
   }
 
   pub(crate) const fn fun_var(subscope: u16, handle: u16) -> Self {
