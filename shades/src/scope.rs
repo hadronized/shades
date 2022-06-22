@@ -424,7 +424,7 @@ where
 /// Scopes allowing to enter conditional scopes.
 ///
 /// Conditional scopes allow to break out of a function by early-return / aborting the function.
-pub trait CanEscape: Sized {
+pub trait Conditional: Sized {
   /// Conditional statement — `if`.
   ///
   /// `s.when(cond, |s: &mut EscapeScope<R>| { /* body */ })` inserts a conditional branch in the EDSL using the `cond`
@@ -501,7 +501,7 @@ pub trait CanEscape: Sized {
   }
 }
 
-impl<S> CanEscape for S
+impl<S> Conditional for S
 where
   S: DeepScope + Erased<Erased = ErasedScope>,
 {
