@@ -270,8 +270,7 @@ pub struct FunDefItem {
   name: Ident,
   paren_token: Paren,
   args: Punctuated<FnArgItem, Token![,]>,
-  arrow_token: Token![->],
-  ret_ty: Type,
+  ret_ty: Option<(Token![->], Type)>,
   brace_token: Brace,
   body: ScopeInstrItems,
 }
@@ -331,12 +330,18 @@ impl ToTokens for FunDefItem {
     // function return type
     let ret_ty = &self.ret_ty;
     let (quoted_ret_ty, real_ret_ty) = match ret_ty {
-      Type::Tuple(fields) if fields.elems.is_empty() => (quote! { None }, quote! { () }),
+      None => (quote! { None }, quote! { () }),
 
-      _ => (
-        quote! { Some(<#ret_ty as shades::types::ToType>::ty()) },
-        quote! { shades::expr::Expr<#ret_ty> },
-      ),
+      Some((_, ret_ty)) => {
+        if let Type::Tuple(fields) = ret_ty {
+          (quote! { None }, quote! { () })
+        } else {
+          (
+            quote! { Some(<#ret_ty as shades::types::ToType>::ty()) },
+            quote! { shades::expr::Expr<#ret_ty> },
+          )
+        }
+      }
     };
 
     let q = quote! {
@@ -372,8 +377,13 @@ impl Parse for FunDefItem {
     let paren_token = parenthesized!(args_input in input);
     let args = Punctuated::parse_terminated(&args_input)?;
 
-    let arrow_token = input.parse()?;
-    let ret_ty = input.parse()?;
+    let ret_ty = if input.lookahead1().peek(Token![->]) {
+      let arrow_token = input.parse()?;
+      let ret_ty = input.parse()?;
+      Some((arrow_token, ret_ty))
+    } else {
+      None
+    };
 
     let body_input;
     let brace_token = braced!(body_input in input);
@@ -384,7 +394,6 @@ impl Parse for FunDefItem {
       name,
       paren_token,
       args,
-      arrow_token,
       ret_ty,
       brace_token,
       body,

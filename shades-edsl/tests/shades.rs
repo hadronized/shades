@@ -54,7 +54,7 @@ fn test_shades() {
       return a + b;
     }
 
-    fn main() -> () {}
+    fn main() {}
   }};
 
   panic!("stage is:\n{:#?}", stage);
