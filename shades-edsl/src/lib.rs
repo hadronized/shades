@@ -17,7 +17,7 @@ pub fn shades(tokens: TokenStream) -> TokenStream {
   ast.into_token_stream().into()
 }
 
-#[proc_macro]
+/* #[proc_macro]
 pub fn shades_def(tokens: TokenStream) -> TokenStream {
   todo!()
-}
+} */

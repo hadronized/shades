@@ -68,7 +68,7 @@ impl ToTokens for StageDecl {
 }
 
 impl Parse for StageDecl {
-  fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+  fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
     let stage_ty = input.parse()?;
     let left_or = input.parse()?;
     let input_ = input.parse()?;
@@ -123,7 +123,7 @@ impl ToTokens for StageItem {
 }
 
 impl Parse for StageItem {
-  fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+  fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
     let mut glob_decl = Vec::new();
 
     loop {
@@ -249,7 +249,7 @@ impl ToTokens for FnArgItem {
 }
 
 impl Parse for FnArgItem {
-  fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+  fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
     let ident = input.parse()?;
     let colon_token = input.parse()?;
     let pound_token = input.parse()?;
@@ -333,7 +333,7 @@ impl ToTokens for FunDefItem {
       None => (quote! { None }, quote! { () }),
 
       Some((_, ret_ty)) => {
-        if let Type::Tuple(fields) = ret_ty {
+        if let Type::Tuple(..) = ret_ty {
           (quote! { None }, quote! { () })
         } else {
           (
@@ -898,13 +898,30 @@ impl Parse for WhileItem {
 
 #[derive(Debug)]
 pub enum MutateVarItem {
-  Assign(ExprAssign),
-  AssignOp(ExprAssignOp),
+  Assign { expr: ExprAssign, semi: Token![;] },
+
+  AssignOp { expr: ExprAssignOp, semi: Token![;] },
 }
 
 impl MutateVarItem {
   fn mutate(&mut self) {
     todo!()
+  }
+}
+
+impl Parse for MutateVarItem {
+  fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
+    if input.peek2(Token![=]) {
+      let expr = input.parse()?;
+      let semi = input.parse()?;
+
+      Ok(MutateVarItem::Assign { expr, semi })
+    } else {
+      let expr = input.parse()?;
+      let semi = input.parse()?;
+
+      Ok(MutateVarItem::AssignOp { expr, semi })
+    }
   }
 }
 
