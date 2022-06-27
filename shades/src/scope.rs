@@ -215,9 +215,15 @@ where
   /// #   })
   /// # });
   /// ```
-  pub fn set<T>(&mut self, var: impl Into<Var<T>>, value: impl Into<Expr<T>>) {
+  pub fn set<T>(
+    &mut self,
+    var: impl Into<Var<T>>,
+    bin_op: impl Into<Option<MutateBinOp>>,
+    value: impl Into<Expr<T>>,
+  ) {
     self.erased.instructions.push(ScopeInstr::MutateVar {
       var: var.into().to_expr().erased,
+      bin_op: bin_op.into(),
       expr: value.into().erased,
     });
   }
@@ -738,8 +744,23 @@ pub enum ScopeInstr {
 
   MutateVar {
     var: ErasedExpr,
+    bin_op: Option<MutateBinOp>,
     expr: ErasedExpr,
   },
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum MutateBinOp {
+  Add,
+  Sub,
+  Mul,
+  Div,
+  Rem,
+  Xor,
+  And,
+  Or,
+  Shl,
+  Shr,
 }
 
 #[cfg(test)]

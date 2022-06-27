@@ -6,7 +6,7 @@ use syn::{
   punctuated::Punctuated,
   token::{Brace, Paren, Pound},
   visit_mut::VisitMut,
-  Expr, ExprAssign, ExprAssignOp, Ident, Token, Type,
+  BinOp, Expr, Ident, Token, Type,
 };
 
 /// A stage declaration with its environment.
@@ -445,7 +445,12 @@ impl Parse for ScopeInstrItems {
         let v = input.parse()?;
         ScopeInstrItem::If(v)
       } else {
-        break;
+        // try to parse a MutateVar; if it fails, we break
+        match input.parse() {
+          Ok(v) => ScopeInstrItem::MutateVar(v),
+
+          Err(_) => break,
+        }
       };
 
       items.push(v);
@@ -464,7 +469,7 @@ pub enum ScopeInstrItem {
   If(IfItem),
   // For(ForItem), // TODO
   While(WhileItem),
-  // MutateVar(MutateVarItem),
+  MutateVar(MutateVarItem),
 }
 
 impl ScopeInstrItem {
@@ -474,6 +479,7 @@ impl ScopeInstrItem {
       ScopeInstrItem::Return(ret) => ret.mutate(),
       ScopeInstrItem::If(if_) => if_.mutate(),
       ScopeInstrItem::While(while_) => while_.mutate(),
+      ScopeInstrItem::MutateVar(mutate_var) => mutate_var.mutate(),
       _ => (),
     }
   }
@@ -531,39 +537,15 @@ impl ToTokens for ScopeInstrItem {
           })
         }
       }
+
+      ScopeInstrItem::MutateVar(mutate_var) => {
+        quote! {
+          #mutate_var;
+        }
+      }
     };
 
     q.to_tokens(tokens);
-  }
-}
-
-impl Parse for ScopeInstrItem {
-  fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
-    let lookahead = input.lookahead1();
-
-    let v = if lookahead.peek(Token![let]) {
-      let v = input.parse()?;
-      ScopeInstrItem::VarDecl(v)
-    } else if lookahead.peek(Token![return]) {
-      let v = input.parse()?;
-      ScopeInstrItem::Return(v)
-    } else if lookahead.peek(Token![continue]) {
-      let v = input.parse()?;
-      ScopeInstrItem::Continue(v)
-    } else if lookahead.peek(Token![break]) {
-      let v = input.parse()?;
-      ScopeInstrItem::Break(v)
-    } else if lookahead.peek(Token![if]) {
-      let v = input.parse()?;
-      ScopeInstrItem::If(v)
-    } else {
-      return Err(input.error(format!(
-        "unknown kind of scope instruction: {:?}",
-        lookahead.error()
-      )));
-    };
-
-    Ok(v)
   }
 }
 
@@ -615,6 +597,7 @@ impl Parse for VarDeclItem {
   }
 }
 
+// FIXME: this encoding is wrong; it should be either an expression, or return + expr + semi
 #[derive(Debug)]
 pub struct ReturnItem {
   return_token: Option<Token![return]>,
@@ -897,31 +880,80 @@ impl Parse for WhileItem {
 }
 
 #[derive(Debug)]
-pub enum MutateVarItem {
-  Assign { expr: ExprAssign, semi: Token![;] },
+pub enum MutateVarAssignToken {
+  Assign(Token![=]),
+  AssignBinOp(BinOp),
+}
 
-  AssignOp { expr: ExprAssignOp, semi: Token![;] },
+impl Parse for MutateVarAssignToken {
+  fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+    if input.peek(Token![=]) {
+      let token = input.parse()?;
+      Ok(Self::Assign(token))
+    } else {
+      let bin_op = input.parse()?;
+      Ok(Self::AssignBinOp(bin_op))
+    }
+  }
+}
+
+#[derive(Debug)]
+pub struct MutateVarItem {
+  ident: Ident,
+  assign_token: MutateVarAssignToken,
+  expr: Expr,
+  semi_token: Token![;],
 }
 
 impl MutateVarItem {
   fn mutate(&mut self) {
-    todo!()
+    ExprVisitor.visit_expr_mut(&mut self.expr);
+  }
+}
+
+impl ToTokens for MutateVarItem {
+  fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+    let ident = &self.ident;
+    let assign_token = &self.assign_token;
+    let expr = &self.expr;
+
+    let bin_op = match assign_token {
+      MutateVarAssignToken::Assign(_) => quote! { None },
+      MutateVarAssignToken::AssignBinOp(bin_op) => match bin_op {
+        syn::BinOp::AddEq(_) => quote! { shades::scope::MutateBinOp::Add },
+        syn::BinOp::SubEq(_) => quote! { shades::scope::MutateBinOp::Sub },
+        syn::BinOp::MulEq(_) => quote! { shades::scope::MutateBinOp::Mul },
+        syn::BinOp::DivEq(_) => quote! { shades::scope::MutateBinOp::Div },
+        syn::BinOp::RemEq(_) => quote! { shades::scope::MutateBinOp::Rem },
+        syn::BinOp::BitXorEq(_) => quote! { shades::scope::MutateBinOp::Xor },
+        syn::BinOp::BitAndEq(_) => quote! { shades::scope::MutateBinOp::And },
+        syn::BinOp::BitOrEq(_) => quote! { shades::scope::MutateBinOp::Or },
+        syn::BinOp::ShlEq(_) => quote! { shades::scope::MutateBinOp::Shl },
+        syn::BinOp::ShrEq(_) => quote! { shades::scope::MutateBinOp::Shr },
+        _ => quote! { compile_error!("expecting +=, -=, *=, /=, %=, ^=, &=, |=, <<= or >>=") },
+      },
+    };
+    let q = quote! {
+      __scope.set(#ident, #bin_op, #expr)
+    };
+
+    q.to_tokens(tokens);
   }
 }
 
 impl Parse for MutateVarItem {
   fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
-    if input.peek2(Token![=]) {
-      let expr = input.parse()?;
-      let semi = input.parse()?;
+    let ident = input.parse()?;
+    let assign_token = input.parse()?;
+    let expr = input.parse()?;
+    let semi_token = input.parse()?;
 
-      Ok(MutateVarItem::Assign { expr, semi })
-    } else {
-      let expr = input.parse()?;
-      let semi = input.parse()?;
-
-      Ok(MutateVarItem::AssignOp { expr, semi })
-    }
+    Ok(Self {
+      ident,
+      assign_token,
+      expr,
+      semi_token,
+    })
   }
 }
 

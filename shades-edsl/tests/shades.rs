@@ -51,6 +51,13 @@ impl Environment for TestEnv {
 fn test_shades() {
   let stage = shades! { vertex |input: TestInput, output: TestOutput, env: TestEnv| {
     fn add(a: i32, b: i32) -> i32 {
+      let x = 3;
+      let y = 2;
+      let z = 10;
+
+      x = 10;
+      y *= z;
+
       return a + b;
     }
 

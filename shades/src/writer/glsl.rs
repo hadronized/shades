@@ -11,7 +11,7 @@ use crate::{
   fun::{ErasedFun, ErasedFunHandle, ErasedReturn},
   input::Inputs,
   output::Outputs,
-  scope::{ErasedScope, ScopeInstr, ScopedHandle},
+  scope::{ErasedScope, MutateBinOp, ScopeInstr, ScopedHandle},
   shader::ShaderDecl,
   stage::Stage,
   swizzle::{Swizzle, SwizzleSelector},
@@ -214,9 +214,17 @@ fn write_scope(
         write_indented(f, indent_lvl, "}")?;
       }
 
-      ScopeInstr::MutateVar { var, expr } => {
+      ScopeInstr::MutateVar { var, bin_op, expr } => {
         write_expr(f, var)?;
-        f.write_str(" = ")?;
+
+        if let Some(bin_op) = bin_op {
+          f.write_str(" ")?;
+          write_mutate_bin_op(f, bin_op)?;
+          f.write_str(" ")?;
+        } else {
+          f.write_str(" = ")?;
+        }
+
         write_expr(f, expr)?;
         f.write_str(";")?;
       }
@@ -226,6 +234,21 @@ fn write_scope(
   }
 
   Ok(())
+}
+
+fn write_mutate_bin_op(f: &mut impl fmt::Write, bin_op: &MutateBinOp) -> Result<(), fmt::Error> {
+  match bin_op {
+    MutateBinOp::Add => f.write_str("+="),
+    MutateBinOp::Sub => f.write_str("-="),
+    MutateBinOp::Mul => f.write_str("*="),
+    MutateBinOp::Div => f.write_str("/="),
+    MutateBinOp::Rem => f.write_str("%="),
+    MutateBinOp::Xor => f.write_str("^="),
+    MutateBinOp::And => f.write_str("&="),
+    MutateBinOp::Or => f.write_str("|="),
+    MutateBinOp::Shl => f.write_str("<<="),
+    MutateBinOp::Shr => f.write_str(">>="),
+  }
 }
 
 fn write_constant(
