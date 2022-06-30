@@ -377,7 +377,7 @@ impl Parse for FunDefItem {
     let paren_token = parenthesized!(args_input in input);
     let args = Punctuated::parse_terminated(&args_input)?;
 
-    let ret_ty = if input.lookahead1().peek(Token![->]) {
+    let ret_ty = if input.peek(Token![->]) {
       let arrow_token = input.parse()?;
       let ret_ty = input.parse()?;
       Some((arrow_token, ret_ty))
@@ -574,8 +574,7 @@ impl Parse for VarDeclItem {
     let let_token = input.parse()?;
     let name = input.parse()?;
 
-    let lookahead = input.lookahead1();
-    let ty = if lookahead.peek(Token![:]) {
+    let ty = if input.peek(Token![:]) {
       let colon_token = input.parse()?;
       let ty = input.parse()?;
       Some((colon_token, ty))
@@ -744,7 +743,7 @@ impl Parse for IfItem {
     let brace_token = braced!(body_input in input);
     let body = body_input.parse()?;
 
-    let else_item = if input.lookahead1().peek(Token![else]) {
+    let else_item = if input.peek(Token![else]) {
       Some(input.parse()?)
     } else {
       None
@@ -824,9 +823,7 @@ impl ToTokens for ElseTailItem {
 
 impl Parse for ElseTailItem {
   fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
-    let lookahead = input.lookahead1();
-
-    let tail = if lookahead.peek(Token![if]) {
+    let tail = if input.peek(Token![if]) {
       let if_item = input.parse()?;
       ElseTailItem::If(if_item)
     } else {
