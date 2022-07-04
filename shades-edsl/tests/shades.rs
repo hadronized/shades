@@ -49,8 +49,8 @@ impl Environment for TestEnv {
 /// Test the main shades! macro.
 #[test]
 fn test_shades() {
-  let stage = shades! { vertex |input: TestInput, output: TestOutput, env: TestEnv| {
-    fn add(a: i32, b: i32) -> i32 {
+  let stage = shades! { vertex |_input: TestInput, _output: TestOutput, _env: TestEnv| {
+    fn _add(a: i32, b: i32) -> i32 {
       let x = 3;
       let y = 2;
       let z = 10;
