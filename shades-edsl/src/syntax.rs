@@ -4,7 +4,7 @@ use syn::{
   parse::Parse,
   parse_quote,
   punctuated::Punctuated,
-  token::{Brace, Paren, Pound},
+  token::{Brace, Paren},
   visit_mut::VisitMut,
   BinOp, Expr, Ident, Token, Type,
 };

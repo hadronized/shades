@@ -54,7 +54,7 @@ impl Environment for TestEnv {
 /// Test the main shades! macro.
 #[test]
 fn test_shades() {
-  let stage: Stage<VS, TestInput, TestOutput, TestEnv> = shades! { |_input, _output, _env| {
+  let _stage: Stage<VS, TestInput, TestOutput, TestEnv> = shades! { |_input, _output, _env| {
     fn _add(a: i32, b: i32) -> i32 {
       let x = 3;
       let y = 2;
@@ -68,6 +68,4 @@ fn test_shades() {
 
     fn main() {}
   }};
-
-  panic!("stage is:\n{:#?}", stage);
 }
