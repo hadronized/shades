@@ -1,4 +1,9 @@
-use shades::{env::Environment, input::Inputs, output::Outputs};
+use shades::{
+  env::Environment,
+  input::Inputs,
+  output::Outputs,
+  stage::{Stage, VS},
+};
 use shades_edsl::shades;
 
 #[derive(Debug)]
@@ -49,7 +54,7 @@ impl Environment for TestEnv {
 /// Test the main shades! macro.
 #[test]
 fn test_shades() {
-  let stage = shades! { vertex |_input: TestInput, _output: TestOutput, _env: TestEnv| {
+  let stage: Stage<VS, TestInput, TestOutput, TestEnv> = shades! { |_input, _output, _env| {
     fn _add(a: i32, b: i32) -> i32 {
       let x = 3;
       let y = 2;

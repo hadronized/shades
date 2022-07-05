@@ -22,7 +22,7 @@ use crate::{
 const INDENT_SPACES: usize = 2;
 
 /// Write a [`Shader`] to a [`String`].
-pub fn write_shader_to_str<I, O, E>(shader: &Stage<I, O, E>) -> Result<String, fmt::Error>
+pub fn write_shader_to_str<S, I, O, E>(shader: &Stage<S, I, O, E>) -> Result<String, fmt::Error>
 where
   I: Inputs,
   O: Outputs,
@@ -34,9 +34,9 @@ where
 }
 
 /// Write a [`Shader`] to a [`fmt::Write`](std::fmt::Write).
-pub fn write_shader<I, O, E>(
+pub fn write_shader<S, I, O, E>(
   f: &mut impl fmt::Write,
-  shader: &Stage<I, O, E>,
+  shader: &Stage<S, I, O, E>,
 ) -> Result<(), fmt::Error>
 where
   I: Inputs,

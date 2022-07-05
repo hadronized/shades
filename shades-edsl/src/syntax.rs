@@ -12,13 +12,12 @@ use syn::{
 /// A stage declaration with its environment.
 #[derive(Debug)]
 pub struct StageDecl {
-  stage_ty: Ident,
   left_or: Token![|],
-  input: FnArgItem,
+  input: Ident,
   comma_input_token: Token![,],
-  output: FnArgItem,
+  output: Ident,
   comma_output_token: Token![,],
-  env: FnArgItem,
+  env: Ident,
   right_or: Token![|],
   brace_token: Brace,
   stage_item: StageItem,
@@ -34,33 +33,16 @@ impl StageDecl {
 
 impl ToTokens for StageDecl {
   fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-    let stage_ty = self.stage_ty.to_string();
-    let user_in_ty = &self.input.ty;
-    let user_out_ty = &self.output.ty;
-    let user_env_ty = &self.env.ty;
-    let input = FnArgItem {
-      pound_token: Some(Pound::default()),
-      ty: parse_quote! { shades::input::VertexShaderInputs<<#user_in_ty as shades::input::Inputs>::In> },
-      ..self.input.clone()
-    };
-    let output = FnArgItem {
-      pound_token: Some(Pound::default()),
-      ty: parse_quote! { shades::output::VertexShaderOutputs<<#user_out_ty as shades::output::Outputs>::Out> },
-      ..self.output.clone()
-    };
-    // TODO: env
+    let input = &self.input;
+    let output = &self.output;
+    let _env = &self.env;
     let stage = &self.stage_item;
+    // TODO: env
 
-    let q = match stage_ty.as_str() {
-      "vertex" => {
-        quote! {
-          shades::stage::StageBuilder::new_vertex_shader(|mut __builder: shades::stage::StageBuilder::<#user_in_ty, #user_out_ty, #user_env_ty>, #input, #output| {
-            #stage
-          })
-        }
-      }
-
-      stage => quote! { compile_error(format!("{} is not a valid stage type", #stage)) },
+    let q = quote! {
+      shades::stage::ModBuilder::new_stage(|mut __builder, #input, #output| {
+        #stage
+      })
     };
 
     q.to_tokens(tokens);
@@ -69,7 +51,6 @@ impl ToTokens for StageDecl {
 
 impl Parse for StageDecl {
   fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
-    let stage_ty = input.parse()?;
     let left_or = input.parse()?;
     let input_ = input.parse()?;
     let comma_input_token = input.parse()?;
@@ -83,7 +64,6 @@ impl Parse for StageDecl {
     let stage_item = stage_input.parse()?;
 
     Ok(Self {
-      stage_ty,
       left_or,
       input: input_,
       comma_input_token,
