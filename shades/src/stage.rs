@@ -58,8 +58,13 @@ pub trait ShaderModule<I, O> {
   ///   })
   /// });
   /// ```
-  fn new_mod<E>(
-    f: impl FnOnce(ModBuilder<Self, I, O, E>, Self::Inputs, Self::Outputs) -> Stage<Self, I, O, E>,
+  fn new_shader_module<E>(
+    f: impl FnOnce(
+      ModBuilder<Self, I, O, E>,
+      Self::Inputs,
+      Self::Outputs,
+      E::Env,
+    ) -> Stage<Self, I, O, E>,
   ) -> Stage<Self, I, O, E>
   where
     E: Environment;
@@ -77,8 +82,13 @@ where
   type Inputs = VertexShaderInputs<I::In>;
   type Outputs = VertexShaderOutputs<O::Out>;
 
-  fn new_mod<E>(
-    f: impl FnOnce(ModBuilder<Self, I, O, E>, Self::Inputs, Self::Outputs) -> Stage<Self, I, O, E>,
+  fn new_shader_module<E>(
+    f: impl FnOnce(
+      ModBuilder<Self, I, O, E>,
+      Self::Inputs,
+      Self::Outputs,
+      E::Env,
+    ) -> Stage<Self, I, O, E>,
   ) -> Stage<Self, I, O, E>
   where
     E: Environment,
@@ -87,6 +97,7 @@ where
       ModBuilder::new(),
       VertexShaderInputs::new(I::input()),
       VertexShaderOutputs::new(O::output()),
+      E::env(),
     )
   }
 }
@@ -103,8 +114,13 @@ where
   type Inputs = TessCtrlShaderInputs<I::In>;
   type Outputs = TessCtrlShaderOutputs<O::Out>;
 
-  fn new_mod<E>(
-    f: impl FnOnce(ModBuilder<Self, I, O, E>, Self::Inputs, Self::Outputs) -> Stage<Self, I, O, E>,
+  fn new_shader_module<E>(
+    f: impl FnOnce(
+      ModBuilder<Self, I, O, E>,
+      Self::Inputs,
+      Self::Outputs,
+      E::Env,
+    ) -> Stage<Self, I, O, E>,
   ) -> Stage<Self, I, O, E>
   where
     E: Environment,
@@ -113,6 +129,7 @@ where
       ModBuilder::new(),
       TessCtrlShaderInputs::new(I::input()),
       TessCtrlShaderOutputs::new(O::output()),
+      E::env(),
     )
   }
 }
@@ -129,8 +146,13 @@ where
   type Inputs = TessEvalShaderInputs<I::In>;
   type Outputs = TessEvalShaderOutputs<O::Out>;
 
-  fn new_mod<E>(
-    f: impl FnOnce(ModBuilder<Self, I, O, E>, Self::Inputs, Self::Outputs) -> Stage<Self, I, O, E>,
+  fn new_shader_module<E>(
+    f: impl FnOnce(
+      ModBuilder<Self, I, O, E>,
+      Self::Inputs,
+      Self::Outputs,
+      E::Env,
+    ) -> Stage<Self, I, O, E>,
   ) -> Stage<Self, I, O, E>
   where
     E: Environment,
@@ -139,6 +161,7 @@ where
       ModBuilder::new(),
       TessEvalShaderInputs::new(I::input()),
       TessEvalShaderOutputs::new(O::output()),
+      E::env(),
     )
   }
 }
@@ -155,8 +178,13 @@ where
   type Inputs = GeometryShaderInputs<I::In>;
   type Outputs = GeometryShaderOutputs<O::Out>;
 
-  fn new_mod<E>(
-    f: impl FnOnce(ModBuilder<Self, I, O, E>, Self::Inputs, Self::Outputs) -> Stage<Self, I, O, E>,
+  fn new_shader_module<E>(
+    f: impl FnOnce(
+      ModBuilder<Self, I, O, E>,
+      Self::Inputs,
+      Self::Outputs,
+      E::Env,
+    ) -> Stage<Self, I, O, E>,
   ) -> Stage<Self, I, O, E>
   where
     E: Environment,
@@ -165,6 +193,7 @@ where
       ModBuilder::new(),
       GeometryShaderInputs::new(I::input()),
       GeometryShaderOutputs::new(O::output()),
+      E::env(),
     )
   }
 }
@@ -181,8 +210,13 @@ where
   type Inputs = FragmentShaderInputs<I::In>;
   type Outputs = FragmentShaderOutputs<O::Out>;
 
-  fn new_mod<E>(
-    f: impl FnOnce(ModBuilder<Self, I, O, E>, Self::Inputs, Self::Outputs) -> Stage<Self, I, O, E>,
+  fn new_shader_module<E>(
+    f: impl FnOnce(
+      ModBuilder<Self, I, O, E>,
+      Self::Inputs,
+      Self::Outputs,
+      E::Env,
+    ) -> Stage<Self, I, O, E>,
   ) -> Stage<Self, I, O, E>
   where
     E: Environment,
@@ -191,6 +225,7 @@ where
       ModBuilder::new(),
       FragmentShaderInputs::new(I::input()),
       FragmentShaderOutputs::new(O::output()),
+      E::env(),
     )
   }
 }
@@ -398,9 +433,9 @@ where
 {
   /// Declare a new shader stage.
   pub fn new_stage(
-    f: impl FnOnce(ModBuilder<S, I, O, E>, S::Inputs, S::Outputs) -> Stage<S, I, O, E>,
+    f: impl FnOnce(ModBuilder<S, I, O, E>, S::Inputs, S::Outputs, E::Env) -> Stage<S, I, O, E>,
   ) -> Stage<S, I, O, E> {
-    S::new_mod(f)
+    S::new_shader_module(f)
   }
 
   /// Declare the `main` function of the shader stage.
