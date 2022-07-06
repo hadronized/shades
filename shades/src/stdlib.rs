@@ -314,38 +314,34 @@ impl_Floating!(V3<f32>);
 impl_Floating!(V4<f32>);
 
 pub trait Bounded: Sized {
-  fn min(&self, rhs: impl Into<Self>) -> Self;
+  fn min(self, rhs: Self) -> Self;
 
-  fn max(&self, rhs: impl Into<Self>) -> Self;
+  fn max(self, rhs: Self) -> Self;
 
-  fn clamp(&self, min_value: impl Into<Self>, max_value: impl Into<Self>) -> Self;
+  fn clamp(self, min_value: Self, max_value: Self) -> Self;
 }
 
 macro_rules! impl_Bounded {
   ($t:ty) => {
     impl Bounded for Expr<$t> {
-      fn min(&self, rhs: impl Into<Self>) -> Self {
+      fn min(self, rhs: Self) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Min,
-          vec![self.erased.clone(), rhs.into().erased],
+          vec![self.erased, rhs.erased],
         ))
       }
 
-      fn max(&self, rhs: impl Into<Self>) -> Self {
+      fn max(self, rhs: Self) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Max,
-          vec![self.erased.clone(), rhs.into().erased],
+          vec![self.erased, rhs.erased],
         ))
       }
 
-      fn clamp(&self, min_value: impl Into<Self>, max_value: impl Into<Self>) -> Self {
+      fn clamp(self, min_value: Self, max_value: Self) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Clamp,
-          vec![
-            self.erased.clone(),
-            min_value.into().erased,
-            max_value.into().erased,
-          ],
+          vec![self.erased, min_value.erased, max_value.erased],
         ))
       }
     }
@@ -373,34 +369,34 @@ impl_Bounded!(V3<bool>);
 impl_Bounded!(V4<bool>);
 
 pub trait Mix<RHS>: Sized {
-  fn mix(&self, y: impl Into<Self>, a: RHS) -> Self;
+  fn mix(self, y: Self, a: RHS) -> Self;
 
-  fn step(&self, edge: RHS) -> Self;
+  fn step(self, edge: RHS) -> Self;
 
-  fn smooth_step(&self, edge_a: RHS, edge_b: RHS) -> Self;
+  fn smooth_step(self, edge_a: RHS, edge_b: RHS) -> Self;
 }
 
 macro_rules! impl_Mix {
   ($t:ty, $q:ty) => {
     impl Mix<Expr<$q>> for Expr<$t> {
-      fn mix(&self, y: impl Into<Self>, a: Expr<$q>) -> Self {
+      fn mix(self, y: Self, a: Expr<$q>) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Mix,
-          vec![self.erased.clone(), y.into().erased, a.erased],
+          vec![self.erased, y.erased, a.erased],
         ))
       }
 
-      fn step(&self, edge: Expr<$q>) -> Self {
+      fn step(self, edge: Expr<$q>) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Step,
-          vec![self.erased.clone(), edge.erased],
+          vec![self.erased, edge.erased],
         ))
       }
 
-      fn smooth_step(&self, edge_a: Expr<$q>, edge_b: Expr<$q>) -> Self {
+      fn smooth_step(self, edge_a: Expr<$q>, edge_b: Expr<$q>) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::SmoothStep,
-          vec![self.erased.clone(), edge_a.erased, edge_b.erased],
+          vec![self.erased, edge_a.erased, edge_b.erased],
         ))
       }
     }
@@ -420,9 +416,9 @@ impl_Mix!(V4<f32>, V4<f32>);
 pub trait FloatingExt {
   type BoolExpr;
 
-  fn is_nan(&self) -> Self::BoolExpr;
+  fn is_nan(self) -> Self::BoolExpr;
 
-  fn is_inf(&self) -> Self::BoolExpr;
+  fn is_inf(self) -> Self::BoolExpr;
 }
 
 macro_rules! impl_FloatingExt {
@@ -430,17 +426,17 @@ macro_rules! impl_FloatingExt {
     impl FloatingExt for Expr<$t> {
       type BoolExpr = Expr<$bool_expr>;
 
-      fn is_nan(&self) -> Self::BoolExpr {
+      fn is_nan(self) -> Self::BoolExpr {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::IsNan,
-          vec![self.erased.clone()],
+          vec![self.erased],
         ))
       }
 
-      fn is_inf(&self) -> Self::BoolExpr {
+      fn is_inf(self) -> Self::BoolExpr {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::IsInf,
-          vec![self.erased.clone()],
+          vec![self.erased],
         ))
       }
     }
@@ -455,21 +451,21 @@ impl_FloatingExt!(V4<f32>, V4<bool>);
 pub trait Geometry: Sized {
   type LengthExpr;
 
-  fn length(&self) -> Self::LengthExpr;
+  fn length(self) -> Self::LengthExpr;
 
-  fn distance(&self, other: impl Into<Self>) -> Self::LengthExpr;
+  fn distance(self, other: Self) -> Self::LengthExpr;
 
-  fn dot(&self, other: impl Into<Self>) -> Self::LengthExpr;
+  fn dot(self, other: Self) -> Self::LengthExpr;
 
-  fn cross(&self, other: impl Into<Self>) -> Self;
+  fn cross(self, other: Self) -> Self;
 
-  fn normalize(&self) -> Self;
+  fn normalize(self) -> Self;
 
-  fn face_forward(&self, normal: impl Into<Self>, reference: impl Into<Self>) -> Self;
+  fn face_forward(self, normal: Self, reference: Self) -> Self;
 
-  fn reflect(&self, normal: impl Into<Self>) -> Self;
+  fn reflect(self, normal: Self) -> Self;
 
-  fn refract(&self, normal: impl Into<Self>, eta: impl Into<Expr<f32>>) -> Self;
+  fn refract(self, normal: Self, eta: Expr<f32>) -> Self;
 }
 
 macro_rules! impl_Geometry {
@@ -477,64 +473,60 @@ macro_rules! impl_Geometry {
     impl Geometry for Expr<$t> {
       type LengthExpr = Expr<$l>;
 
-      fn length(&self) -> Self::LengthExpr {
+      fn length(self) -> Self::LengthExpr {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Length,
-          vec![self.erased.clone()],
+          vec![self.erased],
         ))
       }
 
-      fn distance(&self, other: impl Into<Self>) -> Self::LengthExpr {
+      fn distance(self, other: Self) -> Self::LengthExpr {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Distance,
-          vec![self.erased.clone(), other.into().erased],
+          vec![self.erased, other.erased],
         ))
       }
 
-      fn dot(&self, other: impl Into<Self>) -> Self::LengthExpr {
+      fn dot(self, other: Self) -> Self::LengthExpr {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Dot,
-          vec![self.erased.clone(), other.into().erased],
+          vec![self.erased, other.erased],
         ))
       }
 
-      fn cross(&self, other: impl Into<Self>) -> Self {
+      fn cross(self, other: Self) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Cross,
-          vec![self.erased.clone(), other.into().erased],
+          vec![self.erased, other.erased],
         ))
       }
 
-      fn normalize(&self) -> Self {
+      fn normalize(self) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Normalize,
-          vec![self.erased.clone()],
+          vec![self.erased],
         ))
       }
 
-      fn face_forward(&self, normal: impl Into<Self>, reference: impl Into<Self>) -> Self {
+      fn face_forward(self, normal: Self, reference: Self) -> Self {
         // note: this function call is super weird as the normal and incident (i.e. self) arguments are swapped
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::FaceForward,
-          vec![
-            normal.into().erased,
-            self.erased.clone(),
-            reference.into().erased,
-          ],
+          vec![normal.erased, self.erased, reference.erased],
         ))
       }
 
-      fn reflect(&self, normal: impl Into<Self>) -> Self {
+      fn reflect(self, normal: Self) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Reflect,
-          vec![self.erased.clone(), normal.into().erased],
+          vec![self.erased, normal.erased],
         ))
       }
 
-      fn refract(&self, normal: impl Into<Self>, eta: impl Into<Expr<f32>>) -> Self {
+      fn refract(self, normal: Self, eta: Expr<f32>) -> Self {
         Expr::new(ErasedExpr::FunCall(
           ErasedFunHandle::Refract,
-          vec![self.erased.clone(), normal.into().erased, eta.into().erased],
+          vec![self.erased, normal.erased, eta.erased],
         ))
       }
     }

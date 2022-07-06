@@ -489,27 +489,11 @@ macro_rules! impl_Not_Expr {
       }
     }
 
-    impl<'a> ops::Not for &'a Expr<$t> {
-      type Output = Expr<$t>;
-
-      fn not(self) -> Self::Output {
-        Expr::new(ErasedExpr::Not(Box::new(self.erased.clone())))
-      }
-    }
-
     impl ops::Not for Var<$t> {
       type Output = Expr<$t>;
 
       fn not(self) -> Self::Output {
         Expr::new(ErasedExpr::Not(Box::new(self.0.erased)))
-      }
-    }
-
-    impl<'a> ops::Not for &'a Var<$t> {
-      type Output = Expr<$t>;
-
-      fn not(self) -> Self::Output {
-        Expr::new(ErasedExpr::Not(Box::new(self.0.erased.clone())))
       }
     }
   };
@@ -531,27 +515,11 @@ macro_rules! impl_Neg {
       }
     }
 
-    impl<'a> ops::Neg for &'a Expr<$t> {
-      type Output = Expr<$t>;
-
-      fn neg(self) -> Self::Output {
-        Expr::new(ErasedExpr::Neg(Box::new(self.erased.clone())))
-      }
-    }
-
     impl ops::Neg for Var<$t> {
       type Output = Expr<$t>;
 
       fn neg(self) -> Self::Output {
         Expr::new(ErasedExpr::Neg(Box::new(self.0.erased)))
-      }
-    }
-
-    impl<'a> ops::Neg for &'a Var<$t> {
-      type Output = Expr<$t>;
-
-      fn neg(self) -> Self::Output {
-        Expr::new(ErasedExpr::Neg(Box::new(self.0.erased.clone())))
       }
     }
   };
@@ -586,235 +554,6 @@ macro_rules! impl_binop_Expr {
 
       fn $meth_name(self, rhs: Expr<$b>) -> Self::Output {
         Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
-      }
-    }
-
-    // var OP expr
-    impl<'a> ops::$op<Expr<$b>> for Var<$a> {
-      type Output = Expr<$r>;
-
-      fn $meth_name(self, rhs: Expr<$b>) -> Self::Output {
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.0.erased),
-          Box::new(rhs.erased),
-        ))
-      }
-    }
-
-    // expr OP var
-    impl<'a> ops::$op<Var<$b>> for Expr<$a> {
-      type Output = Expr<$r>;
-
-      fn $meth_name(self, rhs: Var<$b>) -> Self::Output {
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.erased),
-          Box::new(rhs.0.erased),
-        ))
-      }
-    }
-
-    // var OP var
-    impl<'a> ops::$op<Var<$b>> for Var<$a> {
-      type Output = Expr<$r>;
-
-      fn $meth_name(self, rhs: Var<$b>) -> Self::Output {
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.0.erased),
-          Box::new(rhs.0.erased),
-        ))
-      }
-    }
-
-    // expr OP &expr
-    impl<'a> ops::$op<&'a Expr<$b>> for Expr<$a> {
-      type Output = Expr<$r>;
-
-      fn $meth_name(self, rhs: &'a Expr<$b>) -> Self::Output {
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.erased),
-          Box::new(rhs.erased.clone()),
-        ))
-      }
-    }
-
-    // var OP &expr
-    impl<'a> ops::$op<&'a Expr<$b>> for Var<$a> {
-      type Output = Expr<$r>;
-
-      fn $meth_name(self, rhs: &'a Expr<$b>) -> Self::Output {
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.0.erased),
-          Box::new(rhs.erased.clone()),
-        ))
-      }
-    }
-
-    // expr OP &var
-    impl<'a> ops::$op<&'a Var<$b>> for Expr<$a> {
-      type Output = Expr<$r>;
-
-      fn $meth_name(self, rhs: &'a Var<$b>) -> Self::Output {
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.erased),
-          Box::new(rhs.0.erased.clone()),
-        ))
-      }
-    }
-
-    // var OP &var
-    impl<'a> ops::$op<&'a Var<$b>> for Var<$a> {
-      type Output = Expr<$r>;
-
-      fn $meth_name(self, rhs: &'a Var<$b>) -> Self::Output {
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.0.erased),
-          Box::new(rhs.0.erased.clone()),
-        ))
-      }
-    }
-
-    // &expr OP expr
-    impl<'a> ops::$op<Expr<$b>> for &'a Expr<$a> {
-      type Output = Expr<$r>;
-
-      fn $meth_name(self, rhs: Expr<$b>) -> Self::Output {
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.erased.clone()),
-          Box::new(rhs.erased),
-        ))
-      }
-    }
-
-    // &var OP expr
-    impl<'a> ops::$op<Expr<$b>> for &'a Var<$a> {
-      type Output = Expr<$r>;
-
-      fn $meth_name(self, rhs: Expr<$b>) -> Self::Output {
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.0.erased.clone()),
-          Box::new(rhs.erased),
-        ))
-      }
-    }
-
-    // &expr OP var
-    impl<'a> ops::$op<Var<$b>> for &'a Expr<$a> {
-      type Output = Expr<$r>;
-
-      fn $meth_name(self, rhs: Var<$b>) -> Self::Output {
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.erased.clone()),
-          Box::new(rhs.0.erased),
-        ))
-      }
-    }
-
-    // &var OP var
-    impl<'a> ops::$op<Var<$b>> for &'a Var<$a> {
-      type Output = Expr<$r>;
-
-      fn $meth_name(self, rhs: Var<$b>) -> Self::Output {
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.0.erased.clone()),
-          Box::new(rhs.0.erased),
-        ))
-      }
-    }
-
-    // &expr OP &expr
-    impl<'a> ops::$op<&'a Expr<$b>> for &'a Expr<$a> {
-      type Output = Expr<$r>;
-
-      fn $meth_name(self, rhs: &'a Expr<$b>) -> Self::Output {
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.erased.clone()),
-          Box::new(rhs.erased.clone()),
-        ))
-      }
-    }
-
-    // &var OP &expr
-    impl<'a> ops::$op<&'a Expr<$b>> for &'a Var<$a> {
-      type Output = Expr<$r>;
-
-      fn $meth_name(self, rhs: &'a Expr<$b>) -> Self::Output {
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.0.erased.clone()),
-          Box::new(rhs.erased.clone()),
-        ))
-      }
-    }
-
-    // &expr OP &var
-    impl<'a> ops::$op<&'a Var<$b>> for &'a Expr<$a> {
-      type Output = Expr<$r>;
-
-      fn $meth_name(self, rhs: &'a Var<$b>) -> Self::Output {
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.erased.clone()),
-          Box::new(rhs.0.erased.clone()),
-        ))
-      }
-    }
-
-    // &var OP &var
-    impl<'a> ops::$op<&'a Var<$b>> for &'a Var<$a> {
-      type Output = Expr<$r>;
-
-      fn $meth_name(self, rhs: &'a Var<$b>) -> Self::Output {
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.0.erased.clone()),
-          Box::new(rhs.0.erased.clone()),
-        ))
-      }
-    }
-
-    // expr OP t, where t is automatically lifted
-    impl<'a> ops::$op<$b> for Expr<$a> {
-      type Output = Expr<$r>;
-
-      fn $meth_name(self, rhs: $b) -> Self::Output {
-        let rhs = Expr::from(rhs);
-        Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
-      }
-    }
-
-    // var OP t, where t is automatically lifted
-    impl<'a> ops::$op<$b> for Var<$a> {
-      type Output = Expr<$r>;
-
-      fn $meth_name(self, rhs: $b) -> Self::Output {
-        let rhs = Expr::from(rhs);
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.0.erased),
-          Box::new(rhs.erased),
-        ))
-      }
-    }
-
-    // &expr OP t, where t is automatically lifted
-    impl<'a> ops::$op<$b> for &'a Expr<$a> {
-      type Output = Expr<$r>;
-
-      fn $meth_name(self, rhs: $b) -> Self::Output {
-        let rhs: Expr<$b> = rhs.into();
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.erased.clone()),
-          Box::new(rhs.erased),
-        ))
-      }
-    }
-
-    // &var OP t, where t is automatically lifted
-    impl<'a> ops::$op<$b> for &'a Var<$a> {
-      type Output = Expr<$r>;
-
-      fn $meth_name(self, rhs: $b) -> Self::Output {
-        let rhs: Expr<$b> = rhs.into();
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.0.erased.clone()),
-          Box::new(rhs.erased),
-        ))
       }
     }
   };
@@ -911,61 +650,6 @@ macro_rules! impl_binshift_Expr {
         Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
       }
     }
-
-    impl<'a> ops::$op<Expr<u32>> for &'a Expr<$ty> {
-      type Output = Expr<$ty>;
-
-      fn $meth_name(self, rhs: Expr<u32>) -> Self::Output {
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.erased.clone()),
-          Box::new(rhs.erased),
-        ))
-      }
-    }
-
-    impl<'a> ops::$op<&'a Expr<u32>> for Expr<$ty> {
-      type Output = Expr<$ty>;
-
-      fn $meth_name(self, rhs: &'a Expr<u32>) -> Self::Output {
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.erased),
-          Box::new(rhs.erased.clone()),
-        ))
-      }
-    }
-
-    impl<'a> ops::$op<&'a Expr<u32>> for &'a Expr<$ty> {
-      type Output = Expr<$ty>;
-
-      fn $meth_name(self, rhs: &'a Expr<u32>) -> Self::Output {
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.erased.clone()),
-          Box::new(rhs.erased.clone()),
-        ))
-      }
-    }
-
-    // expr OP bits
-    impl ops::$op<u32> for Expr<$ty> {
-      type Output = Self;
-
-      fn $meth_name(self, rhs: u32) -> Self::Output {
-        let rhs = Expr::from(rhs);
-        Expr::new(ErasedExpr::$op(Box::new(self.erased), Box::new(rhs.erased)))
-      }
-    }
-
-    impl<'a> ops::$op<u32> for &'a Expr<$ty> {
-      type Output = Expr<$ty>;
-
-      fn $meth_name(self, rhs: u32) -> Self::Output {
-        let rhs = Expr::from(rhs);
-        Expr::new(ErasedExpr::$op(
-          Box::new(self.erased.clone()),
-          Box::new(rhs.erased),
-        ))
-      }
-    }
   };
 }
 
@@ -994,21 +678,9 @@ impl_binshifts_Expr!(Shr, shr);
 
 macro_rules! impl_From_Expr_scalar {
   ($t:ty, $q:ident) => {
-    impl Expr<$t> {
-      pub const fn lit(a: $t) -> Expr<$t> {
-        Self::new(ErasedExpr::$q(a))
-      }
-    }
-
     impl From<$t> for Expr<$t> {
       fn from(a: $t) -> Self {
-        Self::lit(a)
-      }
-    }
-
-    impl<'a> From<&'a $t> for Expr<$t> {
-      fn from(a: &'a $t) -> Self {
-        Self::lit(*a)
+        Self::new(ErasedExpr::$q(a))
       }
     }
   };
@@ -1021,21 +693,9 @@ impl_From_Expr_scalar!(bool, LitBool);
 
 macro_rules! impl_From_Expr_vn {
   ($t:ty, $q:ident) => {
-    impl Expr<$t> {
-      pub const fn lit(a: $t) -> Expr<$t> {
-        Self::new(ErasedExpr::$q(a.0))
-      }
-    }
-
     impl From<$t> for Expr<$t> {
       fn from(a: $t) -> Self {
-        Self::lit(a)
-      }
-    }
-
-    impl<'a> From<&'a $t> for Expr<$t> {
-      fn from(a: &'a $t) -> Self {
-        Self::lit(*a)
+        Self::new(ErasedExpr::$q(a.0))
       }
     }
   };
@@ -1106,57 +766,6 @@ where
   }
 }
 
-/// Create various forms of literal expressions.
-///
-/// This macro allows you to create _literal expressions_ by lifting Rust constants into the EDSL. The way this is done
-/// is via several forms:
-///
-/// - `lit!(x)` lifts a single Rust expression into the EDSL. It’s isomorphic to `Expr::from(x)`.
-/// - `lit!(x, y)` lifts two Rust expressions into the EDSL as a 2D scalar vector. It’s isomorphic to
-///   `Expr::from(V2::from([x, y]))`.
-/// - `lit!(x, y, z)` lifts three Rust expressions into the EDSL as a 3D scalar vector. It’s isomorphic to
-///   `Expr::from(V3::from([x, y, z]))`.
-/// - `lit!(x, y, z, w)` lifts three Rust expressions into the EDSL as a 3D scalar vector. It’s isomorphic to
-///   `Expr::from(V4::from([x, y, z, w]))`.
-///
-/// Most of the time, type inference will kick in and you shouldn’t have to annotate the return expression.
-///
-/// # Examples
-///
-/// ```
-/// # use shades::{Scope, StageBuilder};
-/// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-/// use shades::{lit};
-///
-/// let _ = lit!(1);
-/// let _ = lit!(false);
-/// let _ = lit!(1., 2., 3., 4.);
-/// # s.main_fun(|s: &mut Scope<()>| {})
-/// # });
-/// ```
-#[macro_export]
-macro_rules! lit {
-  ($e:expr) => {
-    $crate::expr::Expr::from($e)
-  };
-
-  ($a:expr, $b:expr) => {
-    $crate::expr::Expr::from($crate::types::V2::from([$a, $b]))
-  };
-
-  ($a:expr, $b:expr, $c:expr) => {
-    $crate::expr::Expr::from($crate::types::V3::from([$a, $b, $c]))
-  };
-
-  ($a:expr, $b:expr, $c:expr, $d:expr) => {
-    $crate::expr::Expr::from($crate::types::V4::from([$a, $b, $c, $d]))
-  };
-
-  ([ $($item:expr),* ]) => {
-    $crate::expr::Expr::from([ $($item),* ])
-  }
-}
-
 /// Create 2D scalar vectors via different forms.
 ///
 /// This macro allows to create 2D ([`V2`]) scalar vectors from two forms:
@@ -1183,10 +792,7 @@ macro_rules! vec2 {
 
   ($xy:expr, $z:expr) => {{
     use $crate::types::Vec2 as _;
-    $crate::expr::Expr::vec2((
-      $crate::expr::Expr::from(&$xy),
-      $crate::expr::Expr::from(&$z),
-    ))
+    $crate::expr::Expr::vec2(($crate::expr::Expr::from($xy), $crate::expr::Expr::from($z)))
   }};
 }
 
@@ -1218,18 +824,15 @@ macro_rules! vec3 {
 
   ($xy:expr, $z:expr) => {{
     use $crate::types::Vec3 as _;
-    $crate::expr::Expr::vec3((
-      $crate::expr::Expr::from(&$xy),
-      $crate::expr::Expr::from(&$z),
-    ))
+    $crate::expr::Expr::vec3(($crate::expr::Expr::from($xy), $crate::expr::Expr::from($z)))
   }};
 
   ($x:expr, $y:expr, $z:expr) => {{
     use $crate::types::Vec3 as _;
     $crate::expr::Expr::vec3((
-      $crate::expr::Expr::from(&$x),
-      $crate::expr::Expr::from(&$y),
-      $crate::expr::Expr::from(&$z),
+      $crate::expr::Expr::from($x),
+      $crate::expr::Expr::from($y),
+      $crate::expr::Expr::from($z),
     ))
   }};
 }
@@ -1266,28 +869,25 @@ macro_rules! vec4 {
 
   ($xy:expr, $zw:expr) => {{
     use $crate::types::Vec4 as _;
-    $crate::expr::Expr::vec4((
-      $crate::expr::Expr::from(&$xy),
-      $crate::expr::Expr::from(&$zw),
-    ))
+    $crate::expr::Expr::vec4(($crate::expr::Expr::from($xy), $crate::expr::Expr::from($zw)))
   }};
 
   ($xy:expr, $z:expr, $w:expr) => {{
     use $crate::types::Vec4 as _;
     $crate::expr::Expr::vec4((
-      $crate::expr::Expr::from(&$xy),
-      $crate::expr::Expr::from(&$z),
-      $crate::expr::Expr::from(&$w),
+      $crate::expr::Expr::from($xy),
+      $crate::expr::Expr::from($z),
+      $crate::expr::Expr::from($w),
     ))
   }};
 
   ($x:expr, $y:expr, $z:expr, $w:expr) => {{
     use $crate::types::Vec4 as _;
     $crate::expr::Expr::vec4((
-      $crate::expr::Expr::from(&$x),
-      $crate::expr::Expr::from(&$y),
-      $crate::expr::Expr::from(&$z),
-      $crate::expr::Expr::from(&$w),
+      $crate::expr::Expr::from($x),
+      $crate::expr::Expr::from($y),
+      $crate::expr::Expr::from($z),
+      $crate::expr::Expr::from($w),
     ))
   }};
 }
@@ -1302,25 +902,12 @@ mod test {
   };
 
   #[test]
-  fn lit() {
-    assert_eq!(lit!(true).erased, ErasedExpr::LitBool(true));
-    assert_eq!(lit![1, 2].erased, ErasedExpr::LitInt2([1, 2]));
-    assert_eq!(
-      (lit!(1.) + lit!(2.)).erased,
-      ErasedExpr::Add(
-        Box::new(ErasedExpr::LitFloat(1.)),
-        Box::new(ErasedExpr::LitFloat(2.)),
-      )
-    );
-  }
-
-  #[test]
   fn unary() {
     let mut scope = Scope::<()>::new(0);
 
-    let a = !lit!(true);
-    let b = -lit!(3i32);
-    let c = scope.var(17);
+    let a = !Expr::from(true);
+    let b = -Expr::from(3i32);
+    let c = scope.var(a);
 
     assert_eq!(
       a.erased,
@@ -1332,10 +919,8 @@ mod test {
 
   #[test]
   fn binary() {
-    let a = lit!(1i32) + lit!(2);
-    let b = lit!(1i32) + 2;
+    let a = Expr::from(1i32) + Expr::from(2);
 
-    assert_eq!(a.erased, b.erased);
     assert_eq!(
       a.erased,
       ErasedExpr::Add(
@@ -1343,18 +928,9 @@ mod test {
         Box::new(ErasedExpr::LitInt(2)),
       )
     );
-    assert_eq!(
-      b.erased,
-      ErasedExpr::Add(
-        Box::new(ErasedExpr::LitInt(1)),
-        Box::new(ErasedExpr::LitInt(2)),
-      )
-    );
 
-    let a = lit!(1i32) - lit!(2);
-    let b = lit!(1i32) - 2;
+    let a = Expr::from(1i32) - Expr::from(2);
 
-    assert_eq!(a.erased, b.erased);
     assert_eq!(
       a.erased,
       ErasedExpr::Sub(
@@ -1362,18 +938,9 @@ mod test {
         Box::new(ErasedExpr::LitInt(2)),
       )
     );
-    assert_eq!(
-      b.erased,
-      ErasedExpr::Sub(
-        Box::new(ErasedExpr::LitInt(1)),
-        Box::new(ErasedExpr::LitInt(2)),
-      )
-    );
 
-    let a = lit!(1i32) * lit!(2);
-    let b = lit!(1i32) * 2;
+    let a = Expr::from(1i32) * Expr::from(2);
 
-    assert_eq!(a.erased, b.erased);
     assert_eq!(
       a.erased,
       ErasedExpr::Mul(
@@ -1381,27 +948,11 @@ mod test {
         Box::new(ErasedExpr::LitInt(2)),
       )
     );
-    assert_eq!(
-      b.erased,
-      ErasedExpr::Mul(
-        Box::new(ErasedExpr::LitInt(1)),
-        Box::new(ErasedExpr::LitInt(2)),
-      )
-    );
 
-    let a = lit!(1i32) / lit!(2);
-    let b = lit!(1i32) / 2;
+    let a = Expr::from(1i32) / Expr::from(2);
 
-    assert_eq!(a.erased, b.erased);
     assert_eq!(
       a.erased,
-      ErasedExpr::Div(
-        Box::new(ErasedExpr::LitInt(1)),
-        Box::new(ErasedExpr::LitInt(2)),
-      )
-    );
-    assert_eq!(
-      b.erased,
       ErasedExpr::Div(
         Box::new(ErasedExpr::LitInt(1)),
         Box::new(ErasedExpr::LitInt(2)),
@@ -1410,10 +961,10 @@ mod test {
   }
 
   #[test]
-  fn ref_inference() {
-    let a = lit!(1i32);
-    let b = a.clone() + 1;
-    let c = a + 1;
+  fn clone() {
+    let a = Expr::from(1i32);
+    let b = a.clone() + Expr::from(1);
+    let c = a + Expr::from(1);
 
     assert_eq!(b.erased, c.erased);
   }
@@ -1422,9 +973,9 @@ mod test {
   fn var() {
     let mut scope = Scope::<()>::new(0);
 
-    let x = scope.var(0);
-    let y = scope.var(1u32);
-    let z = scope.var(lit![false, true, false]);
+    let x = scope.var(Expr::from(0));
+    let y = scope.var(Expr::from(1u32));
+    let z = scope.var(Expr::from([false, true, false]));
 
     assert_eq!(x.erased, ErasedExpr::Var(ScopedHandle::fun_var(0, 0)));
     assert_eq!(y.erased, ErasedExpr::Var(ScopedHandle::fun_var(0, 1)));
@@ -1470,12 +1021,12 @@ mod test {
 
   #[test]
   fn min_max_clamp() {
-    let a = lit!(1i32);
-    let b = lit!(2);
-    let c = lit!(3);
+    let a = Expr::from(1i32);
+    let b = Expr::from(2);
+    let c = Expr::from(3);
 
     assert_eq!(
-      a.min(&b).erased,
+      a.clone().min(b.clone()).erased,
       ErasedExpr::FunCall(
         ErasedFunHandle::Min,
         vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)],
@@ -1483,7 +1034,7 @@ mod test {
     );
 
     assert_eq!(
-      a.max(&b).erased,
+      a.clone().max(b.clone()).erased,
       ErasedExpr::FunCall(
         ErasedFunHandle::Max,
         vec![ErasedExpr::LitInt(1), ErasedExpr::LitInt(2)],
@@ -1491,7 +1042,7 @@ mod test {
     );
 
     assert_eq!(
-      a.clamp(b, c).erased,
+      a.clone().clamp(b, c).erased,
       ErasedExpr::FunCall(
         ErasedFunHandle::Clamp,
         vec![
@@ -1507,7 +1058,7 @@ mod test {
   fn array_creation() {
     let _ = Expr::from([1, 2, 3]);
     let _ = Expr::from(&[1, 2, 3]);
-    let _ = lit!([vec2!(1., 2.)]);
+    let _ = Expr::from([vec2!(1., 2.)]);
     let two_d = Expr::from([[1, 2], [3, 4]]);
 
     assert_eq!(
@@ -1530,27 +1081,34 @@ mod test {
 
   #[test]
   fn vec3_ctor() {
-    let xy = lit!(1., 2.);
-    let xyz2 = vec3!(xy, lit!(3.));
-    let xyz3 = vec3!(lit!(1.), lit!(2.), lit!(3.));
+    let xy = Expr::from(V2::from([1., 2.]));
+    let xyz2 = vec3!(xy, Expr::from(3.));
+    let xyz3 = vec3!(Expr::from(1.), Expr::from(2.), Expr::from(3.));
 
     assert_eq!(
       xyz2.erased,
-      ErasedExpr::FunCall(ErasedFunHandle::Vec3, vec![xy.erased, lit!(3.).erased])
+      ErasedExpr::FunCall(
+        ErasedFunHandle::Vec3,
+        vec![xy.erased, Expr::from(3.).erased]
+      )
     );
 
     assert_eq!(
       xyz3.erased,
       ErasedExpr::FunCall(
         ErasedFunHandle::Vec3,
-        vec![lit!(1.).erased, lit!(2.).erased, lit!(3.).erased]
+        vec![
+          Expr::from(1.).erased,
+          Expr::from(2.).erased,
+          Expr::from(3.).erased
+        ]
       )
     );
   }
 
   #[test]
   fn vec4_ctor() {
-    let xy: Expr<V2<f32>> = lit!(1., 2.);
+    let xy = Expr::from(V2::from([1., 2.]));
     let xyzw22 = vec4!(xy, xy);
     let xyzw211 = vec4!(xy, 3., 4.);
     let xyzw31 = vec4!(vec3!(1., 2., 3.), 4.);
@@ -1568,7 +1126,11 @@ mod test {
       xyzw211.erased,
       ErasedExpr::FunCall(
         ErasedFunHandle::Vec4,
-        vec![xy.clone().erased, lit!(3.).erased, lit!(4.).erased]
+        vec![
+          xy.clone().erased,
+          Expr::from(3.).erased,
+          Expr::from(4.).erased
+        ]
       )
     );
 
@@ -1576,7 +1138,7 @@ mod test {
       xyzw31.erased,
       ErasedExpr::FunCall(
         ErasedFunHandle::Vec4,
-        vec![vec3!(1., 2., 3.).erased, lit!(4.).erased]
+        vec![vec3!(1., 2., 3.).erased, Expr::from(4.).erased]
       )
     );
 
@@ -1585,10 +1147,10 @@ mod test {
       ErasedExpr::FunCall(
         ErasedFunHandle::Vec4,
         vec![
-          lit!(1.).erased,
-          lit!(2.).erased,
-          lit!(3.).erased,
-          lit!(4.).erased
+          Expr::from(1.).erased,
+          Expr::from(2.).erased,
+          Expr::from(3.).erased,
+          Expr::from(4.).erased
         ]
       )
     );
