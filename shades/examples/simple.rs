@@ -2,8 +2,8 @@ use shades::{
   expr::Expr,
   input::Inputs,
   lit,
-  scope::{CanEscape as _, Scope},
-  stage::StageBuilder,
+  scope::{Conditional as _, Scope},
+  stage::ModBuilder,
   types::{ToType, Type, V2, V3, V4},
   vec4,
 };
@@ -34,8 +34,8 @@ impl Inputs for MyVertex {
 }
 
 fn main() {
-  let vertex_shader = StageBuilder::new_vertex_shader(
-    |mut shader: StageBuilder<MyVertex, (), ()>, input, output| {
+  let vertex_shader =
+    ModBuilder::new_vertex_shader(|mut shader: ModBuilder<MyVertex, (), ()>, input, output| {
       let increment = shader.fun(|_: &mut Scope<Expr<f32>>, a: Expr<f32>| a + lit!(1.));
 
       shader.fun(|_: &mut Scope<()>, _: Expr<[[V2<f32>; 2]; 15]>| ());
@@ -56,8 +56,7 @@ fn main() {
           });
         });
       })
-    },
-  );
+    });
 
   let output = shades::writer::glsl::write_shader_to_str(&vertex_shader).unwrap();
   println!("{}", output);

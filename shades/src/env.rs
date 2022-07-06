@@ -6,7 +6,7 @@ pub trait Environment {
 
   fn env() -> Self::Env;
 
-  fn env_set() -> Vec<(usize, Type)>;
+  fn env_set() -> Vec<(u16, Type)>;
 }
 
 impl Environment for () {
@@ -16,7 +16,7 @@ impl Environment for () {
     ()
   }
 
-  fn env_set() -> Vec<(usize, Type)> {
+  fn env_set() -> Vec<(u16, Type)> {
     Vec::new()
   }
 }

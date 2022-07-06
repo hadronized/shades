@@ -167,8 +167,13 @@ where
   }
 
   /// Create a new input.
-  pub const fn new_input(handle: usize) -> Self {
+  pub const fn new_input(handle: u16) -> Self {
     Self::new(ErasedExpr::Var(ScopedHandle::Input2(handle)))
+  }
+
+  /// Create a new function argument.
+  pub const fn new_fun_arg(handle: u16) -> Self {
+    Self::new(ErasedExpr::Var(ScopedHandle::FunArg(handle)))
   }
 
   /// Equality expression.
@@ -989,15 +994,21 @@ impl_binshifts_Expr!(Shr, shr);
 
 macro_rules! impl_From_Expr_scalar {
   ($t:ty, $q:ident) => {
+    impl Expr<$t> {
+      pub const fn lit(a: $t) -> Expr<$t> {
+        Self::new(ErasedExpr::$q(a))
+      }
+    }
+
     impl From<$t> for Expr<$t> {
       fn from(a: $t) -> Self {
-        Self::new(ErasedExpr::$q(a))
+        Self::lit(a)
       }
     }
 
     impl<'a> From<&'a $t> for Expr<$t> {
       fn from(a: &'a $t) -> Self {
-        Self::new(ErasedExpr::$q(*a))
+        Self::lit(*a)
       }
     }
   };
@@ -1010,15 +1021,21 @@ impl_From_Expr_scalar!(bool, LitBool);
 
 macro_rules! impl_From_Expr_vn {
   ($t:ty, $q:ident) => {
+    impl Expr<$t> {
+      pub const fn lit(a: $t) -> Expr<$t> {
+        Self::new(ErasedExpr::$q(a.0))
+      }
+    }
+
     impl From<$t> for Expr<$t> {
       fn from(a: $t) -> Self {
-        Self::new(ErasedExpr::$q(a.0))
+        Self::lit(a)
       }
     }
 
     impl<'a> From<&'a $t> for Expr<$t> {
       fn from(a: &'a $t) -> Self {
-        Self::new(ErasedExpr::$q(a.0))
+        Self::lit(*a)
       }
     }
   };
@@ -1288,6 +1305,13 @@ mod test {
   fn lit() {
     assert_eq!(lit!(true).erased, ErasedExpr::LitBool(true));
     assert_eq!(lit![1, 2].erased, ErasedExpr::LitInt2([1, 2]));
+    assert_eq!(
+      (lit!(1.) + lit!(2.)).erased,
+      ErasedExpr::Add(
+        Box::new(ErasedExpr::LitFloat(1.)),
+        Box::new(ErasedExpr::LitFloat(2.)),
+      )
+    );
   }
 
   #[test]

@@ -11,7 +11,7 @@ use crate::{
   fun::{ErasedFun, ErasedFunHandle, ErasedReturn},
   input::Inputs,
   output::Outputs,
-  scope::{ErasedScope, ScopeInstr, ScopedHandle},
+  scope::{ErasedScope, MutateBinOp, ScopeInstr, ScopedHandle},
   shader::ShaderDecl,
   stage::Stage,
   swizzle::{Swizzle, SwizzleSelector},
@@ -22,7 +22,7 @@ use crate::{
 const INDENT_SPACES: usize = 2;
 
 /// Write a [`Shader`] to a [`String`].
-pub fn write_shader_to_str<I, O, E>(shader: &Stage<I, O, E>) -> Result<String, fmt::Error>
+pub fn write_shader_to_str<S, I, O, E>(shader: &Stage<S, I, O, E>) -> Result<String, fmt::Error>
 where
   I: Inputs,
   O: Outputs,
@@ -34,9 +34,9 @@ where
 }
 
 /// Write a [`Shader`] to a [`fmt::Write`](std::fmt::Write).
-pub fn write_shader<I, O, E>(
+pub fn write_shader<S, I, O, E>(
   f: &mut impl fmt::Write,
-  shader: &Stage<I, O, E>,
+  shader: &Stage<S, I, O, E>,
 ) -> Result<(), fmt::Error>
 where
   I: Inputs,
@@ -76,15 +76,13 @@ fn write_fun_def(f: &mut impl fmt::Write, handle: u16, fun: &ErasedFun) -> Resul
   // just for aesthetics :')
   f.write_str("\n")?;
 
-  let ret_expr = match &fun.ret {
-    ErasedReturn::Void => {
+  match fun.ret_ty {
+    None => {
       f.write_str("void")?;
-      None
     }
 
-    ErasedReturn::Expr(ref ty, expr) => {
+    Some(ref ty) => {
       write_type(f, ty)?;
-      Some(expr)
     }
   };
 
@@ -106,13 +104,6 @@ fn write_fun_def(f: &mut impl fmt::Write, handle: u16, fun: &ErasedFun) -> Resul
   f.write_str(") {\n")?;
 
   write_scope(f, &fun.scope, 1)?;
-
-  if let Some(ref expr) = ret_expr {
-    write_indent(f, 1)?;
-    f.write_str("return ")?;
-    write_expr(f, expr)?;
-    f.write_str(";")?;
-  }
 
   f.write_str("\n}\n")
 }
@@ -223,9 +214,17 @@ fn write_scope(
         write_indented(f, indent_lvl, "}")?;
       }
 
-      ScopeInstr::MutateVar { var, expr } => {
+      ScopeInstr::MutateVar { var, bin_op, expr } => {
         write_expr(f, var)?;
-        f.write_str(" = ")?;
+
+        if let Some(bin_op) = bin_op {
+          f.write_str(" ")?;
+          write_mutate_bin_op(f, bin_op)?;
+          f.write_str(" ")?;
+        } else {
+          f.write_str(" = ")?;
+        }
+
         write_expr(f, expr)?;
         f.write_str(";")?;
       }
@@ -235,6 +234,21 @@ fn write_scope(
   }
 
   Ok(())
+}
+
+fn write_mutate_bin_op(f: &mut impl fmt::Write, bin_op: &MutateBinOp) -> Result<(), fmt::Error> {
+  match bin_op {
+    MutateBinOp::Add => f.write_str("+="),
+    MutateBinOp::Sub => f.write_str("-="),
+    MutateBinOp::Mul => f.write_str("*="),
+    MutateBinOp::Div => f.write_str("/="),
+    MutateBinOp::Rem => f.write_str("%="),
+    MutateBinOp::Xor => f.write_str("^="),
+    MutateBinOp::And => f.write_str("&="),
+    MutateBinOp::Or => f.write_str("|="),
+    MutateBinOp::Shl => f.write_str("<<="),
+    MutateBinOp::Shr => f.write_str(">>="),
+  }
 }
 
 fn write_constant(
@@ -252,19 +266,19 @@ fn write_constant(
   f.write_str(";\n")
 }
 
-fn write_input(f: &mut impl fmt::Write, index: usize, ty: &Type) -> Result<(), fmt::Error> {
+fn write_input(f: &mut impl fmt::Write, index: u16, ty: &Type) -> Result<(), fmt::Error> {
   f.write_str("in ")?;
   write_type(f, ty)?;
   write!(f, " in_{};\n", index)
 }
 
-fn write_output(f: &mut impl fmt::Write, index: usize, ty: &Type) -> Result<(), fmt::Error> {
+fn write_output(f: &mut impl fmt::Write, index: u16, ty: &Type) -> Result<(), fmt::Error> {
   f.write_str("out ")?;
   write_type(f, ty)?;
   write!(f, " out_{};\n", index)
 }
 
-fn write_uniform(f: &mut impl fmt::Write, index: usize, ty: &Type) -> Result<(), fmt::Error> {
+fn write_uniform(f: &mut impl fmt::Write, index: u16, ty: &Type) -> Result<(), fmt::Error> {
   f.write_str("uniform ")?;
   write_type(f, ty)?;
   write!(f, " uni_{};\n", index)
