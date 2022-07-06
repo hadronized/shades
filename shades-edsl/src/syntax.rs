@@ -35,12 +35,11 @@ impl ToTokens for StageDecl {
   fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
     let input = &self.input;
     let output = &self.output;
-    let _env = &self.env;
+    let env = &self.env;
     let stage = &self.stage_item;
-    // TODO: env
 
     let q = quote! {
-      shades::stage::ModBuilder::new_stage(|mut __builder, #input, #output| {
+      shades::stage::ModBuilder::new_stage(|mut __builder, #input, #output, #env| {
         #stage
       })
     };
