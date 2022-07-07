@@ -63,7 +63,7 @@ fn test_shades() {
       x = 10;
       y *= z;
 
-      return a + b;
+      a + b
     }
 
     fn main() {}
