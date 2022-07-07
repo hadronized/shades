@@ -16,8 +16,3 @@ pub fn shades(tokens: TokenStream) -> TokenStream {
   let ast = stage.into_token_stream();
   ast.into()
 }
-
-/* #[proc_macro]
-pub fn shades_def(tokens: TokenStream) -> TokenStream {
-  todo!()
-} */
