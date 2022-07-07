@@ -74,7 +74,7 @@ where
   /// #   })
   /// # });
   /// ```
-  pub fn var<T>(&mut self, init_value: impl Into<Expr<T>>) -> Var<T>
+  pub fn var<T>(&mut self, init_value: Expr<T>) -> Var<T>
   where
     T: ToType,
   {
@@ -86,7 +86,7 @@ where
     self.erased.instructions.push(ScopeInstr::VarDecl {
       ty: T::ty(),
       handle: handle.clone(),
-      init_value: init_value.into().erased,
+      init_value: init_value.erased,
     });
 
     Var::new(handle)
@@ -132,7 +132,7 @@ where
   /// ```
   pub fn loop_for<T>(
     &mut self,
-    init_value: impl Into<Expr<T>>,
+    init_value: Expr<T>,
     condition: impl FnOnce(&Expr<T>) -> Expr<bool>,
     iter_fold: impl FnOnce(&Expr<T>) -> Expr<T>,
     body: impl FnOnce(&mut LoopScope<R>, &Expr<T>),
