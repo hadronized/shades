@@ -168,7 +168,17 @@ where
 
   /// Create a new input.
   pub const fn new_input(handle: u16) -> Self {
-    Self::new(ErasedExpr::Var(ScopedHandle::Input2(handle)))
+    Self::new(ErasedExpr::Var(ScopedHandle::Input(handle)))
+  }
+
+  /// Create a new output.
+  pub fn new_output(handle: u16) -> Self {
+    Self::new(ErasedExpr::Var(ScopedHandle::Output(handle)))
+  }
+
+  /// Create a new environment.
+  pub fn new_env(name: impl Into<String>) -> Self {
+    Self::new(ErasedExpr::Var(ScopedHandle::Env(name.into())))
   }
 
   /// Create a new function argument.

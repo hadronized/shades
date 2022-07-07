@@ -181,6 +181,13 @@ pub trait ToPrimType {
   const PRIM_TYPE: PrimType;
 }
 
+impl<T> ToPrimType for Expr<T>
+where
+  T: ToPrimType,
+{
+  const PRIM_TYPE: PrimType = T::PRIM_TYPE;
+}
+
 macro_rules! impl_ToPrimType {
   ($t:ty, $q:ident, $d:ident) => {
     impl ToPrimType for $t {

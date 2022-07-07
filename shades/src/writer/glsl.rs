@@ -51,8 +51,8 @@ where
     write_output(f, index, ty)?;
   }
 
-  for (index, ref ty) in E::env_set() {
-    write_uniform(f, index, ty)?;
+  for (name, ref ty) in E::env_set() {
+    write_env(f, name, ty)?;
   }
 
   for decl in &shader.builder.decls {
@@ -278,10 +278,10 @@ fn write_output(f: &mut impl fmt::Write, index: u16, ty: &Type) -> Result<(), fm
   write!(f, " out_{};\n", index)
 }
 
-fn write_uniform(f: &mut impl fmt::Write, index: u16, ty: &Type) -> Result<(), fmt::Error> {
+fn write_env(f: &mut impl fmt::Write, name: String, ty: &Type) -> Result<(), fmt::Error> {
   f.write_str("uniform ")?;
   write_type(f, ty)?;
-  write!(f, " uni_{};\n", index)
+  write!(f, " {};\n", name)
 }
 
 fn write_expr(f: &mut impl fmt::Write, expr: &ErasedExpr) -> Result<(), fmt::Error> {
@@ -729,13 +729,11 @@ fn write_scoped_handle(f: &mut impl fmt::Write, handle: &ScopedHandle) -> Result
       write!(f, "var_{}_{}", subscope, handle)
     }
 
-    ScopedHandle::Input(name) => f.write_str(name),
+    ScopedHandle::Input(handle) => write!(f, "in_{}", handle),
 
-    ScopedHandle::Input2(handle) => write!(f, "in_{}", handle),
+    ScopedHandle::Output(handle) => write!(f, "out_{}", handle),
 
-    ScopedHandle::Output(name) => f.write_str(name),
-
-    ScopedHandle::Uniform(name) => f.write_str(name),
+    ScopedHandle::Env(name) => f.write_str(name),
   }
 }
 

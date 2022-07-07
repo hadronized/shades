@@ -12,12 +12,13 @@ use syn::{
 /// A stage declaration with its environment.
 #[derive(Debug)]
 pub struct StageDecl {
+  stage_ty: Type,
   left_or: Token![|],
-  input: Ident,
+  input: FnArgItem,
   comma_input_token: Token![,],
-  output: Ident,
+  output: FnArgItem,
   comma_output_token: Token![,],
-  env: Ident,
+  env: FnArgItem,
   right_or: Token![|],
   brace_token: Brace,
   stage_item: StageItem,
@@ -33,13 +34,22 @@ impl StageDecl {
 
 impl ToTokens for StageDecl {
   fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-    let input = &self.input;
-    let output = &self.output;
-    let env = &self.env;
+    let stage_ty = &self.stage_ty;
+    let mut input = self.input.clone();
+    let mut output = self.output.clone();
+    let mut env = self.env.clone();
     let stage = &self.stage_item;
 
+    let in_ty = input.ty.clone();
+    let out_ty = output.ty.clone();
+    let env_ty = env.ty.clone();
+    input.ty = parse_quote! { <#stage_ty as shades::stage::ShaderModule<#in_ty, #out_ty>>::Inputs };
+    output.ty =
+      parse_quote! { <#stage_ty as shades::stage::ShaderModule<#in_ty, #out_ty>>::Outputs };
+    env.ty = parse_quote! { <#env_ty as shades::env::Environment>::Env };
+
     let q = quote! {
-      shades::stage::ModBuilder::new_stage(|mut __builder, #input, #output, #env| {
+      shades::stage::ModBuilder::<#stage_ty, #in_ty, #out_ty, #env_ty>::new_stage(|mut __builder, #input, #output, #env| {
         #stage
       })
     };
@@ -50,6 +60,7 @@ impl ToTokens for StageDecl {
 
 impl Parse for StageDecl {
   fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
+    let stage_ty = input.parse()?;
     let left_or = input.parse()?;
     let input_ = input.parse()?;
     let comma_input_token = input.parse()?;
@@ -63,6 +74,7 @@ impl Parse for StageDecl {
     let stage_item = stage_input.parse()?;
 
     Ok(Self {
+      stage_ty,
       left_or,
       input: input_,
       comma_input_token,
@@ -210,7 +222,7 @@ impl FnArgItem {
   fn mutate(&mut self) {
     if self.pound_token.is_none() {
       // if we don’t have a #ty but just ty, we lift the type in Expr<#ty>
-      // ExprVisitor.visit_type_mut(&mut self.ty);
+      ExprVisitor.visit_type_mut(&mut self.ty);
     };
   }
 }
@@ -303,7 +315,7 @@ impl ToTokens for FunDefItem {
     let args_expr_decls = self.args.iter().enumerate().map(|(k, arg)| {
       let ty = &arg.ty;
       let ident = &arg.ident;
-      quote! { let #ident: shades::expr::Expr<#ty> = shades::expr::Expr::new_fun_arg(#k as u16); }
+      quote! { let #ident: #ty = shades::expr::Expr::new_fun_arg(#k as u16); }
     });
 
     // function return type
@@ -405,15 +417,12 @@ impl Parse for ScopeInstrItems {
   fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
     let mut items = Vec::new();
 
-    loop {
+    while !input.is_empty() {
       let lookahead = input.lookahead1();
 
       let v = if lookahead.peek(Token![let]) {
         let v = input.parse()?;
         ScopeInstrItem::VarDecl(v)
-      } else if lookahead.peek(Token![return]) {
-        let v = input.parse()?;
-        ScopeInstrItem::Return(v)
       } else if lookahead.peek(Token![continue]) {
         let v = input.parse()?;
         ScopeInstrItem::Continue(v)
@@ -424,11 +433,15 @@ impl Parse for ScopeInstrItems {
         let v = input.parse()?;
         ScopeInstrItem::If(v)
       } else {
-        // try to parse a MutateVar; if it fails, we break
-        match input.parse() {
-          Ok(v) => ScopeInstrItem::MutateVar(v),
-
-          Err(_) => break,
+        // try to parse a mutate var first, otherwise fallback on return
+        let input_ = input.fork();
+        if input_.parse::<MutateVarItem>().is_ok() {
+          // advance the original input
+          let v = input.parse()?;
+          ScopeInstrItem::MutateVar(v)
+        } else {
+          let v = input.parse()?;
+          ScopeInstrItem::Return(v)
         }
       };
 
@@ -474,17 +487,17 @@ impl ToTokens for ScopeInstrItem {
 
         if let Some((_, ty)) = &decl.ty {
           quote! {
-            let #name: #ty = __scope.var(shades::expr::Expr::from(#expr));
+            let #name: #ty = __scope.var(#expr);
           }
         } else {
           quote! {
-            let #name = __scope.var(shades::expr::Expr::from(#expr));
+            let #name = __scope.var(#expr);
           }
         }
       }
 
       ScopeInstrItem::Return(ret) => {
-        let expr = &ret.expr;
+        let expr = ret.expr();
 
         quote! {
           __scope.leave(#expr);
@@ -577,29 +590,50 @@ impl Parse for VarDeclItem {
 
 // FIXME: this encoding is wrong; it should be either an expression, or return + expr + semi
 #[derive(Debug)]
-pub struct ReturnItem {
-  return_token: Option<Token![return]>,
-  expr: Expr,
-  semi_token: Token![;],
+pub enum ReturnItem {
+  Return {
+    return_token: Option<Token![return]>,
+    expr: Expr,
+    semi_token: Token![;],
+  },
+
+  Implicit {
+    expr: Expr,
+  },
 }
 
 impl ReturnItem {
+  fn expr(&self) -> &Expr {
+    match self {
+      ReturnItem::Return { expr, .. } => expr,
+      ReturnItem::Implicit { expr } => expr,
+    }
+  }
   fn mutate(&mut self) {
-    ExprVisitor.visit_expr_mut(&mut self.expr);
+    match self {
+      ReturnItem::Return { expr, .. } => ExprVisitor.visit_expr_mut(expr),
+      ReturnItem::Implicit { expr } => ExprVisitor.visit_expr_mut(expr),
+    }
   }
 }
 
 impl Parse for ReturnItem {
   fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
-    let return_token = input.parse()?;
-    let expr = input.parse()?;
-    let semi_token = input.parse()?;
+    if input.peek(Token![return]) {
+      let return_token = input.parse()?;
+      let expr = input.parse()?;
+      let semi_token = input.parse()?;
 
-    Ok(Self {
-      return_token,
-      expr,
-      semi_token,
-    })
+      Ok(ReturnItem::Return {
+        return_token,
+        expr,
+        semi_token,
+      })
+    } else {
+      let expr = input.parse()?;
+
+      Ok(ReturnItem::Implicit { expr })
+    }
   }
 }
 
@@ -943,7 +977,6 @@ impl VisitMut for ExprVisitor {
   }
 
   fn visit_expr_mut(&mut self, i: &mut Expr) {
-    return;
     match i {
       Expr::Array(a) => {
         for expr in &mut a.elems {
@@ -991,7 +1024,7 @@ impl VisitMut for ExprVisitor {
       }
 
       Expr::Lit(_) => {
-        *i = parse_quote! { shades::expr::Expr::lit(#i) };
+        *i = parse_quote! { shades::expr::Expr::from(#i) };
       }
 
       Expr::MethodCall(c) => {
@@ -1015,7 +1048,7 @@ impl VisitMut for ExprVisitor {
       }
 
       Expr::Path(p) => {
-        let e = parse_quote! { shades::expr::Expr::from(#p) };
+        let e = parse_quote! { #p.clone() };
         *i = e;
       }
 

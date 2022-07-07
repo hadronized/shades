@@ -678,12 +678,9 @@ pub enum ScopedHandle {
   Global(u16),
   FunArg(u16),
   FunVar { subscope: u16, handle: u16 },
-  Input(String),
-  Output(String),
-  Uniform(String),
-
-  // new type-sound representation
-  Input2(u16),
+  Input(u16),
+  Output(u16),
+  Env(String),
 }
 
 impl ScopedHandle {
