@@ -13,15 +13,15 @@
 //! (i.e. the graphics library, engine or the application) to check for errors and react correctly. Shading languages can
 //! also be compiled _off-line_, and their bytecode is then used at runtime (c.f. SPIR-V).
 //!
-//! For a lot of people, this has proven okay for decades and even allowed _live coding_: because the shading code is
+//! For a lot of people, that has proven okay for decades and even allowed _live coding_: because the shading code is
 //! loaded at runtime, it is possible to re-load, re-compile and re-link it every time a change happens. However, this comes
-//! with a non-negligible drawbacks:
+//! with non-negligible drawbacks:
 //!
-//! - The shading code is often checked either at runtime. In this case, ill-written shaders won’t be visible by
-//!   programmers until the runtime is executed and the GPU driver refuses the shading code.
-//! - When compiled off-line are transpiled to bytecode, extra specialized tooling is required (such as an external program,
+//! - The shading code is often checked at runtime. In this case, ill-written shaders won’t be visible by programmers until
+//!   the runtime is executed and the GPU driver refuses the shading code.
+//! - When compiled off-line and transpiled to bytecode, extra specialized tooling is required (such as an external program,
 //!   a language extension, etc.).
-//! - Writing shaders imply learning a new language. The most widespread shading language is [GLSL] but others exist,
+//! - Writing shaders implies learning a new language. The most widespread shading language is [GLSL] but others exist,
 //!   meaning that people will have to learn specialized languages and, most of the time, weaker compilation systems. For
 //!   instance, [GLSL] doesn’t have anything natively to include other [GLSL] files and it’s an old C-like language.
 //! - Even though the appeal of using a language in a dynamic way can seem appealing, going from a dynamic language and
@@ -33,19 +33,20 @@
 //! The author ([@phaazon]) of this crate thinks that shading code is still code, and that it should be treated as such.
 //! It’s easy to see the power of live-coding / reloading, but it’s more important to provide a shading code that is
 //! statically proven sound and with less bugs that without the static check. Also, as stated above, using a compiled
-//! approach doesn’t prevent from writing a relocatable object, compiled isolated and reload this object, providing roughly
-//! the same functionality as live-coding.
+//! approach doesn’t prevent from writing a relocatable object, compiled isolated and reloaded at runtime, providing
+//! roughly the same functionality as live-coding.
 //!
 //! Another important point is the choice of using an EDSL. Some people would argue that Rust has other interesting and
 //! powerful ways to achieve the same goal. It is important to notice that this crate doesn’t provide a compiler to compile
 //! Rust code to a shading language. Instead, it provides a Rust crate that will still generate the shading code at runtime.
-//! Other alternatives would be using a [proc-macro]. Several crates that do this:
+//! Several crates following a different approach:
 //!
 //! - You can use the [glsl](https://crates.io/crates/glsl) and [glsl-quasiquote](https://crates.io/crates/glsl-quasiquote)
 //!   crates. The first one is a parser for GLSL and the second one allows you to write GLSL in a quasi-quoter
-//!   (`glsl! { /* here */  }`) and get it compiled and check at runtime. It’s still [GLSL], though, and the possibilities
-//!   of runtime combinations are much less than an EDSL.
-//! - You can use the [rust-gpu] project. It’s a similar project but they use a proc-macro, compiling Rust code
+//!   (`glsl! { /* here */  }`) and get it compiled and checked at runtime. It’s still [GLSL], though, and the
+//!   possibilities of runtime combinations are much less than an EDSL. Also, [glsl] doesn’t provide semantic analysis,
+//!   so you are left implementing that on your own (and it’s a lot of work).
+//! - You can use the [rust-gpu] project. It’s a similar project but they use a `rustc` toolchain, compiling Rust code
 //!   representing GPU code. It requires a specific toolchain and doesn’t operate at the same level of this crate — it can
 //!   even compile a large part of the `core` library.
 //!
@@ -54,6 +55,30 @@
 //! - [blaze-html], a [Haskell] [EDSL] to build HTML in [Haskell].
 //! - [selda], a [Haskell] [EDSL] to build SQL queries and execute them without writing SQL strings. This current crate is
 //!   very similar in the approach.
+//!
+//! # The AST crate and the EDSL crate
+//!
+//! This crate ([shades]) is actually half of the solution. [shades] provides the AST code. Using only [shades] requires
+//! you to learn all the types that represent a shading language AST. It can be tedious and counter-productive. For
+//! instance, writing a simple loop with [shades] requires several function calls and a weird syntax.
+//!
+//! Up to version `shades-0.3.6`, you didn’t really have a choice and you had to use that weird syntax. Some macros were
+//! available to simplify things, along with nightly extensions to call functions and declare them by hacking around
+//! lambdas. However, starting from `shades-0.4`, a new crate appeared: [shades-edsl].
+//!
+//! [shades-edsl] solves the above problem by removing the “friendly” interface from [shades], reserving [shades]’
+//! interface for being called by [shades-edsl] (or adventurous users!). [shades-edsl] is a procedural macro parsing
+//! regular Rust code and generating Rust code using [shades]. For instance, a function definition using [shades] only
+//! requires you to know about `FunDef`, `ErasedFunDef`, `Return`, `ErasedReturn`, how arguments are represented, etc.
+//! It can be very frustrating for people who just want to write the code. With [shades-edsl]? It’s as simple as:
+//!
+//! ```rust
+//! fn add(a: i32, b: i32) -> i32 {
+//!   a + b
+//! }
+//! ```
+//!
+//! If that function definiton is in a `shades!` block, it will be completely changed to use [shades] instead.
 //!
 //! # Why you would love this
 //!
@@ -65,35 +90,29 @@
 //!   of shaders, what they are, how they work, etc. But the _encoding of those concepts_ is now encapsulated by a native
 //!   Rust crate.
 //! - Types used to represent shading types are basic and native Rust types, such as `bool`, `f32` or `[T; N]`.
-//! - Write a more functional code rather than imperative code. For instance, a _vertex shader_ in this crate is basically
-//!   a function taking an object of type `Vertex` and returning another object, that will be passed to the next stage.
+//! - Write a more functional code rather than imperative code!
 //! - Catch semantic bugs within `rustc`. For instance, assigning a `bool` to a `f32` in your shader code will trigger a
-//!   `rustc` error.
+//!   `rustc` error, so that kind of errors won’t leak to your runtime.
 //! - Make some code impossible to write. For instance, you will not be able to use in a _vertex shader_ expressions only
 //!   valid in the context of a _fragment shader_, as this is not possible by their own definitions.
 //! - Extend and add more items to famous shading languages. For instance, [GLSL] doesn’t have a `π` constant. This
 //!   situation is fixed so you will never have to write `π` decimals by yourself anymore.
 //! - Because you write Rust, benefit from all the language type candies, composability, extensibility and soundness.
-//! - An experimental _monadic_ experience behind a _feature-gate_. This allows to write shaders by using the [do-notation]
-//!   crate and remove a lot of boilerplate for you, making _scopes_ and _shader scopes_ hidden for you, making it feel
-//!   like writing magic shading code.
+//! - Using the proc-macro EDSL, you write shading code without even knowing it, since that crate reinterprets Rust code
+//!   into AST nodes. You will not have to care about all the types and functions defined in this crate! You want to
+//!   create a function in the shading language? You don’t have to use `FunDef`, simply use a regular `fn` Rust
+//!   function. The EDSL does the rest.
 //!
 //! # Why you wouldn’t love this
 //!
 //! The crate is, as of nowadays, still very experimental. Here’s a list of things you might dislike about the crate:
 //!
-//! - The current verbosity is non-acceptable. Most lambdas you’ll have to use require you to annotate their arguments,
-//!   even though those are clearly guessable. This situation should be addressed as soon as possible, but people has to
-//!   know that the current situation implies lots of type ascriptions.
-//! - Some people would argue that writing [GLSL] is much faster and simpler, and they would be right. However, you would
-//!   need to learn [GLSL] in the first place; you wouldn’t be able to target SPIR-V; you wouldn’t have a solution to the
-//!   static typing problem; etc.
+//! - Some people would argue that writing [GLSL] is much faster and simpler to write, and they would be partially right.
+//!   However, you would need to learn [GLSL] in the first place; you wouldn’t be able to target SPIR-V; you wouldn’t have
+//!   a solution to the static typing problem; etc.
 //! - In the case of a runtime compilation / linking failure of your shading code, debugging it might be challenging, as
 //!   all the identifiers (with a few exceptions) are generated for you. It’ll make it harder to understand the generated
 //!   code.
-//! - Some concepts, especially control-flow statements, look a bit weird. For instance, a `for` loop in [GLSL] is written
-//!   with a much more convoluted way with this crate. The generated code is the same, but it is correctly more verbose via
-//!   this crate.
 //!
 //! [@phaazon]: https://github.com/phaazon
 //! [EDSL]: https://en.wikipedia.org/wiki/Domain-specific_language#External_and_Embedded_Domain_Specific_Languages
@@ -105,6 +124,8 @@
 //! [proc-macro]: https://doc.rust-lang.org/reference/procedural-macros.html
 //! [rust-gpu]: https://github.com/EmbarkStudios/rust-gpu
 //! [do-notation]: https://crates.io/crates/do-notation
+//! [shades]: https://crates.io/crates/shades
+//! [shades-edsl]: https://crates.io/crates/shades-edsl
 
 pub mod builtin;
 pub mod env;
