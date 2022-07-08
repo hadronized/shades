@@ -63,31 +63,19 @@ where
   ///
   /// The expression representation of [`Var<T>`], allowing to pass the variable to functions or expressions that don’t
   /// easily coerce it automatically to [`Expr<T>`] already.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::{Scope, StageBuilder};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// #   s.main_fun(|s: &mut Scope<()>| {
-  /// let v = s.var(123); // Var<i32>
-  /// let e = v.to_expr(); // Expr<i32>
-  /// #   })
-  /// # });
-  /// ```
   pub fn to_expr(&self) -> Expr<T> {
     self.0.clone()
   }
 }
 
 impl<T> Var<[T]> {
-  pub fn at(&self, index: impl Into<Expr<i32>>) -> Var<T> {
+  pub fn at(&self, index: Expr<i32>) -> Var<T> {
     Var(self.to_expr().at(index))
   }
 }
 
 impl<T, const N: usize> Var<[T; N]> {
-  pub fn at(&self, index: impl Into<Expr<i32>>) -> Var<T> {
+  pub fn at(&self, index: Expr<i32>) -> Var<T> {
     Var(self.to_expr().at(index))
   }
 }

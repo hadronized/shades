@@ -44,20 +44,6 @@ pub trait ShaderModule<I, O> {
   ///
   /// This method returns the fully built [`Stage`], which cannot be mutated anymore once it has been built,
   /// and can be passed to various [`writers`](crate::writer) to generate actual code for target shading languages.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// use shades::{Scope, StageBuilder, V3, inputs, vec4};
-  ///
-  /// let vertex_shader = StageBuilder::new_vertex_shader(|mut s, vertex| {
-  ///   inputs!(s, position: V3<f32>);
-  ///
-  ///   s.main_fun(|s: &mut Scope<()>| {
-  ///     s.set(vertex.position, vec4!(position, 1.));
-  ///   })
-  /// });
-  /// ```
   fn new_shader_module<E>(
     f: impl FnOnce(
       ModBuilder<Self, I, O, E>,
@@ -264,123 +250,12 @@ where
   }
   /// Create a new function in the shader and get its handle for future use.
   ///
-  /// This method requires to pass a closure encoding the argument(s) and return type of the function to create. The
-  /// closure’s body encodes the body of the function to create. The number of arguments will directly impact the
-  /// number of arguments the created function will have. The return type can be [`()`](unit) if the function doesn’t
-  /// return anything or [`Expr<T>`] if it does return something.
-  ///
-  /// The first argument of the closure is a mutable reference on a [`Scope`]. Its type parameter must be set to the
-  /// return type. The scope allows you to add instructions to the function body of the generated function. As in
-  /// vanilla Rust, the last expression in a function is assumed as return value, if the function returns a value.
-  /// However, unlike Rust, if your function returns something, it **cannot `return` it: it has to use the
-  /// expression-as-last-instruction syntax**. It means that even if you don’t use the [`Scope`] within the last
-  /// expression of your function body, the returned expression will still be part of the function as special returned
-  /// expression:
-  ///
-  /// ```
-  /// # use shades::StageBuilder;
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// use shades::{Expr, Scope};
-  ///
-  /// let f = s.fun(|s: &mut Scope<Expr<f32>>, a: Expr<f32>| a + 1.);
-  /// # s.main_fun(|s: &mut Scope<()>| {})
-  /// # });
-  /// ```
-  ///
-  /// However, as mentioned above, you cannot `return` the last expression (`leave`), as this is not accepted by the
-  /// EDSL:
-  ///
-  /// ```compile_fail
-  /// # use shades::StageBuilder;
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// use shades::{Expr, Scope};
-  ///
-  /// let f = s.fun(|s: &mut Scope<Expr<f32>>, a: Expr<f32>| {
-  ///   s.leave(a + 1.);
-  /// });
-  /// # s.main_fun(|s: &mut Scope<()>| {})
-  /// # });
-  /// ```
-  ///
-  /// Please refer to the [`Scope`] documentation for a complete list of the instructions you can record.
-  ///
-  /// # Caveats
-  ///
-  /// On a last note, you can still use the `return` keyword from Rust, but it is highly discouraged, as returning with
-  /// `return` cannot be captured by the EDSL. It means that you will not get the shader code you expect.
-  ///
-  /// ```
-  /// # use shades::{Expr, Scope, StageBuilder};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// use shades::{Expr, Scope};
-  ///
-  /// let f = s.fun(|s: &mut Scope<Expr<f32>>, a: Expr<f32>| {
-  ///   return a + 1.;
-  /// });
-  /// # s.main_fun(|s: &mut Scope<()>| {})
-  /// # });
-  /// ```
-  ///
-  /// An example of a broken shader is when you use the Rust `return` keyword inside a conditional statement or looping
-  /// statement:
-  ///
-  /// ```
-  /// # use shades::StageBuilder;
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// use shades::{CanEscape as _, EscapeScope, Expr, Scope};
-  ///
-  /// // don’t do this.
-  /// let f = s.fun(|s: &mut Scope<Expr<f32>>, a: Expr<f32>| {
-  ///   s.when(a.lt(10.), |s: &mut EscapeScope<Expr<f32>>| {
-  ///     // /!\ problem here /!\
-  ///     return;
-  ///   });
-  ///
-  ///   a + 1.
-  /// });
-  /// # s.main_fun(|s: &mut Scope<()>| {})
-  /// # });
-  /// ```
-  ///
-  /// This snippet will create a GLSL function testing whether its `a` argument is less than `10.` and if it’s the case,
-  /// does nothing inside of it (the `return` is not captured by the EDSL).
-  ///
   /// # Return
   ///
   /// This method returns a _function handle_, [`FunHandle<R, A>`], where `R` is the return type and `A` the argument
   /// list of the function. This handle can be used in various positions in the EDSL but the most interesting place is
   /// in [`Expr<T>`] and [`Var<T>`], when calling the function to, respectively, combine it with other expressions or
   /// assign it to a variable.
-  ///
-  /// ## Nightly-only: call syntax
-  ///
-  /// On the current version of stable `rustc` (1.49), it is not possible to use a [`FunHandle<R, A>`] as you would use
-  /// a normal Rust function: you have to use the [`FunHandle::call`] method, which is not really elegant nor ergonomic.
-  ///
-  /// To fix this problem, enable the `fun-call` feature gate.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// use shades::{Exponential as _, Expr, Scope, StageBuilder, lit};
-  ///
-  /// let shader = StageBuilder::new_vertex_shader(|mut s, vertex| {
-  ///   // create a function taking a floating-point number and returning its square
-  ///   let square = s.fun(|s: &mut Scope<Expr<f32>>, a: Expr<f32>| {
-  ///     a.pow(2.)
-  ///   });
-  ///
-  ///   // `square` can now be used to square floats!
-  ///   s.main_fun(|s: &mut Scope<()>| {
-  ///     // if you use the nightly compiler
-  /// #   #[cfg(feature = "fun-call")]
-  ///     let nine = s.var(square(lit!(3.)));
-  ///
-  ///     // if you’d rather use stable
-  ///     let nine = s.var(square.call(lit!(3.)));
-  ///   })
-  /// });
-  /// ```
   pub fn fun<R, A>(&mut self, fundef: FunDef<R, A>) -> FunHandle<R, A> {
     let handle = self.next_fun_handle;
     self.next_fun_handle += 1;
@@ -398,17 +273,6 @@ where
   /// # Return
   ///
   /// An [`Expr<T>`] representing the constant passed as input.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::{EscapeScope, Expr, Scope, StageBuilder, lit};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// // don’t do this.
-  /// let illum_coefficient: Expr<f32> = s.constant(10.);
-  /// # s.main_fun(|s: &mut Scope<()>| {})
-  /// # });
-  /// ```
   pub fn constant<T>(&mut self, expr: Expr<T>) -> Expr<T>
   where
     T: ToType,
@@ -450,18 +314,6 @@ where
   /// # Return
   ///
   /// The fully built [`Stage`], which cannot be altered anymore.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// use shades::{Scope, StageBuilder};
-  ///
-  /// let shader = StageBuilder::new_vertex_shader(|s, vertex| {
-  ///   s.main_fun(|s: &mut Scope<()>| {
-  ///     // …
-  ///   })
-  /// });
-  /// ```
   pub fn main_fun(mut self, fundef: FunDef<(), ()>) -> Stage<S, I, O, E> {
     self.decls.push(ShaderDecl::Main(fundef.erased));
     Stage { builder: self }

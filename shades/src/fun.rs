@@ -1,10 +1,11 @@
-use std::marker::PhantomData;
+//! Function definition, arguments, return and body.
 
 use crate::{
   expr::{ErasedExpr, Expr},
   scope::ErasedScope,
   types::{ToType, Type},
 };
+use std::marker::PhantomData;
 
 /// Function return.
 ///
@@ -49,78 +50,6 @@ where
 /// can then call the functions in the context of generating new expressions, returning them or creating variables.
 ///
 /// Injecting a function call in the EDSL is done via two current mechanisms:
-///
-/// - Either call the [`FunHandle::call`] method:
-///   - It is a function without argument if the represented function doesn’t have any argument.
-///   - It is a unary function if the represented function has a single argument.
-///   - It takes a tuple encapsulating the arguments for a n-ary represented function.
-/// - **On nightly only**, you can enable the `fun-call` feature-gate and calling the function will do the same thing
-///   as [`FunHandle::call`]. However, because of how the various [`FnOnce`], [`FnMut`] and [`Fn`] traits are made,
-///   functions taking several arguments take them as separate arguments as if it was a regular Rust function (they
-///   don’t take a tuple as with the [`FunHandle::call`] method).
-///
-/// # Examples
-///
-/// A unary function squaring its argument, the regular way:
-///
-/// ```
-/// # use shades::StageBuilder;
-/// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-/// use shades::{Expr, FunHandle, Scope, lit, vec2};
-///
-/// let square = s.fun(|s: &mut Scope<Expr<i32>>, a: Expr<i32>| {
-///   &a * &a
-/// });
-///
-/// s.main_fun(|s: &mut Scope<()>| {
-///   // call square with 3 and bind the result to a variable
-///   let squared = s.var(square.call(lit!(3)));
-/// })
-/// # });
-/// ```
-///
-/// The same function but with the `fun-call` feature-gate enabled:
-///
-/// ```
-/// # use shades::StageBuilder;
-/// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-/// use shades::{Expr, Scope, lit};
-///
-/// let square = s.fun(|s: &mut Scope<Expr<i32>>, a: Expr<i32>| {
-///   &a * &a
-/// });
-///
-/// s.main_fun(|s: &mut Scope<()>| {
-///   // call square with 3 and bind the result to a variable
-///   # #[cfg(feature = "fun-call")]
-///   let squared = s.var(square(lit!(3)));
-/// })
-/// # });
-/// ```
-///
-/// A function taking two 3D vectors and a floating scalar and returning their linear interpolation, called with
-/// three arguments:
-///
-/// ```
-/// # use shades::StageBuilder;
-/// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-/// use shades::{Expr, Mix as _, Scope, V3, lit, vec3};
-///
-/// let lerp = s.fun(|s: &mut Scope<Expr<V3<f32>>>, a: Expr<V3<f32>>, b: Expr<V3<f32>>, t: Expr<f32>| {
-///   a.mix(b, t)
-/// });
-///
-/// s.main_fun(|s: &mut Scope<()>| {
-///   # #[cfg(feature = "fun-call")]
-///   let a = vec3!(0., 0., 0.);
-///   let b = vec3!(1., 1., 1.);
-///
-///   // call lerp here and bind it to a local variable
-/// # #[cfg(feature = "fun-call")]
-///   let result = s.var(lerp(a, b, lit!(0.75)));
-/// })
-/// # });
-/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunHandle<R, A> {
   pub(crate) erased: ErasedFunHandle,
@@ -145,58 +74,12 @@ impl<R> FunHandle<Expr<R>, ()> {
   }
 }
 
-#[cfg(feature = "fun-call")]
-impl<R> FnOnce<()> for FunHandle<Expr<R>, ()> {
-  type Output = Expr<R>;
-
-  extern "rust-call" fn call_once(self, _: ()) -> Self::Output {
-    self.call()
-  }
-}
-
-#[cfg(feature = "fun-call")]
-impl<R> FnMut<()> for FunHandle<Expr<R>, ()> {
-  extern "rust-call" fn call_mut(&mut self, _: ()) -> Self::Output {
-    self.call()
-  }
-}
-
-#[cfg(feature = "fun-call")]
-impl<R> Fn<()> for FunHandle<Expr<R>, ()> {
-  extern "rust-call" fn call(&self, _: ()) -> Self::Output {
-    self.call()
-  }
-}
-
 impl<R, A> FunHandle<Expr<R>, Expr<A>> {
   /// Create an expression representing a function call to this function.
   ///
   /// See the documentation of [`FunHandle`] for examples.
   pub fn call(&self, a: Expr<A>) -> Expr<R> {
     Expr::new(ErasedExpr::FunCall(self.erased.clone(), vec![a.erased]))
-  }
-}
-
-#[cfg(feature = "fun-call")]
-impl<R, A> FnOnce<(Expr<A>,)> for FunHandle<Expr<R>, Expr<A>> {
-  type Output = Expr<R>;
-
-  extern "rust-call" fn call_once(self, a: (Expr<A>,)) -> Self::Output {
-    self.call(a.0)
-  }
-}
-
-#[cfg(feature = "fun-call")]
-impl<R, A> FnMut<(Expr<A>,)> for FunHandle<Expr<R>, Expr<A>> {
-  extern "rust-call" fn call_mut(&mut self, a: (Expr<A>,)) -> Self::Output {
-    self.call(a.0)
-  }
-}
-
-#[cfg(feature = "fun-call")]
-impl<R, A> Fn<(Expr<A>,)> for FunHandle<Expr<R>, Expr<A>> {
-  extern "rust-call" fn call(&self, a: (Expr<A>,)) -> Self::Output {
-    self.call(a.0)
   }
 }
 
@@ -210,32 +93,6 @@ macro_rules! impl_FunCall {
       /// See the documentation of [`FunHandle`] for examples.
       pub fn call(&self, $($arg_name : Expr<$arg_ty>),*) -> Expr<R> {
         Expr::new(ErasedExpr::FunCall(self.erased.clone(), vec![$($arg_name.erased),*]))
-      }
-    }
-
-    #[cfg(feature = "fun-call")]
-    impl<R, $($arg_ty),*> FnOnce<($(Expr<$arg_ty>),*)> for FunHandle<Expr<R>, ($(Expr<$arg_ty>),*)>
-    {
-      type Output = Expr<R>;
-
-      extern "rust-call" fn call_once(self, ($($arg_name),*): ($(Expr<$arg_ty>),*)) -> Self::Output {
-        self.call($($arg_name),*)
-      }
-    }
-
-    #[cfg(feature = "fun-call")]
-    impl<R, $($arg_ty),*> FnMut<($(Expr<$arg_ty>),*)> for FunHandle<Expr<R>, ($(Expr<$arg_ty>),*)>
-    {
-      extern "rust-call" fn call_mut(&mut self, ($($arg_name),*): ($(Expr<$arg_ty>),*)) -> Self::Output {
-        self.call($($arg_name),*)
-      }
-    }
-
-    #[cfg(feature = "fun-call")]
-    impl<R, $($arg_ty),*> Fn<($(Expr<$arg_ty>),*)> for FunHandle<Expr<R>, ($(Expr<$arg_ty>),*)>
-    {
-      extern "rust-call" fn call(&self, ($($arg_name),*): ($(Expr<$arg_ty>),*)) -> Self::Output {
-        self.call($($arg_name),*)
       }
     }
   };
