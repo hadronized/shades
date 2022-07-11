@@ -345,12 +345,12 @@ mod test {
   #[test]
   fn array_lookup() {
     let vertex = VertexShaderOutputs::new(());
-    let clip_dist_expr = vertex.clip_distance.at(1);
+    let clip_dist_expr = vertex.clip_distance.at(Expr::from(1));
 
     assert_eq!(
       clip_dist_expr.erased,
       ErasedExpr::ArrayLookup {
-        object: Box::new(vertex.clip_distance.erased.clone()),
+        object: Box::new(vertex.clip_distance.clone().erased),
         index: Box::new(ErasedExpr::LitInt(1)),
       }
     );

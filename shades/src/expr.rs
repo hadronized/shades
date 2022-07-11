@@ -1,3 +1,10 @@
+//! EDSL expressions.
+//!
+//! Expressions are read-only items representing different kind of objects, such as literal values, operations between
+//! expressions (unary, binary, function calls, etc.), arrays of expressions, etc. etc.
+//!
+//! There is an important relationship between expressions ([`Expr`]) and variables [`Var`]. [`Var`] are basically
+//! read/write expressions and can coerce to expressions; the other way around is not possible.
 use crate::{
   builtin::BuiltIn,
   fun::ErasedFunHandle,
@@ -100,22 +107,7 @@ impl ErasedExpr {
 /// implementor `From<T> for Expr<T>` can be used as literal. You can then use, for instance, `1.into()`,
 /// `Expr::from(1)`, etc.
 ///
-/// A much better and easier way to create literals is to use the [`lit!`](lit) macro, which basically does the lifting
-/// for you, but also accept more forms to create more complex literals, such as scalar vectors. See its documentation
-/// for further details.
-///
-/// It’s important to notice that because of how Rust infers type, type ambiguities might occur when using literals —
-/// hence, the use of [`lit!`](lit) should help. For instance, in `1 + 2`, the type of `1` is ambiguous because of how
-/// the implementors for [`Add`](std::ops::Add) are picked. In such a case, you are advised to use [`lit!`](lit).
-///
-/// ## Automatic lifting
-///
-/// Sometimes, you will want to pass literals to form other expressions, function calls, etc. Most of the API has been
-/// written in a way that if no ambiguity would occur, then you can use the Rust type directly. For instance, if `x`
-/// has the type `Expr<i32>`, then `x + 1` is the same as `x + lit!(1)`. You can use this property with literals too:
-/// `lit!(1) + 2 + 3 + 4`.
-///
-/// That automatic lifting is valid for a lot of traits and methods throughout this crate.
+/// > That is a concern of yours only if you do not use [shades-edsl].
 ///
 /// # Expressions from side-effects
 ///
@@ -124,9 +116,10 @@ impl ErasedExpr {
 ///
 /// # Expression macros
 ///
-/// Some macros will create expressions for you, such as [`lit!`](lit), [`vec2!`](vec2), [`vec3!`](vec3) and
-/// [`vec4!`](vec4) or the [`sw!`](sw) macros. Most of the time, those macros will work by automatically adding a
-/// reference (`&`) to their arguments so that you don’t have to worry about that either.
+/// Some macros will create expressions for you, such as [`vec2!`](vec2), [`vec3!`](vec3) and [`vec4!`](vec4) or the
+/// [`sw!`](sw) macros.
+///
+/// [shades-edsl]: https://crates.io/crates/shades-edsl
 #[derive(Debug)]
 pub struct Expr<T>
 where
@@ -134,15 +127,6 @@ where
 {
   pub(crate) erased: ErasedExpr,
   _phantom: PhantomData<T>,
-}
-
-impl<T> From<&'_ Self> for Expr<T>
-where
-  T: ?Sized,
-{
-  fn from(e: &Self) -> Self {
-    Self::new(e.erased.clone())
-  }
 }
 
 impl<T> Clone for Expr<T>
@@ -167,21 +151,31 @@ where
   }
 
   /// Create a new input.
+  ///
+  /// You should use this function when implementing [`Inputs::input()`].
   pub const fn new_input(handle: u16) -> Self {
     Self::new(ErasedExpr::Var(ScopedHandle::Input(handle)))
   }
 
   /// Create a new output.
+  ///
+  /// You should use this function when implementing [`Outputs::output()`].
   pub fn new_output(handle: u16) -> Self {
     Self::new(ErasedExpr::Var(ScopedHandle::Output(handle)))
   }
 
-  /// Create a new environment.
+  /// Create a new environment variable.
+  ///
+  /// You should use this function when implementing [`Environment::env()`].
   pub fn new_env(name: impl Into<String>) -> Self {
     Self::new(ErasedExpr::Var(ScopedHandle::Env(name.into())))
   }
 
   /// Create a new function argument.
+  ///
+  /// You shouldn’t have to use that function, as its main purpose is to be used by [shades-edsl].
+  ///
+  /// [shades-edsl]: https://crates.io/crates/shades-edsl
   pub const fn new_fun_arg(handle: u16) -> Self {
     Self::new(ErasedExpr::Var(ScopedHandle::FunArg(handle)))
   }
@@ -193,19 +187,6 @@ where
   /// # Return
   ///
   /// An [`Expr<bool>`] representing the equality between the two input expressions.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::{Scope, StageBuilder};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// use shades::{lit, vec2};
-  ///
-  /// let _ = lit!(1).eq(1); // 1 == 1;
-  /// let _ = vec2!(1., 2.).eq(vec2!(0., 0.)); // vec2(1., 2.) == vec2(0., 0.)
-  /// # s.main_fun(|s: &mut Scope<()>| {})
-  /// # });
-  /// ```
   pub fn eq(&self, rhs: impl Into<Expr<T>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Eq(
       Box::new(self.erased.clone()),
@@ -220,19 +201,6 @@ where
   /// # Return
   ///
   /// An [`Expr<bool>`] representing the inequality between the two input expressions.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::{Scope, StageBuilder};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// use shades::{lit, vec2};
-  ///
-  /// let _ = lit!(1).neq(1); // 1 != 1;
-  /// let _ = vec2!(1., 2.).eq(vec2!(0., 0.)); // vec2(1., 2.) != vec2(0., 0.)
-  /// # s.main_fun(|s: &mut Scope<()>| {})
-  /// # });
-  /// ```
   pub fn neq(&self, rhs: impl Into<Expr<T>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Neq(
       Box::new(self.erased.clone()),
@@ -252,18 +220,6 @@ where
   /// # Return
   ///
   /// An [`Expr<bool>`] representing `a < b`.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::{Scope, StageBuilder};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// use shades::lit;
-  ///
-  /// let _ = lit!(1).lt(2); // 1 < 2;
-  /// # s.main_fun(|s: &mut Scope<()>| {})
-  /// # });
-  /// ```
   pub fn lt(&self, rhs: impl Into<Expr<T>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Lt(
       Box::new(self.erased.clone()),
@@ -278,18 +234,6 @@ where
   /// # Return
   ///
   /// An [`Expr<bool>`] representing `a <= b`.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::{Scope, StageBuilder};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// use shades::lit;
-  ///
-  /// let _ = lit!(1).lte(2); // 1 <= 2;
-  /// # s.main_fun(|s: &mut Scope<()>| {})
-  /// # });
-  /// ```
   pub fn lte(&self, rhs: impl Into<Expr<T>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Lte(
       Box::new(self.erased.clone()),
@@ -304,18 +248,6 @@ where
   /// # Return
   ///
   /// An [`Expr<bool>`] representing `a > b`.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::{Scope, StageBuilder};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// use shades::lit;
-  ///
-  /// let _ = lit!(1).gt(2); // 1 > 2;
-  /// # s.main_fun(|s: &mut Scope<()>| {})
-  /// # });
-  /// ```
   pub fn gt(&self, rhs: impl Into<Expr<T>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Gt(
       Box::new(self.erased.clone()),
@@ -330,18 +262,6 @@ where
   /// # Return
   ///
   /// An [`Expr<bool>`] representing `a <= b`.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::{Scope, StageBuilder};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// use shades::lit;
-  ///
-  /// let _ = lit!(1).lte(2); // 1 <= 2;
-  /// # s.main_fun(|s: &mut Scope<()>| {})
-  /// # });
-  /// ```
   pub fn gte(&self, rhs: impl Into<Expr<T>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Gte(
       Box::new(self.erased.clone()),
@@ -358,18 +278,6 @@ impl Expr<bool> {
   /// # Return
   ///
   /// An [`Expr<bool>`] representing `a AND b`.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::{Scope, StageBuilder};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// use shades::lit;
-  ///
-  /// let _ = lit!(true).and(false); // true && false
-  /// # s.main_fun(|s: &mut Scope<()>| {})
-  /// # });
-  /// ```
   pub fn and(&self, rhs: impl Into<Expr<bool>>) -> Expr<bool> {
     Expr::new(ErasedExpr::And(
       Box::new(self.erased.clone()),
@@ -384,18 +292,6 @@ impl Expr<bool> {
   /// # Return
   ///
   /// An [`Expr<bool>`] representing `a OR b`.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::{Scope, StageBuilder};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// use shades::lit;
-  ///
-  /// let _ = lit!(true).or(false); // true || false
-  /// # s.main_fun(|s: &mut Scope<()>| {})
-  /// # });
-  /// ```
   pub fn or(&self, rhs: impl Into<Expr<bool>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Or(
       Box::new(self.erased.clone()),
@@ -410,18 +306,6 @@ impl Expr<bool> {
   /// # Return
   ///
   /// An [`Expr<bool>`] representing `a XOR b`.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::{Scope, StageBuilder};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// use shades::lit;
-  ///
-  /// let _ = lit!(true).xor(false); // true ^^ false
-  /// # s.main_fun(|s: &mut Scope<()>| {})
-  /// # });
-  /// ```
   pub fn xor(&self, rhs: impl Into<Expr<bool>>) -> Expr<bool> {
     Expr::new(ErasedExpr::Xor(
       Box::new(self.erased.clone()),
@@ -439,22 +323,10 @@ impl<T> Expr<[T]> {
   /// # Return
   ///
   /// The resulting [`Expr<T>`] represents the array lookup in `a` at index `i`.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::{Scope, StageBuilder};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// use shades::lit;
-  ///
-  /// let _ = lit!([1, 2, 3]).at(2); // [1, 2, 3][2]
-  /// # s.main_fun(|s: &mut Scope<()>| {})
-  /// # });
-  /// ```
-  pub fn at(&self, index: impl Into<Expr<i32>>) -> Expr<T> {
+  pub fn at(&self, index: Expr<i32>) -> Expr<T> {
     Expr::new(ErasedExpr::ArrayLookup {
       object: Box::new(self.erased.clone()),
-      index: Box::new(index.into().erased),
+      index: Box::new(index.erased),
     })
   }
 }
@@ -468,18 +340,6 @@ impl<T, const N: usize> Expr<[T; N]> {
   /// # Return
   ///
   /// The resulting [`Expr<T>`] represents the array lookup in `a` at index `i`.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::{Scope, StageBuilder};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// use shades::lit;
-  ///
-  /// let _ = lit!([1, 2, 3]).at(2); // [1, 2, 3][2]
-  /// # s.main_fun(|s: &mut Scope<()>| {})
-  /// # });
-  /// ```
   pub fn at(&self, index: impl Into<Expr<i32>>) -> Expr<T> {
     Expr::new(ErasedExpr::ArrayLookup {
       object: Box::new(self.erased.clone()),
@@ -782,18 +642,6 @@ where
 ///
 /// - `vec2!(xy)`, which acts as the cast operator. Only types `T` satisfying [`Vec2`] are castable.
 /// - `vec2!(x, y)`, which builds a [`V2<T>`] for `x: T` and `y: T`.
-///
-/// # Examples
-///
-/// ```
-/// # use shades::{Scope, StageBuilder};
-/// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-/// use shades::vec2;
-///
-/// let _ = vec2!(1, 2);
-/// # s.main_fun(|s: &mut Scope<()>| {})
-/// # });
-/// ```
 #[macro_export]
 macro_rules! vec2 {
   ($a:expr) => {
@@ -813,19 +661,6 @@ macro_rules! vec2 {
 /// - `vec3!(xyz)`, which acts as the cast operator. Only types `T` satisfying [`Vec3`] are castable.
 /// - `vec3!(xy, z)`, which builds a [`V3<T>`] with `xy` a value that can be turned into a `Expr<V2<T>>` and `z: T`
 /// - `vec3!(x, y, z)`, which builds a [`V3<T>`] for `x: T`, `y: T` and `z: T`.
-///
-/// # Examples
-///
-/// ```
-/// # use shades::{Scope, StageBuilder};
-/// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-/// use shades::{vec2, vec3};
-///
-/// let _ = vec3!(1, 2, 3);
-/// let _ = vec3!(vec2!(1, 2), 3);
-/// # s.main_fun(|s: &mut Scope<()>| {})
-/// # });
-/// ```
 #[macro_export]
 macro_rules! vec3 {
   ($a:expr) => {
@@ -856,21 +691,6 @@ macro_rules! vec3 {
 /// - `vec4!(xy, zw)`, which builds a [`V4<T>`] with `xy` and `zw` values that can be turned into `Expr<V3<T>>`.
 /// - `vec4!(xy, z, w)`, which builds a [`V4<T>`] with `xy`, `z: T` and `w: T`.
 /// - `vec4!(x, y, z, w)`, which builds a [`V3<T>`] for `x: T`, `y: T` and `z: T`.
-///
-/// # Examples
-///
-/// ```
-/// # use shades::{Scope, StageBuilder};
-/// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-/// use shades::{vec2, vec3, vec4};
-///
-/// let _ = vec4!(1, 2, 3, 4);
-/// let _ = vec4!(vec3!(1, 2, 3), 4);
-/// let _ = vec4!(vec2!(1, 2), vec2!(3, 4));
-/// let _ = vec4!(vec2!(1, 2), 3, 4);
-/// # s.main_fun(|s: &mut Scope<()>| {})
-/// # });
-/// ```
 #[macro_export]
 macro_rules! vec4 {
   ($a:expr) => {
@@ -917,7 +737,7 @@ mod test {
 
     let a = !Expr::from(true);
     let b = -Expr::from(3i32);
-    let c = scope.var(a);
+    let c = scope.var(a.clone());
 
     assert_eq!(
       a.erased,
@@ -985,7 +805,7 @@ mod test {
 
     let x = scope.var(Expr::from(0));
     let y = scope.var(Expr::from(1u32));
-    let z = scope.var(Expr::from([false, true, false]));
+    let z = scope.var(vec3![false, true, false]);
 
     assert_eq!(x.erased, ErasedExpr::Var(ScopedHandle::fun_var(0, 0)));
     assert_eq!(y.erased, ErasedExpr::Var(ScopedHandle::fun_var(0, 1)));
@@ -1024,7 +844,14 @@ mod test {
           array_dims: Vec::new(),
         },
         handle: ScopedHandle::fun_var(0, 2),
-        init_value: ErasedExpr::LitBool3([false, true, false]),
+        init_value: ErasedExpr::FunCall(
+          ErasedFunHandle::Vec3,
+          vec![
+            Expr::from(false).erased,
+            Expr::from(true).erased,
+            Expr::from(false).erased
+          ]
+        )
       }
     );
   }
@@ -1091,9 +918,9 @@ mod test {
 
   #[test]
   fn vec3_ctor() {
-    let xy = Expr::from(V2::from([1., 2.]));
-    let xyz2 = vec3!(xy, Expr::from(3.));
-    let xyz3 = vec3!(Expr::from(1.), Expr::from(2.), Expr::from(3.));
+    let xy = vec2![1., 2.];
+    let xyz2 = vec3![xy.clone(), 3.];
+    let xyz3 = vec3![1., 2., 3.];
 
     assert_eq!(
       xyz2.erased,
@@ -1118,9 +945,9 @@ mod test {
 
   #[test]
   fn vec4_ctor() {
-    let xy = Expr::from(V2::from([1., 2.]));
-    let xyzw22 = vec4!(xy, xy);
-    let xyzw211 = vec4!(xy, 3., 4.);
+    let xy = vec2![1., 2.];
+    let xyzw22 = vec4!(xy.clone(), xy.clone());
+    let xyzw211 = vec4!(xy.clone(), 3., 4.);
     let xyzw31 = vec4!(vec3!(1., 2., 3.), 4.);
     let xyzw4 = vec4!(1., 2., 3., 4.);
 

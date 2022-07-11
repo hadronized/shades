@@ -307,8 +307,8 @@ macro_rules! sw_extract {
 #[cfg(test)]
 mod test {
   use crate::{
-    lit,
     scope::{Scope, ScopedHandle},
+    vec2, vec4,
   };
 
   use super::*;
@@ -316,7 +316,7 @@ mod test {
   #[test]
   fn swizzling() {
     let mut scope = Scope::<()>::new(0);
-    let foo = scope.var(lit![1, 2]);
+    let foo = scope.var(vec2![1, 2]);
     let foo_xy: Expr<V2<_>> = sw!(foo, .x.y);
     let foo_xx: Expr<V2<_>> = sw!(foo, .x.x);
 
@@ -339,7 +339,7 @@ mod test {
 
   #[test]
   fn has_x_y_z_w() {
-    let xyzw: Expr<V4<i32>> = lit!(1, 2, 3, 4);
+    let xyzw: Expr<V4<i32>> = vec4![1, 2, 3, 4];
     let x: Expr<i32> = sw!(xyzw, .x);
     let y: Expr<i32> = sw!(xyzw, .y);
     let z: Expr<i32> = sw!(xyzw, .z);

@@ -62,18 +62,6 @@ where
   ///
   /// The resulting [`Var<T>`] contains the representation of the binding in the EDSL and the actual binding is
   /// recorded in the current scope.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::{Scope, StageBuilder};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// #   s.main_fun(|s: &mut Scope<()>| {
-  /// let v = s.var(3.1415); // assign the literal 3.1415 to v
-  /// let q = s.var(v * 2.); // assign v * 2. to q
-  /// #   })
-  /// # });
-  /// ```
   pub fn var<T>(&mut self, init_value: Expr<T>) -> Var<T>
   where
     T: ToType,
@@ -113,23 +101,6 @@ where
   ///
   /// The [`LoopScope<R>`] argument to the `body` closure is a specialization of [`Scope<R>`] that allows breaking out
   /// of loops.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// use shades::{CanEscape as _, LoopScope, Scope, StageBuilder};
-  ///
-  /// StageBuilder::new_vertex_shader(|mut s, vertex| {
-  ///   s.main_fun(|s: &mut Scope<()>| {
-  ///     s.loop_for(0, |i| i.lt(10), |i| i + 1, |s: &mut LoopScope<()>, i| {
-  ///       s.when(i.eq(5), |s: &mut LoopScope<()>| {
-  ///         // when i == 5, abort from the main function
-  ///         s.abort();
-  ///       });
-  ///     });
-  ///   })
-  /// });
-  /// ```
   pub fn loop_for<T>(
     &mut self,
     init_value: Expr<T>,
@@ -172,22 +143,6 @@ where
   ///
   /// The [`LoopScope<R>`] argument to the `body` closure is a specialization of [`Scope<R>`] that allows breaking out
   /// of loops.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// use shades::{CanEscape as _, LoopScope, Scope, StageBuilder};
-  ///
-  /// StageBuilder::new_vertex_shader(|mut s, vertex| {
-  ///   s.main_fun(|s: &mut Scope<()>| {
-  ///     let i = s.var(10);
-  ///
-  ///     s.loop_while(i.lt(10), |s| {
-  ///       s.set(&i, &i + 1);
-  ///     });
-  ///   })
-  /// });
-  /// ```
   pub fn loop_while(
     &mut self,
     condition: impl Into<Expr<bool>>,
@@ -203,18 +158,6 @@ where
   }
 
   /// Mutate a variable in the current scope.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::{Scope, StageBuilder};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// #   s.main_fun(|s: &mut Scope<()>| {
-  /// let v = s.var(1); // v = 1
-  /// s.set(&v, 10); // v = 10
-  /// #   })
-  /// # });
-  /// ```
   pub fn set<T>(
     &mut self,
     var: impl Into<Var<T>>,
@@ -229,27 +172,6 @@ where
   }
 
   /// Early-return the current function with an expression.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::StageBuilder;
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// use shades::{Expr, Scope};
-  ///
-  /// let _fun = s.fun(|s: &mut Scope<Expr<i32>>, arg: Expr<i32>| {
-  ///   // if arg is less than 10, early-return with 0
-  ///   s.when(arg.lt(10), |s| {
-  ///     s.leave(0);
-  ///   });
-  ///
-  ///   arg
-  /// });
-  ///
-  /// #   s.main_fun(|s: &mut Scope<()>| {
-  /// #   })
-  /// # });
-  /// ```
   pub fn leave(&mut self, ret: impl Into<R>) {
     self
       .erased
@@ -260,27 +182,6 @@ where
 
 impl Scope<()> {
   /// Early-abort the current function.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::StageBuilder;
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// use shades::{CanEscape as _, Expr, Scope};
-  ///
-  /// let _fun = s.fun(|s: &mut Scope<()>, arg: Expr<i32>| {
-  ///   // if arg is less than 10, early-return with 0
-  ///   s.when(arg.lt(10), |s| {
-  ///     s.abort();
-  ///   });
-  ///
-  ///   // do something else…
-  /// });
-  ///
-  /// #   s.main_fun(|s: &mut Scope<()>| {
-  /// #   })
-  /// # });
-  /// ```
   pub fn abort(&mut self) {
     self
       .erased
@@ -338,41 +239,11 @@ where
   }
 
   /// Break the current iteration of the nearest loop and continue to the next iteration.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::{Scope, StageBuilder};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// #   s.main_fun(|s: &mut Scope<()>| {
-  /// use shades::CanEscape as _;
-  ///
-  /// s.loop_while(true, |s| {
-  ///   s.loop_continue();
-  /// });
-  /// #   })
-  /// # });
-  /// ```
   pub fn loop_continue(&mut self) {
     self.erased.instructions.push(ScopeInstr::Continue);
   }
 
   /// Break the nearest loop.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::{Scope, StageBuilder};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// #   s.main_fun(|s: &mut Scope<()>| {
-  /// use shades::CanEscape as _;
-  ///
-  /// s.loop_while(true, |s| {
-  ///   s.loop_break();
-  /// });
-  /// #   })
-  /// # });
-  /// ```
   pub fn loop_break(&mut self) {
     self.erased.instructions.push(ScopeInstr::Break);
   }
@@ -453,49 +324,6 @@ pub trait Conditional: Sized {
   /// statements, commonly referred to as `else if` and `else` in common languages.
   ///
   /// Have a look at the documentation of [`When`] for further information.
-  ///
-  /// # Examples
-  ///
-  /// Early-return:
-  ///
-  /// ```
-  /// use shades::{CanEscape as _, EscapeScope, Expr, Scope, StageBuilder, lit};
-  ///
-  /// StageBuilder::new_vertex_shader(|mut s, vertex| {
-  ///   let f = s.fun(|s: &mut Scope<Expr<i32>>| {
-  ///     s.when(lit!(1).lt(3), |s: &mut EscapeScope<Expr<i32>>| {
-  ///       // do something in here
-  ///
-  ///       // early-return with 0; only possible if the function returns Expr<i32>
-  ///       s.leave(0);
-  ///     });
-  ///
-  ///     lit!(1)
-  ///   });
-  ///
-  ///   s.main_fun(|s: &mut Scope<()>| {
-  /// # #[cfg(feature = "fun-call")]
-  ///     let x = s.var(f());
-  ///   })
-  /// });
-  /// ```
-  ///
-  /// Aborting a function:
-  ///
-  /// ```
-  /// use shades::{CanEscape as _, EscapeScope, Scope, StageBuilder, lit};
-  ///
-  /// StageBuilder::new_vertex_shader(|mut s, vertex| {
-  ///   s.main_fun(|s: &mut Scope<()>| {
-  ///     s.when(lit!(1).lt(3), |s: &mut EscapeScope<()>| {
-  ///       // do something in here
-  ///
-  ///       // break the parent function by aborting; this is possible because the return type is ()
-  ///       s.abort();
-  ///     });
-  ///   })
-  /// });
-  /// ```
   fn when<'a>(
     &'a mut self,
     condition: impl Into<Expr<bool>>,
@@ -561,26 +389,6 @@ where
   /// # Return
   ///
   /// Another [`When<R>`], allowing to add more conditional branches.
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::{Scope, StageBuilder};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// #   s.main_fun(|s: &mut Scope<()>| {
-  /// use shades::{CanEscape as _, lit};
-  ///
-  /// let x = lit!(1);
-  ///
-  /// // you will need CanEscape in order to use when
-  /// s.when(x.lt(2), |s| {
-  ///   // do something if x < 2
-  /// }).or_else(x.lt(10), |s| {
-  ///   // do something if x < 10
-  /// });
-  /// #   })
-  /// # });
-  /// ```
   pub fn or_else(self, condition: impl Into<Expr<bool>>, body: impl FnOnce(&mut S)) -> Self {
     let mut scope = self.parent_scope.deeper();
     body(&mut scope);
@@ -601,50 +409,6 @@ where
   ///
   /// This method is often found chained after [`CanEscape::when`] and allows to finish the chain of conditional
   /// branches if the previous conditional fails (i.e. `else`). The behavior is the same as with [`CanEscape::when`].
-  ///
-  /// # Examples
-  ///
-  /// ```
-  /// # use shades::{Scope, StageBuilder};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// #   s.main_fun(|s: &mut Scope<()>| {
-  /// use shades::{CanEscape as _, lit};
-  ///
-  /// let x = lit!(1);
-  ///
-  /// // you will need CanEscape in order to use when
-  /// s.when(x.lt(2), |s| {
-  ///   // do something if x < 2
-  /// }).or(|s| {
-  ///   // do something if x >= 2
-  /// });
-  /// #   })
-  /// # });
-  /// ```
-  ///
-  /// Can chain and mix conditional but [`When::or`] cannot be anywhere else but the end of the chain:
-  ///
-  /// ```
-  /// # use shades::{Scope, StageBuilder};
-  /// # StageBuilder::new_vertex_shader(|mut s, vertex| {
-  /// #   s.main_fun(|s: &mut Scope<()>| {
-  /// use shades::{CanEscape as _, lit};
-  ///
-  /// let x = lit!(1);
-  ///
-  /// // you will need CanEscape in order to use when
-  /// s.when(x.lt(2), |s| {
-  ///   // do something if x < 2
-  /// }).or_else(x.lt(5), |s| {
-  ///   // do something if x < 5
-  /// }).or_else(x.lt(10), |s| {
-  ///   // do something if x < 10
-  /// }).or(|s| {
-  ///   // else, do this
-  /// });
-  /// #   })
-  /// # });
-  /// ```
   pub fn or(self, body: impl FnOnce(&mut S)) {
     let mut scope = self.parent_scope.deeper();
     body(&mut scope);
@@ -764,20 +528,21 @@ pub enum MutateBinOp {
 mod test {
   use super::*;
   use crate::{
-    lit,
+    fun::ErasedFunHandle,
     types::{Dim, PrimType, V4},
+    vec4,
   };
 
   #[test]
   fn when() {
     let mut s = Scope::<Expr<V4<f32>>>::new(0);
 
-    let x = s.var(1);
-    s.when(x.eq(lit!(2)), |s| {
-      let y = s.var(lit![1., 2., 3., 4.]);
-      s.leave(y);
+    let x = s.var(Expr::from(1));
+    s.when(x.eq(Expr::from(2)), |s| {
+      let y = s.var(vec4![1., 2., 3., 4.]);
+      s.leave(y.to_expr());
     })
-    .or_else(x.eq(lit!(0)), |s| s.leave(lit![0., 0., 0., 0.]))
+    .or_else(x.eq(Expr::from(0)), |s| s.leave(vec4![0., 0., 0., 0.]))
     .or(|_| ());
 
     assert_eq!(s.erased.instructions.len(), 4);
@@ -803,7 +568,15 @@ mod test {
         array_dims: Vec::new(),
       },
       handle: ScopedHandle::fun_var(1, 0),
-      init_value: ErasedExpr::LitFloat4([1., 2., 3., 4.]),
+      init_value: ErasedExpr::FunCall(
+        ErasedFunHandle::Vec4,
+        vec![
+          Expr::from(1.).erased,
+          Expr::from(2.).erased,
+          Expr::from(3.).erased,
+          Expr::from(4.).erased,
+        ],
+      ),
     });
     scope
       .instructions
@@ -829,7 +602,15 @@ mod test {
       .instructions
       .push(ScopeInstr::Return(ErasedReturn::Expr(
         V4::<f32>::ty(),
-        ErasedExpr::LitFloat4([0., 0., 0., 0.]),
+        ErasedExpr::FunCall(
+          ErasedFunHandle::Vec4,
+          vec![
+            Expr::from(0.).erased,
+            Expr::from(0.).erased,
+            Expr::from(0.).erased,
+            Expr::from(0.).erased,
+          ],
+        ),
       )));
 
     assert_eq!(
@@ -857,11 +638,11 @@ mod test {
     let mut scope: Scope<Expr<i32>> = Scope::new(0);
 
     scope.loop_for(
-      0,
-      |a| a.lt(lit!(10)),
-      |a| a + 1,
+      Expr::from(0),
+      |a| a.clone().lt(Expr::from(10)),
+      |a| a.clone() + Expr::from(1),
       |s, a| {
-        s.leave(a);
+        s.leave(a.clone());
       },
     );
 
@@ -907,7 +688,7 @@ mod test {
   fn while_loop() {
     let mut scope: Scope<Expr<i32>> = Scope::new(0);
 
-    scope.loop_while(lit!(1).lt(lit!(2)), LoopScope::loop_continue);
+    scope.loop_while(Expr::from(1).lt(Expr::from(2)), LoopScope::loop_continue);
 
     let mut loop_scope = ErasedScope::new(1);
     loop_scope.instructions.push(ScopeInstr::Continue);
@@ -929,9 +710,9 @@ mod test {
   fn while_loop_if() {
     let mut scope: Scope<Expr<i32>> = Scope::new(0);
 
-    scope.loop_while(lit!(1).lt(lit!(2)), |scope| {
+    scope.loop_while(Expr::from(1).lt(Expr::from(2)), |scope| {
       scope
-        .when(lit!(1).lt(lit!(2)), |scope| scope.loop_break())
+        .when(Expr::from(1).lt(Expr::from(2)), |scope| scope.loop_break())
         .or(|scope| scope.loop_break());
     });
   }

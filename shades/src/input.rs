@@ -521,14 +521,13 @@ impl<I> Deref for FragmentShaderInputs<I> {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::lit;
 
   #[test]
   fn vertex_id_commutative() {
     let vertex = VertexShaderInputs::new(());
 
-    let x = lit!(1);
-    let _ = &vertex.vertex_id + &x;
+    let x = Expr::from(1);
+    let _ = vertex.vertex_id.clone() + x.clone();
     let _ = x + vertex.vertex_id;
   }
 }
