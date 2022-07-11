@@ -1,6 +1,7 @@
 //! Function definition, arguments, return and body.
 
 use crate::{
+  erased::Erased,
   expr::{ErasedExpr, Expr},
   scope::ErasedScope,
   types::{ToType, Type},
@@ -56,12 +57,37 @@ pub struct FunHandle<R, A> {
   _phantom: PhantomData<(R, A)>,
 }
 
+impl<R, A> Erased for FunHandle<R, A> {
+  type Erased = ErasedFunHandle;
+
+  fn to_erased(self) -> Self::Erased {
+    self.erased
+  }
+
+  fn erased(&self) -> &Self::Erased {
+    &self.erased
+  }
+
+  fn erased_mut(&mut self) -> &mut Self::Erased {
+    &mut self.erased
+  }
+}
+
 impl<R, A> FunHandle<R, A> {
   pub(crate) fn new(erased: ErasedFunHandle) -> Self {
     Self {
       erased,
       _phantom: PhantomData,
     }
+  }
+}
+
+impl<R> FunHandle<Expr<R>, ()> {
+  /// Create an expression representing a function call to this function.
+  ///
+  /// See the documentation of [`FunHandle`] for examples.
+  pub fn call2(&self, args: Vec<ErasedExpr>) -> Expr<R> {
+    Expr::new(ErasedExpr::FunCall(self.erased.clone(), args))
   }
 }
 

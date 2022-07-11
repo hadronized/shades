@@ -7,6 +7,7 @@
 //! read/write expressions and can coerce to expressions; the other way around is not possible.
 use crate::{
   builtin::BuiltIn,
+  erased::Erased,
   fun::ErasedFunHandle,
   scope::ScopedHandle,
   swizzle::Swizzle,
@@ -138,12 +139,28 @@ where
   }
 }
 
+impl<T> Erased for Expr<T> {
+  type Erased = ErasedExpr;
+
+  fn to_erased(self) -> Self::Erased {
+    self.erased
+  }
+
+  fn erased(&self) -> &Self::Erased {
+    &self.erased
+  }
+
+  fn erased_mut(&mut self) -> &mut Self::Erased {
+    &mut self.erased
+  }
+}
+
 impl<T> Expr<T>
 where
   T: ?Sized,
 {
   /// Type an [`ErasedExpr`] and return it wrapped in [`Expr<T>`].
-  pub(crate) const fn new(erased: ErasedExpr) -> Self {
+  pub const fn new(erased: ErasedExpr) -> Self {
     Self {
       erased,
       _phantom: PhantomData,

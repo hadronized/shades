@@ -54,8 +54,8 @@ impl Environment for TestEnv {
 /// Test the main shades! macro.
 #[test]
 fn test_shades() {
-  let _stage = shades! { VS |_input: TestInput, _output: TestOutput, env: TestEnv| {
-    fn _add(a: f32, b: f32) -> f32 {
+  let stage = shades! { VS |_input: TestInput, _output: TestOutput, env: TestEnv| {
+    fn add(a: f32, b: f32) -> f32 {
       let x = 3.;
       let y = 2.;
       let z = 10.;
@@ -66,6 +66,29 @@ fn test_shades() {
       (a + b * 2. * a) * env.t
     }
 
-    fn main() {}
+    fn main() {
+      let _x = add(1., 2.);
+    }
   }};
+
+  let expected = r#"uniform float t;
+
+float fun_0(float arg_0, float arg_1) {
+  float var_0_0 = 3.;
+  float var_0_1 = 2.;
+  float var_0_2 = 10.;
+  var_0_0 = 10.;
+  var_0_1 *= var_0_2;
+  return ((arg_0 + ((arg_1 * 2.) * arg_0)) * t);
+
+}
+
+void main() {
+  float var_0_0 = fun_0(1., 2.);
+}"#;
+
+  assert_eq!(
+    shades::writer::glsl::write_shader_to_str(&stage).unwrap(),
+    expected
+  );
 }

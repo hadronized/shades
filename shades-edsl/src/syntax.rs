@@ -1014,9 +1014,18 @@ impl VisitMut for ExprVisitor {
       }
 
       Expr::Call(c) => {
+        let ident = &c.func;
+
         for arg in &mut c.args {
           self.visit_expr_mut(arg);
         }
+
+        let args = c.args.iter();
+        let call = quote! {
+          #ident.call(#(#args),*)
+        };
+
+        *i = parse_quote!(#call);
       }
 
       Expr::Cast(c) => {
