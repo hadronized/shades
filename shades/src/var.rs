@@ -11,7 +11,7 @@ use std::ops;
 ///
 /// Variables, because they allow mutations, allow to write more complicated shader functions. Also, lots of graphics
 /// pipelines’ properties are variables you will have to write to, such as [`VertexShaderEnv::position`].
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Var<T>(pub Expr<T>)
 where
   T: ?Sized;

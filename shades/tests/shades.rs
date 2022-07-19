@@ -64,6 +64,10 @@ fn test_shades() {
       x = 10.;
       y *= z;
 
+      while true {
+        x += 1.;
+      }
+
       (a + b * 2. * a) * env.t + w[1]
     }
 
@@ -81,6 +85,9 @@ float fun_0(float arg_0, float arg_1) {
   float[2] var_0_3 = float[2](1.,2.);
   var_0_0 = 10.;
   var_0_1 *= var_0_2;
+  while (true) {
+    var_0_0 += 1.;
+  }
   return (((arg_0 + ((arg_1 * 2.) * arg_0)) * t) + var_0_3[1]);
 
 }

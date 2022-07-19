@@ -13,22 +13,20 @@ use syn::{
 #[derive(Debug)]
 pub struct StageDecl {
   stage_ty: Type,
-  left_or: Token![|],
+  _left_or: Token![|],
   input: FnArgItem,
-  comma_input_token: Token![,],
+  _comma_input_token: Token![,],
   output: FnArgItem,
-  comma_output_token: Token![,],
+  _comma_output_token: Token![,],
   env: FnArgItem,
-  right_or: Token![|],
-  brace_token: Brace,
+  _right_or: Token![|],
+  _brace_token: Brace,
   stage_item: StageItem,
 }
 
 impl StageDecl {
   pub fn mutate(&mut self) {
-    for item in &mut self.stage_item.glob_decl {
-      item.mutate();
-    }
+    self.stage_item.mutate()
   }
 }
 
@@ -75,14 +73,14 @@ impl Parse for StageDecl {
 
     Ok(Self {
       stage_ty,
-      left_or,
+      _left_or: left_or,
       input: input_,
-      comma_input_token,
+      _comma_input_token: comma_input_token,
       output,
-      comma_output_token,
+      _comma_output_token: comma_output_token,
       env,
-      right_or,
-      brace_token,
+      _right_or: right_or,
+      _brace_token: brace_token,
       stage_item,
     })
   }
@@ -159,13 +157,13 @@ impl ToTokens for ShaderDeclItem {
 
 #[derive(Debug)]
 pub struct ConstItem {
-  const_token: Token![const],
+  _const_token: Token![const],
   ident: Ident,
-  colon_token: Token![:],
+  _colon_token: Token![:],
   ty: Type,
-  assign_token: Token![=],
+  _assign_token: Token![=],
   expr: Expr,
-  semi_token: Token![;],
+  _semi_token: Token![;],
 }
 
 impl ConstItem {
@@ -199,13 +197,13 @@ impl Parse for ConstItem {
     let semi_token = input.parse()?;
 
     Ok(Self {
-      const_token,
+      _const_token: const_token,
       ident,
-      colon_token,
+      _colon_token: colon_token,
       ty,
-      assign_token,
+      _assign_token: assign_token,
       expr,
-      semi_token,
+      _semi_token: semi_token,
     })
   }
 }
@@ -213,7 +211,7 @@ impl Parse for ConstItem {
 #[derive(Clone, Debug)]
 pub struct FnArgItem {
   ident: Ident,
-  colon_token: Token![:],
+  _colon_token: Token![:],
   pound_token: Option<Token![#]>,
   ty: Type,
 }
@@ -248,7 +246,7 @@ impl Parse for FnArgItem {
 
     Ok(Self {
       ident,
-      colon_token,
+      _colon_token: colon_token,
       pound_token,
       ty,
     })
@@ -257,12 +255,12 @@ impl Parse for FnArgItem {
 
 #[derive(Debug)]
 pub struct FunDefItem {
-  fn_token: Token![fn],
+  _fn_token: Token![fn],
   name: Ident,
-  paren_token: Paren,
+  _paren_token: Paren,
   args: Punctuated<FnArgItem, Token![,]>,
   ret_ty: Option<(Token![->], Type)>,
-  brace_token: Brace,
+  _brace_token: Brace,
   body: ScopeInstrItems,
 }
 
@@ -381,12 +379,12 @@ impl Parse for FunDefItem {
     let body = body_input.parse()?;
 
     Ok(Self {
-      fn_token,
+      _fn_token: fn_token,
       name,
-      paren_token,
+      _paren_token: paren_token,
       args,
       ret_ty,
-      brace_token,
+      _brace_token: brace_token,
       body,
     })
   }
@@ -432,6 +430,9 @@ impl Parse for ScopeInstrItems {
       } else if lookahead.peek(Token![if]) {
         let v = input.parse()?;
         ScopeInstrItem::If(v)
+      } else if lookahead.peek(Token![while]) {
+        let v = input.parse()?;
+        ScopeInstrItem::While(v)
       } else {
         // try to parse a mutate var first, otherwise fallback on return
         let input_ = input.fork();
@@ -526,7 +527,7 @@ impl ToTokens for ScopeInstrItem {
         quote! {
           __scope.loop_while(#cond, |__scope| {
             #body
-          })
+          });
         }
       }
 
@@ -543,12 +544,12 @@ impl ToTokens for ScopeInstrItem {
 
 #[derive(Debug)]
 pub struct VarDeclItem {
-  let_token: Token![let],
+  _let_token: Token![let],
   name: Ident,
   ty: Option<(Token![:], Type)>,
-  assign_token: Token![=],
+  _assign_token: Token![=],
   expr: Expr,
-  semi_token: Token![;],
+  _semi_token: Token![;],
 }
 
 impl VarDeclItem {
@@ -578,12 +579,12 @@ impl Parse for VarDeclItem {
     let semi_token = input.parse()?;
 
     Ok(Self {
-      let_token,
+      _let_token: let_token,
       name,
       ty,
-      assign_token,
+      _assign_token: assign_token,
       expr,
-      semi_token,
+      _semi_token: semi_token,
     })
   }
 }
@@ -639,8 +640,8 @@ impl Parse for ReturnItem {
 
 #[derive(Debug)]
 pub struct ContinueItem {
-  continue_token: Token![continue],
-  semi_token: Token![;],
+  _continue_token: Token![continue],
+  _semi_token: Token![;],
 }
 
 impl Parse for ContinueItem {
@@ -648,16 +649,16 @@ impl Parse for ContinueItem {
     let continue_token = input.parse()?;
     let semi_token = input.parse()?;
     Ok(Self {
-      continue_token,
-      semi_token,
+      _continue_token: continue_token,
+      _semi_token: semi_token,
     })
   }
 }
 
 #[derive(Debug)]
 pub struct BreakItem {
-  break_token: Token![break],
-  semi_token: Token![;],
+  _break_token: Token![break],
+  _semi_token: Token![;],
 }
 
 impl Parse for BreakItem {
@@ -665,18 +666,18 @@ impl Parse for BreakItem {
     let break_token = input.parse()?;
     let semi_token = input.parse()?;
     Ok(Self {
-      break_token,
-      semi_token,
+      _break_token: break_token,
+      _semi_token: semi_token,
     })
   }
 }
 
 #[derive(Debug)]
 pub struct IfItem {
-  if_token: Token![if],
-  paren_token: Paren,
+  _if_token: Token![if],
+  _paren_token: Paren,
   cond_expr: Expr,
-  brace_token: Brace,
+  _brace_token: Brace,
   body: ScopeInstrItems,
   else_item: Option<ElseItem>,
 }
@@ -763,10 +764,10 @@ impl Parse for IfItem {
     };
 
     Ok(Self {
-      if_token,
-      paren_token,
+      _if_token: if_token,
+      _paren_token: paren_token,
       cond_expr,
-      brace_token,
+      _brace_token: brace_token,
       body,
       else_item,
     })
@@ -775,7 +776,7 @@ impl Parse for IfItem {
 
 #[derive(Debug)]
 pub struct ElseItem {
-  else_token: Token![else],
+  _else_token: Token![else],
   else_tail: ElseTailItem,
 }
 
@@ -791,7 +792,7 @@ impl Parse for ElseItem {
     let else_tail = input.parse()?;
 
     Ok(Self {
-      else_token,
+      _else_token: else_token,
       else_tail,
     })
   }
@@ -853,10 +854,9 @@ impl Parse for ElseTailItem {
 
 #[derive(Debug)]
 pub struct WhileItem {
-  while_token: Token![while],
-  paren_token: Paren,
+  _while_token: Token![while],
   cond_expr: Expr,
-  brace_token: Brace,
+  _brace_token: Brace,
   body: ScopeInstrItems,
 }
 
@@ -871,19 +871,16 @@ impl Parse for WhileItem {
   fn parse(input: syn::parse::ParseStream) -> Result<Self, syn::Error> {
     let while_token = input.parse()?;
 
-    let cond_input;
-    let paren_token = parenthesized!(cond_input in input);
-    let cond_expr = cond_input.parse()?;
+    let cond_expr = input.parse()?;
 
     let body_input;
     let brace_token = braced!(body_input in input);
     let body = body_input.parse()?;
 
     Ok(Self {
-      while_token,
-      paren_token,
+      _while_token: while_token,
       cond_expr,
-      brace_token,
+      _brace_token: brace_token,
       body,
     })
   }
@@ -912,7 +909,7 @@ pub struct MutateVarItem {
   ident: Ident,
   assign_token: MutateVarAssignToken,
   expr: Expr,
-  semi_token: Token![;],
+  _semi_token: Token![;],
 }
 
 impl MutateVarItem {
@@ -930,21 +927,21 @@ impl ToTokens for MutateVarItem {
     let bin_op = match assign_token {
       MutateVarAssignToken::Assign(_) => quote! { None },
       MutateVarAssignToken::AssignBinOp(bin_op) => match bin_op {
-        syn::BinOp::AddEq(_) => quote! { shades::scope::MutateBinOp::Add },
-        syn::BinOp::SubEq(_) => quote! { shades::scope::MutateBinOp::Sub },
-        syn::BinOp::MulEq(_) => quote! { shades::scope::MutateBinOp::Mul },
-        syn::BinOp::DivEq(_) => quote! { shades::scope::MutateBinOp::Div },
-        syn::BinOp::RemEq(_) => quote! { shades::scope::MutateBinOp::Rem },
-        syn::BinOp::BitXorEq(_) => quote! { shades::scope::MutateBinOp::Xor },
-        syn::BinOp::BitAndEq(_) => quote! { shades::scope::MutateBinOp::And },
-        syn::BinOp::BitOrEq(_) => quote! { shades::scope::MutateBinOp::Or },
-        syn::BinOp::ShlEq(_) => quote! { shades::scope::MutateBinOp::Shl },
-        syn::BinOp::ShrEq(_) => quote! { shades::scope::MutateBinOp::Shr },
+        syn::BinOp::AddEq(_) => quote! { Some(shades::scope::MutateBinOp::Add) },
+        syn::BinOp::SubEq(_) => quote! { Some(shades::scope::MutateBinOp::Sub) },
+        syn::BinOp::MulEq(_) => quote! { Some(shades::scope::MutateBinOp::Mul) },
+        syn::BinOp::DivEq(_) => quote! { Some(shades::scope::MutateBinOp::Div) },
+        syn::BinOp::RemEq(_) => quote! { Some(shades::scope::MutateBinOp::Rem) },
+        syn::BinOp::BitXorEq(_) => quote! { Some(shades::scope::MutateBinOp::Xor) },
+        syn::BinOp::BitAndEq(_) => quote! { Some(shades::scope::MutateBinOp::And) },
+        syn::BinOp::BitOrEq(_) => quote! { Some(shades::scope::MutateBinOp::Or) },
+        syn::BinOp::ShlEq(_) => quote! { Some(shades::scope::MutateBinOp::Shl) },
+        syn::BinOp::ShrEq(_) => quote! { Some(shades::scope::MutateBinOp::Shr) },
         _ => quote! { compile_error!("expecting +=, -=, *=, /=, %=, ^=, &=, |=, <<= or >>=") },
       },
     };
     let q = quote! {
-      __scope.set(#ident, #bin_op, #expr)
+      __scope.set(#ident.clone(), #bin_op, shades::expr::Expr::from(#expr))
     };
 
     q.to_tokens(tokens);
@@ -962,7 +959,7 @@ impl Parse for MutateVarItem {
       ident,
       assign_token,
       expr,
-      semi_token,
+      _semi_token: semi_token,
     })
   }
 }
@@ -1067,7 +1064,7 @@ impl VisitMut for ExprVisitor {
         let expr = &idx.expr;
         let index = &idx.index;
 
-        *i = parse_quote! { #expr.clone().at(shades::expr::Expr::from(#index))}
+        *i = parse_quote! { shades::expr::Expr::from(#expr.clone()).at(shades::expr::Expr::from(#index.clone()))}
       }
 
       _ => (),
