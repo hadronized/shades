@@ -982,6 +982,8 @@ impl VisitMut for ExprVisitor {
         for expr in &mut a.elems {
           self.visit_expr_mut(expr);
         }
+
+        *i = parse_quote! { shades::expr::Expr::from(#a) };
       }
 
       Expr::Assign(a) => {
@@ -1059,6 +1061,13 @@ impl VisitMut for ExprVisitor {
       Expr::Path(p) => {
         let e = parse_quote! { #p.clone() };
         *i = e;
+      }
+
+      Expr::Index(idx) => {
+        let expr = &idx.expr;
+        let index = &idx.index;
+
+        *i = parse_quote! { #expr.clone().at(shades::expr::Expr::from(#index))}
       }
 
       _ => (),

@@ -59,11 +59,12 @@ fn test_shades() {
       let x = 3.;
       let y = 2.;
       let z = 10.;
+      let w = [1., 2.];
 
       x = 10.;
       y *= z;
 
-      (a + b * 2. * a) * env.t
+      (a + b * 2. * a) * env.t + w[1]
     }
 
     fn main() {
@@ -77,9 +78,10 @@ float fun_0(float arg_0, float arg_1) {
   float var_0_0 = 3.;
   float var_0_1 = 2.;
   float var_0_2 = 10.;
+  float[2] var_0_3 = float[2](1.,2.);
   var_0_0 = 10.;
   var_0_1 *= var_0_2;
-  return ((arg_0 + ((arg_1 * 2.) * arg_0)) * t);
+  return (((arg_0 + ((arg_1 * 2.) * arg_0)) * t) + var_0_3[1]);
 
 }
 
