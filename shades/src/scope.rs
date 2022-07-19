@@ -158,16 +158,11 @@ where
   }
 
   /// Mutate a variable in the current scope.
-  pub fn set<T>(
-    &mut self,
-    var: impl Into<Var<T>>,
-    bin_op: impl Into<Option<MutateBinOp>>,
-    value: impl Into<Expr<T>>,
-  ) {
+  pub fn set<T>(&mut self, var: Var<T>, bin_op: Option<MutateBinOp>, value: Expr<T>) {
     self.erased.instructions.push(ScopeInstr::MutateVar {
-      var: var.into().to_expr().erased,
-      bin_op: bin_op.into(),
-      expr: value.into().erased,
+      var: var.to_expr().erased,
+      bin_op,
+      expr: value.erased,
     });
   }
 

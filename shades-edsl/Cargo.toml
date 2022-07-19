@@ -1,6 +1,6 @@
 [package]
 name = "shades-edsl"
-version = "0.1.0-dev"
+version = "0.1.0"
 license = "BSD-3-Clause"
 authors = ["Dimitri Sabadie <dimitri.sabadie@gmail.com>"]
 description = "An EDSL for shading languages"
@@ -9,7 +9,7 @@ categories = ["graphics"]
 homepage = "https://github.com/phaazon/shades"
 repository = "https://github.com/phaazon/shades"
 documentation = "https://docs.rs/shades"
-readme = "README.md"
+readme = "../README.md"
 edition = "2018"
 
 [badges]
@@ -22,6 +22,3 @@ proc-macro = true
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "1", features = ["extra-traits", "full", "visit-mut"] }
-
-[dev-dependencies]
-shades = { version = "0.4.0-dev", path = "../shades" }
