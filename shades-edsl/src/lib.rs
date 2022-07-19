@@ -1,5 +1,3 @@
-#![allow(dead_code)] // FIXME: remove before publishing
-
 mod syntax;
 
 use proc_macro::TokenStream;
@@ -11,8 +9,8 @@ use crate::syntax::StageDecl;
 #[proc_macro]
 pub fn shades(tokens: TokenStream) -> TokenStream {
   let mut stage = parse_macro_input!(tokens as StageDecl);
+
   stage.mutate();
 
-  let ast = stage.into_token_stream();
-  ast.into()
+  stage.into_token_stream().into()
 }
